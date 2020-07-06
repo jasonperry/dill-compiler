@@ -4,24 +4,25 @@
 (* %token ASSIGN EQUAL COLON SEMI COMMA DOT ARROW 
 %token STAR AMP *)
 %token UMINUS PLUS MINUS TIMES DIV
-%token EOL
+%token EOF
 
 (* ordering of these indicates precedence, low to high *)
 %left PLUS MINUS
 %left TIMES DIV
 %nonassoc UMINUS
 
+%{ open Ast %}
+
 %type <Ast.valtype> constexp
 %type <Ast.expr> opexp
 %type <Ast.expr> expr
 %start <Ast.expr> main
-%{ open Ast %}
 
 %%
 
 (* do I need this to include the EOF so it's accepted? apparently. *)
 main:
-  | e = expr EOL
+  | e = expr EOF
     { e }
 
 (* Expressions are what evaluates to a value. *)
@@ -44,8 +45,7 @@ constexp:
 
 opexp:
 (* TODO: check type of subexps and apply promotion rules *)
-(* Won't work e1 and e2 are valtypes *)
-(* Would be nice if I could put some common code here to check e1 & e2 *)
+(* Nope! Do everything with the AST. *)
   | e1 = expr PLUS e2 = expr
     { ExpBinop (e1, OpPlus, e2) }
   | e1 = expr MINUS e2 = expr
@@ -55,4 +55,4 @@ opexp:
   | e1 = expr DIV e2 = expr
     { ExpBinop (e1, OpDiv, e2) }
   | MINUS e = expr %prec UMINUS
-    { ExpUnop (OpNeg, e) }
+    { ExpUnop (OpNeg, e) } (* need to learn what this trick does *)

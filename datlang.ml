@@ -26,12 +26,27 @@ let process (optional_line : string option) =
   | Some line ->
       process line
 
-let rec repeat channel =
+let rec repeat buf =
   (* Attempt to read one line. *)
-  let optional_line, continue = Lexer.line channel in
+  let optional_line, continue = Lexer.line buf in
   process optional_line;
   if continue then
-    repeat channel
-  
-let () =
-  repeat (Lexing.from_channel stdin)
+    repeat buf
+
+(* take the whole buffer, letting newlines be treated as whitespace. *)
+let process_whole channel =
+  let buf = Lexing.from_channel channel in
+  try
+    (* Run the parser on this line of input. *)
+    Printf.printf "%s\n%!" (interpret (Parser.main Lexer.token buf))
+  with
+  | Lexer.Error msg ->
+      Printf.fprintf stderr "%s%!" msg
+  | Parser.Error ->
+      Printf.fprintf stderr "At offset %d: syntax error.\n%!" (Lexing.lexeme_start buf)
+
+
+(* let () =
+  repeat (Lexing.from_channel stdin) *)
+
+let () = process_whole stdin

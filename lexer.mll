@@ -19,20 +19,21 @@ rule line = parse
 
 
 and token = parse  (* funny that it's called parse *)
-| [ ' ' '\t' ]
+  | [ ' ' '\t' '\n' ]
     { token lexbuf }
-| '\n'
-    { EOL }
-| ['0'-'9']+ '.' ['0'-'9']* as f
+(*  | '\n'
+    { EOL (* lines++ *) } *)
+  | ['0'-'9']+ '.' ['0'-'9']* as f
     { FCONST (float_of_string f) }
-| ['0'-'9']+ as i
+  | ['0'-'9']+ as i
     { ICONST (int_of_string i) }
-| '+'     { PLUS }
-| '-'     { MINUS }
-| '*'     { TIMES }
-| '/'     { DIV }
-| '('     { LPAREN }
-| ')'     { RPAREN }
-| _
+  | '+'     { PLUS }
+  | '-'     { MINUS }
+  | '*'     { TIMES }
+  | '/'     { DIV }
+  | '('     { LPAREN }
+  | ')'     { RPAREN }
+  | eof     { EOF }
+  | _
     { raise (Error (Printf.sprintf "At offset %d: unexpected character.\n" (Lexing.lexeme_start lexbuf))) }
 
