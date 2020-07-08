@@ -1,8 +1,12 @@
 %token <int> ICONST  (* TODO: make it full 32-bit *)
 %token <float> FCONST
+%token <string> IDENT_LC
+%token <string> IDENT_UC
 %token LPAREN RPAREN
-(* %token ASSIGN EQUAL COLON SEMI COMMA DOT ARROW 
+%token ASSIGN COLON SEMI
+(* %token EQUAL COLON SEMI COMMA DOT ARROW 
 %token STAR AMP *)
+%token VAR
 %token UMINUS PLUS MINUS TIMES DIV
 %token EOF
 
@@ -14,22 +18,38 @@
 %{ open Ast %}
 
 %type <Ast.valtype> constexp
+%type <string> varexp
 %type <Ast.expr> opexp
 %type <Ast.expr> expr
-%start <Ast.expr> main
+%start <Ast.stmt list> main
 
 %%
 
 (* do I need this to include the EOF so it's accepted? apparently. *)
 main:
-  | e = expr EOF
-    { e }
+  | block = nonempty_list(stmt) EOF
+    { block }
+
+stmt:
+  | st = declStmt SEMI
+    { st }
+  | st = assignStmt SEMI
+    { st }
+
+declStmt:
+  | VAR v = varexp ASSIGN e = expr
+    { StmtDecl (v, e) }
+
+assignStmt:
+  | v=varexp ASSIGN e=expr
+    { StmtAssign (v, e) }
 
 (* Expressions are what evaluates to a value. *)
 expr:
   | c = constexp
     { ExpConst c }
-(* | varexp, then objexp!  *)
+  | v = varexp        (* then objexp! *)
+    { ExpVar v }
   | e = opexp
     { e }
 (* objexp to replace varexp *)
@@ -42,6 +62,10 @@ constexp:
   | f = FCONST
     { FloatVal f }
 (* | STRCONST | *)
+
+varexp:
+  | v = IDENT_LC
+    { v }
 
 opexp:
 (* TODO: check type of subexps and apply promotion rules *)

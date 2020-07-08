@@ -2,17 +2,25 @@
 (* "Lexing" is the runtime for ocamllex-generated lexers. *)
 open Ast
 
-let rec interpret (e: expr) =
+let rec interpret_exp (e: expr) =
   match e with
   | ExpConst _ -> "CONSTEXP "
-  | ExpBinop (e1, _, e2) -> interpret e1 ^ "BINOP " ^ interpret e2
-  | ExpUnop (_, e) -> "UNOP " ^ interpret e
+  | ExpVar v -> "(VAREXP " ^ v ^ ") "
+  | ExpBinop (e1, _, e2) -> interpret_exp e1 ^ "BINOP " ^ interpret_exp e2
+  | ExpUnop (_, e) -> "UNOP " ^ interpret_exp e
+
+let interpret_block sl = 
+  List.fold_left (fun prev st -> prev ^ 
+      match st with
+      | StmtDecl (v, e) -> "VAR " ^ v ^ " = " ^ interpret_exp e ^ ";\n"
+      | StmtAssign (v, e) -> v ^ " = " ^ interpret_exp e ^ ";\n"
+    ) "" sl
 
 let process (line : string) =
   let linebuf = Lexing.from_string line in
   try
     (* Run the parser on this line of input. *)
-    Printf.printf "%s\n%!" (interpret (Parser.main Lexer.token linebuf))
+    Printf.printf "%s\n%!" (interpret_block (Parser.main Lexer.token linebuf))
   with
   | Lexer.Error msg ->
       Printf.fprintf stderr "%s%!" msg
@@ -38,7 +46,7 @@ let process_whole channel =
   let buf = Lexing.from_channel channel in
   try
     (* Run the parser on this line of input. *)
-    Printf.printf "%s\n%!" (interpret (Parser.main Lexer.token buf))
+    Printf.printf "%s\n%!" (interpret_block (Parser.main Lexer.token buf))
   with
   | Lexer.Error msg ->
       Printf.fprintf stderr "%s%!" msg

@@ -16,11 +16,15 @@ type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
 (* type expr =
-  raw_expr located 
+  raw_expr located  *)
 
-and type raw_expr = *)
-type expr =
+type stmt = 
+  | StmtAssign of string * expr
+  | StmtDecl of string * (* typeexpr *) expr
+
+and expr =
   | ExpConst of valtype
+  | ExpVar of string     (* later a type for pieces of an object expr. *)
   | ExpBinop of expr * binary_op * expr
   | ExpUnop of unary_op * expr
   (* No parentheses *)
