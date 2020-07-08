@@ -4,7 +4,7 @@
 %token <string> IDENT_UC
 %token LPAREN RPAREN
 %token ASSIGN COLON SEMI
-(* %token EQUAL COLON SEMI COMMA DOT ARROW 
+(* %token EQUAL COMMA DOT ARROW 
 %token STAR AMP *)
 %token VAR
 %token UMINUS PLUS MINUS TIMES DIV
@@ -25,7 +25,6 @@
 
 %%
 
-(* do I need this to include the EOF so it's accepted? apparently. *)
 main:
   | block = nonempty_list(stmt) EOF
     { block }
@@ -37,12 +36,16 @@ stmt:
     { st }
 
 declStmt:
-  | VAR v = varexp ASSIGN e = expr
-    { StmtDecl (v, e) }
+  | VAR v = varexp t=option(preceded(COLON, typeexp)) ASSIGN e = expr
+    { StmtDecl (v, t, e) }
 
 assignStmt:
   | v=varexp ASSIGN e=expr
     { StmtAssign (v, e) }
+
+typeexp:
+  | tn=IDENT_LC
+    { TypeName tn }
 
 (* Expressions are what evaluates to a value. *)
 expr:

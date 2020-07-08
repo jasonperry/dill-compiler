@@ -42,6 +42,7 @@ and token = parse  (* funny that it's called parse *)
   | ')'     { RPAREN }
   | '='	    { ASSIGN }
   | ';'	    { SEMI }
+  | ':'	    { COLON }
   | "var"   { VAR }
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }

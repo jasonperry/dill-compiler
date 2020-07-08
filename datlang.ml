@@ -12,7 +12,12 @@ let rec interpret_exp (e: expr) =
 let interpret_block sl = 
   List.fold_left (fun prev st -> prev ^ 
       match st with
-      | StmtDecl (v, e) -> "VAR " ^ v ^ " = " ^ interpret_exp e ^ ";\n"
+      | StmtDecl (v, t, e) ->
+         "VAR " ^ v ^ (
+           match t with
+           | Some (TypeName tn) -> " : " ^ tn
+           | None -> "" )
+         ^ " = " ^ interpret_exp e ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ interpret_exp e ^ ";\n"
     ) "" sl
 
