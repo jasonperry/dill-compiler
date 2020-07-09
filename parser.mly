@@ -7,6 +7,7 @@
 (* %token EQUAL COMMA DOT ARROW 
 %token STAR AMP *)
 %token VAR
+%token IF THEN ELSIF ELSE END
 %token UMINUS PLUS MINUS TIMES DIV
 %token EOF
 
@@ -29,10 +30,16 @@ main:
   | block = nonempty_list(stmt) EOF
     { block }
 
+stmtBlock:
+  | sl = list(stmt)
+    { sl } (* couldn't get away without it. *)
+
 stmt:
   | st = declStmt SEMI
     { st }
   | st = assignStmt SEMI
+    { st }
+  | st = ifStmt
     { st }
 
 declStmt:
@@ -42,6 +49,18 @@ declStmt:
 assignStmt:
   | v=varexp ASSIGN e=expr
     { StmtAssign (v, e) }
+
+ifStmt:
+  | IF LPAREN e=expr RPAREN THEN
+    tb=stmtBlock
+    eifs=list(elsifBlock)
+    eb=option(preceded(ELSE, stmtBlock))
+    END
+    { StmtIf (e, tb, eifs, eb) }
+
+elsifBlock:
+  | ELSIF LPAREN e=expr RPAREN THEN body=stmtBlock
+    { (e, body) }
 
 typeexp:
   | tn=IDENT_LC

@@ -1,0 +1,11 @@
+var x : int = 5;
+var y: int = 4;
+if (x) then
+  y = y + x/2;
+elsif (y) then
+  y = x;
+  x = 888;
+else
+  y = 1;
+  x = 1;
+end

@@ -31,4 +31,6 @@ type typeExpr =
 type stmt = 
   | StmtDecl of string * typeExpr option * expr
   | StmtAssign of string * expr
+  (* Hmm, may want to make this a record, it's a little unwieldy. *)
+  | StmtIf of expr * stmt list * (expr * stmt list) list * stmt list option
 

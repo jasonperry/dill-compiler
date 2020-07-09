@@ -9,7 +9,7 @@ let rec interpret_exp (e: expr) =
   | ExpBinop (e1, _, e2) -> interpret_exp e1 ^ "BINOP " ^ interpret_exp e2
   | ExpUnop (_, e) -> "UNOP " ^ interpret_exp e
 
-let interpret_block sl = 
+let rec interpret_block sl = 
   List.fold_left (fun prev st -> prev ^ 
       match st with
       | StmtDecl (v, t, e) ->
@@ -19,7 +19,22 @@ let interpret_block sl =
            | None -> "" )
          ^ " = " ^ interpret_exp e ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ interpret_exp e ^ ";\n"
+      | StmtIf (e, tb, eifs, eb) -> interpret_if (e, tb, eifs, eb)
     ) "" sl
+
+and interpret_elsif (e, sl) =
+  "elsif (" ^ interpret_exp e ^ ") then\n"
+  ^ interpret_block sl
+
+(* maybe interpret sub-functions will return a label *)
+and interpret_if (e, tb, eifs, els) =
+  "if (" ^ interpret_exp e ^ ") then\n"
+  ^ interpret_block tb
+  ^ List.fold_left (fun s eif -> s ^ interpret_elsif eif) "" eifs
+  ^ (match els with
+     | Some sb -> "else " ^ interpret_block sb
+     | None -> "")
+  ^ "end\n"
 
 let process (line : string) =
   let linebuf = Lexing.from_string line in

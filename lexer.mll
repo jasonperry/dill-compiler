@@ -44,6 +44,11 @@ and token = parse  (* funny that it's called parse *)
   | ';'	    { SEMI }
   | ':'	    { COLON }
   | "var"   { VAR }
+  | "if"    { IF }
+  | "then"  { THEN }
+  | "elsif" { ELSIF }
+  | "else"  { ELSE }
+  | "end"   { END }
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
   | eof     { EOF }
