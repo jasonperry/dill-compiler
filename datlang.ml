@@ -71,8 +71,12 @@ let process_whole channel =
   | Lexer.Error msg ->
       Printf.fprintf stderr "%s%!" msg
   | Parser.Error ->
-      Printf.fprintf stderr "At offset %d: syntax error.\n%!" (Lexing.lexeme_start buf)
-
+     let spos, epos = (Lexing.lexeme_start_p buf, Lexing.lexeme_end_p buf) in
+     Printf.fprintf stderr
+       "At line %d:%d-%d: syntax error.\n%!"
+       spos.pos_lnum
+       (spos.pos_cnum - spos.pos_bol)
+       (epos.pos_cnum - epos.pos_bol)
 
 (* let () =
   repeat (Lexing.from_channel stdin) *)
