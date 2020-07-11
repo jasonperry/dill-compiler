@@ -16,7 +16,9 @@
 %left TIMES DIV
 %nonassoc UMINUS
 
-%{ open Ast %}
+%{
+    open Ast
+%}
 
 %type <Ast.valtype> constexp
 %type <string> varexp
@@ -72,10 +74,10 @@ expr:
     { ExpConst c }
   | v = varexp        (* then objexp! *)
     { ExpVar v }
-  | e = opexp
-    { e }
+  | o=opexp
+    { o }
 (* objexp to replace varexp *)
-  | LPAREN e = expr RPAREN
+  | LPAREN e=expr RPAREN
     { e }
 
 constexp:
@@ -92,13 +94,17 @@ varexp:
 opexp:
 (* TODO: check type of subexps and apply promotion rules *)
 (* Nope! Do everything with the AST. *)
-  | e1 = expr PLUS e2 = expr
+  | e1=expr PLUS e2=expr
     { ExpBinop (e1, OpPlus, e2) }
-  | e1 = expr MINUS e2 = expr
+  | e1=expr MINUS e2=expr
     { ExpBinop (e1, OpMinus, e2) }
-  | e1 = expr TIMES e2 = expr
+  | e1=expr TIMES e2=expr
     { ExpBinop (e1, OpTimes, e2) }
-  | e1 = expr DIV e2 = expr
+  | e1=expr DIV e2=expr
     { ExpBinop (e1, OpDiv, e2) }
-  | MINUS e = expr %prec UMINUS
+  | MINUS e=expr %prec UMINUS
     { ExpUnop (OpNeg, e) } (* need to learn what this trick does *)
+
+(* parameterized rule to add location info to any nonterminal. *)
+located(X):
+  | x=X { { loc = $loc; value = x } }

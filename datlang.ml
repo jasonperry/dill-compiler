@@ -13,10 +13,10 @@ let rec interpret_block sl =
   List.fold_left (fun prev st -> prev ^ 
       match st with
       | StmtDecl (v, t, e) ->
-         "VAR " ^ v ^ (
-           match t with
-           | Some (TypeName tn) -> " : " ^ tn
-           | None -> "" )
+         "VAR " ^ v 
+         ^ (match t with
+            | Some (TypeName tn) -> " : " ^ tn
+            | None -> "" )
          ^ " = " ^ interpret_exp e ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ interpret_exp e ^ ";\n"
       | StmtIf (e, tb, eifs, eb) -> interpret_if (e, tb, eifs, eb)

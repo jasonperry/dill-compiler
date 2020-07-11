@@ -11,7 +11,7 @@ type binary_op =
   | OpTimes
   | OpDiv
 
-(* lexing info *)
+(* position info *)
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 

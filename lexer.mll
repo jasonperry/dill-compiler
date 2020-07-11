@@ -1,5 +1,6 @@
 {
    open Parser (* for token defs *)
+   open Lexing (* new_line *)
    exception Error of string (* should be LexError? *)
 }
 
@@ -26,10 +27,10 @@ rule line = parse
     { Some (line ^ "\n"), false }
 
 and token = parse  (* funny that it's called parse *)
-  | [ ' ' '\t' '\n' ]
+  | [ ' ' '\t' ]
     { token lexbuf }
-(*  | '\n'
-    { EOL (* lines++ *) } *)
+  | '\r'? '\n'
+    { new_line lexbuf; token lexbuf }
   | fconst as f
     { FCONST (float_of_string f) }
   | iconst as i
