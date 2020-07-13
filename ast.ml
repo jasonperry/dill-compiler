@@ -15,6 +15,8 @@ type binary_op =
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
+              
+
 (* type expr =
   raw_expr located  *)
 
@@ -23,6 +25,7 @@ type expr =
   | ExpVar of string     (* later a type for pieces of an object expr. *)
   | ExpBinop of expr * binary_op * expr
   | ExpUnop of unary_op * expr
+  | ExpCall of string * expr list
   (* No parentheses *)
 
 type typeExpr =
@@ -31,6 +34,17 @@ type typeExpr =
 type stmt = 
   | StmtDecl of string * typeExpr option * expr
   | StmtAssign of string * expr
+  | StmtReturn of expr
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
   | StmtIf of expr * stmt list * (expr * stmt list) list * stmt list option
+  | StmtCall of expr  (* have to check the function returns void *)
 
+type proc = {
+    name: string;
+    params: (string * typeExpr) list;
+    rettype: typeExpr;
+    body: stmt list
+  }
+
+(* Idea: use result types for typechecking the AST: either a new decorated
+ * node or an error. *)

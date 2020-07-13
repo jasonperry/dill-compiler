@@ -1,0 +1,8 @@
+proc square (x: int) : int =
+  var x2 = x * x;
+  return x2;
+end square
+
+
+var y = square(42);
+square(99);

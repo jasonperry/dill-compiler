@@ -42,6 +42,7 @@ and token = parse  (* funny that it's called parse *)
   | '('     { LPAREN }
   | ')'     { RPAREN }
   | '='	    { ASSIGN }
+  | ','	    { COMMA }
   | ';'	    { SEMI }
   | ':'	    { COLON }
   | "var"   { VAR }
@@ -50,6 +51,8 @@ and token = parse  (* funny that it's called parse *)
   | "elsif" { ELSIF }
   | "else"  { ELSE }
   | "end"   { END }
+  | "proc"  { PROC }
+  | "return" { RETURN }
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
   | eof     { EOF }

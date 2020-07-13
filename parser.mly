@@ -3,12 +3,13 @@
 %token <string> IDENT_LC
 %token <string> IDENT_UC
 %token LPAREN RPAREN
-%token ASSIGN COLON SEMI
+%token ASSIGN COLON SEMI COMMA
 (* %token EQUAL COMMA DOT ARROW 
 %token STAR AMP *)
 %token VAR
 %token IF THEN ELSIF ELSE END
 %token UMINUS PLUS MINUS TIMES DIV
+%token PROC RETURN
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -20,37 +21,73 @@
     open Ast
 %}
 
-%type <Ast.valtype> constexp
-%type <string> varexp
-%type <Ast.expr> opexp
+%type <Ast.valtype> constExp
+%type <string> varExp
+%type <Ast.expr> opExp
 %type <Ast.expr> expr
-%start <Ast.stmt list> main
+%start <Ast.proc list * Ast.stmt list> main
 
 %%
 
 main:
-  | block = nonempty_list(stmt) EOF
-    { block }
+  | procs=list(proc) block=nonempty_list(stmt) EOF
+    { (procs, block) }
+
+proc:
+  | PROC pn=procName LPAREN pl=paramList RPAREN
+      COLON rt=typeExp ASSIGN sb=stmtBlock END en=procName 
+    { if pn = en then
+	{ name=pn; params=pl; rettype=rt; body=sb }
+      else  (* TODO: try "new way" error handling (Menhir Ch. 11) *)
+	$syntaxerror
+    }
+
+procName:
+  (* later, may include dots and stuff. *)
+  | pn=IDENT_LC { pn }
+
+paramList:
+  | pl=separated_list(COMMA, nameAndType)
+    { pl }
+
+nameAndType:
+  (* should this be varexp or should I have a different 'varname' rule? 
+   * I think later I will have objExp and then I'll need it. 
+   * It's definitely not an expression. *)
+  | v=varName COLON t=typeExp
+    { v, t }
 
 stmtBlock:
   | sl = list(stmt)
-    { sl } (* couldn't get away without it. *)
+    { sl }
 
 stmt:
-  | st = declStmt SEMI
+  | st = declStmt
     { st }
-  | st = assignStmt SEMI
+  | st = assignStmt
     { st }
   | st = ifStmt
     { st }
+  | st = returnStmt
+    { st }
+  | st = callStmt
+    { st }
 
 declStmt:
-  | VAR v = varexp t=option(preceded(COLON, typeexp)) ASSIGN e = expr
+  | VAR v = varExp t=option(preceded(COLON, typeExp)) ASSIGN e = expr SEMI
     { StmtDecl (v, t, e) }
 
 assignStmt:
-  | v=varexp ASSIGN e=expr
+  | v=varExp ASSIGN e=expr SEMI
     { StmtAssign (v, e) }
+
+returnStmt:
+  | RETURN e=expr SEMI
+    { StmtReturn e }
+
+callStmt:
+  | e=expr SEMI
+    { StmtCall e }
 
 ifStmt:
   | IF LPAREN e=expr RPAREN THEN
@@ -64,34 +101,42 @@ elsifBlock:
   | ELSIF LPAREN e=expr RPAREN THEN body=stmtBlock
     { (e, body) }
 
-typeexp:
+typeExp:
+  (* This will be elaborated to include array, list, type variables,... *)
   | tn=IDENT_LC
     { TypeName tn }
 
 (* Expressions are what evaluates to a value. *)
 expr:
-  | c = constexp
+  | c = constExp
     { ExpConst c }
-  | v = varexp        (* then objexp! *)
+  | v = varExp        (* then objexp! *)
     { ExpVar v }
-  | o=opexp
+  | o=opExp
     { o }
+  | ce=callExp
+    { ce }
 (* objexp to replace varexp *)
   | LPAREN e=expr RPAREN
     { e }
 
-constexp:
+constExp:
   | i = ICONST
     { IntVal i }
   | f = FCONST
     { FloatVal f }
 (* | STRCONST | *)
 
-varexp:
-  | v = IDENT_LC
+varExp:
+  (* later, objExp will have other productions *)
+  | v = varName
     { v }
 
-opexp:
+varName:
+  | vn = IDENT_LC
+    { vn }
+
+opExp:
 (* TODO: check type of subexps and apply promotion rules *)
 (* Nope! Do everything with the AST. *)
   | e1=expr PLUS e2=expr
@@ -104,6 +149,14 @@ opexp:
     { ExpBinop (e1, OpDiv, e2) }
   | MINUS e=expr %prec UMINUS
     { ExpUnop (OpNeg, e) } (* need to learn what this trick does *)
+
+callExp:
+  | pn=procName LPAREN al=argList RPAREN
+    { ExpCall (pn, al) }
+
+argList:
+  | al=separated_list(COMMA, expr)
+    { al }
 
 (* parameterized rule to add location info to any nonterminal. *)
 located(X):

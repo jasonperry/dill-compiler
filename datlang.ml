@@ -8,6 +8,7 @@ let rec interpret_exp (e: expr) =
   | ExpVar v -> "(VAREXP " ^ v ^ ") "
   | ExpBinop (e1, _, e2) -> interpret_exp e1 ^ "BINOP " ^ interpret_exp e2
   | ExpUnop (_, e) -> "UNOP " ^ interpret_exp e
+  | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"
 
 let rec interpret_block sl = 
   List.fold_left (fun prev st -> prev ^ 
@@ -19,6 +20,8 @@ let rec interpret_block sl =
             | None -> "" )
          ^ " = " ^ interpret_exp e ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ interpret_exp e ^ ";\n"
+      | StmtReturn e -> "return " ^ interpret_exp e ^ ";\n"
+      | StmtCall e -> interpret_exp e ^ ";\n"
       | StmtIf (e, tb, eifs, eb) -> interpret_if (e, tb, eifs, eb)
     ) "" sl
 
@@ -36,7 +39,14 @@ and interpret_if (e, tb, eifs, els) =
      | None -> "")
   ^ "end\n"
 
-let process (line : string) =
+(* let interpret_params plist =  *)
+
+let interpret_proc pr =
+  "proc " ^ pr.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
+  ^ interpret_block pr.body
+  ^ "\nendproc\n"
+
+(* let process (line : string) =
   let linebuf = Lexing.from_string line in
   try
     (* Run the parser on this line of input. *)
@@ -45,7 +55,7 @@ let process (line : string) =
   | Lexer.Error msg ->
       Printf.fprintf stderr "%s%!" msg
   | Parser.Error ->
-      Printf.fprintf stderr "At offset %d: syntax error.\n%!" (Lexing.lexeme_start linebuf)
+      Printf.fprintf stderr "At offset %d: syntax error.\n%!" (Lexing.lexeme_start linebuf) 
 
 let process (optional_line : string option) =
   match optional_line with
@@ -60,13 +70,18 @@ let rec repeat buf =
   process optional_line;
   if continue then
     repeat buf
+ *)
+
+let interpret_program (procs, block) =
+  List.fold_left (fun s p -> s ^ interpret_proc p) "" procs
+  ^ interpret_block block
 
 (* take the whole buffer, letting newlines be treated as whitespace. *)
 let process_whole channel =
   let buf = Lexing.from_channel channel in
   try
     (* Run the parser on this line of input. *)
-    Printf.printf "%s\n%!" (interpret_block (Parser.main Lexer.token buf))
+    Printf.printf "%s\n%!" (interpret_program (Parser.main Lexer.token buf))
   with
   | Lexer.Error msg ->
       Printf.fprintf stderr "%s%!" msg
