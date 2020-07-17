@@ -22,6 +22,8 @@
 %}
 
 %type <Ast.expr> expr
+%type <Ast.stmt> stmt
+%type <Ast.proc> proc
 %start <Ast.proc list * Ast.stmt list> main
 
 %%
@@ -31,13 +33,17 @@ main:
     { (procs, block) }
 
 proc:
-  | PROC pn=procName LPAREN pl=paramList RPAREN
-      COLON rt=typeExp ASSIGN sb=stmtBlock END en=procName 
-    { if pn = en then
-	{ name=pn; params=pl; rettype=rt; body=sb }
+  | pd=procHeader ASSIGN sb=stmtBlock END en=procName 
+    { if pd.value.name = en then
+	{ loc = $loc; value = {decl=pd; body=sb} }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11) *)
 	$syntaxerror
     }
+
+procHeader:
+  | PROC pn=procName LPAREN pl=paramList RPAREN COLON rt=typeExp
+    (* construct declaration object! Good idea! *)
+    { { loc = $loc; value = { name=pn; params=pl; rettype=rt } } }
 
 procName:
   (* later, may include dots and stuff. *)
@@ -104,7 +110,8 @@ expr:
   | LPAREN e=expr RPAREN
     { e }
   (* will this not work at all with old syntax? *)
-  (* | located(constExp | varExp | opExp | callExp) *)
+  (* | el=located(constExp | varExp | opExp | callExp)
+    { el } *)
   | e=constExp
   | e=varExp
   | e=opExp

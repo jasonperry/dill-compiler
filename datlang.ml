@@ -42,8 +42,10 @@ and interpret_if (e, tb, eifs, els) =
 (* let interpret_params plist =  *)
 
 let interpret_proc pr =
-  "proc " ^ pr.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
-  ^ interpret_block pr.body
+  (* a little ugly, but maybe I will use the pdecl later. *)
+  let pdecl = pr.value.decl.value in
+  "proc " ^ pdecl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
+  ^ interpret_block pr.value.body
   ^ "\nendproc\n"
 
 (* let process (line : string) =

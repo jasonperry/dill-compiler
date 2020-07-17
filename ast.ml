@@ -71,12 +71,20 @@ type raw_stmt =
 
 and stmt = raw_stmt located
 
-type proc = {
+type raw_procdecl = {
     name: string;
     params: (string * typeExpr) list;
-    rettype: typeExpr;
+    rettype: typeExpr
+  }
+and procdecl = raw_procdecl located
+
+type raw_proc = {
+    decl: procdecl;
     body: stmt list
   }
+
+type proc = raw_proc located
+
 
 (* Idea: use result types for typechecking the AST: either a new decorated
  * node or an error. *)
