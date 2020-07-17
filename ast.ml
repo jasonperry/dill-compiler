@@ -1,4 +1,4 @@
-type valtype =
+type consttype =
   | FloatVal of float
   | IntVal of int
 
@@ -11,22 +11,52 @@ type binary_op =
   | OpTimes
   | OpDiv
 
+(* decorated AST structures *)
+exception TypeError of string
+
+(** type variables for generics *)
+type typevar = {
+    varname: string;
+    interfaces: string list
+  }
+
+(** Information about a type, just to uniquely identify. *)
+type typetag = {
+    typename: string;
+    params: typevar list; (* Later: let them be filled in? *)
+    array: bool;   (* array type (the only native container type for now) *)
+    (* these aren't needed for checking; they go in the full description.
+     * It will be important that type names are unique. *)
+    (* reftype: bool;  (* reference or value type- in the catalog *) *)
+    (* size: int;  (* 4 if a reference type? 8? *) *) 
+  }
+
+type classdata = {
+    classname: string;
+    reftype: bool;
+    interfaces: string list
+  }
+
+(* also need a map (set) of known type names too. "type env" 
+ * - differentiate  *)
+
+module StrMap = Map.Make(String)
+type typeenv = typetag StrMap.t
+
 (* position info *)
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
-              
-
-(* type expr =
-  raw_expr located  *)
-
-type expr =
-  | ExpConst of valtype
+type raw_expr =
+  | ExpConst of consttype
   | ExpVar of string     (* later a type for pieces of an object expr. *)
   | ExpBinop of expr * binary_op * expr
   | ExpUnop of unary_op * expr
   | ExpCall of string * expr list
   (* No parentheses *)
+
+and expr =
+  raw_expr located
 
 type typeExpr =
   | TypeName of string  (* type variables later *)
@@ -48,3 +78,8 @@ type proc = {
 
 (* Idea: use result types for typechecking the AST: either a new decorated
  * node or an error. *)
+
+(* START OF TYPECHECKING CODE (maybe move it) *)
+
+(* check_expr: expr -> typed_expr result or just node? *)
+(* let check_expr env e = [] *)

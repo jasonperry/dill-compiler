@@ -3,7 +3,7 @@
 open Ast
 
 let rec interpret_exp (e: expr) =
-  match e with
+  match e.value with
   | ExpConst _ -> "CONSTEXP "
   | ExpVar v -> "(VAREXP " ^ v ^ ") "
   | ExpBinop (e1, _, e2) -> interpret_exp e1 ^ "BINOP " ^ interpret_exp e2
@@ -97,3 +97,10 @@ let process_whole channel =
   repeat (Lexing.from_channel stdin) *)
 
 let () = process_whole stdin
+
+(* typechecking/decoration ideas:
+ *  make a record for the whole environment and tables, pass it in and out.
+ *  OR make the environment mutable, each function receives it and 
+ *     modifies it. 
+ *  The result will be used for code generation.
+ *)

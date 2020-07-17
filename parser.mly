@@ -21,9 +21,6 @@
     open Ast
 %}
 
-%type <Ast.valtype> constExp
-%type <string> varExp
-%type <Ast.expr> opExp
 %type <Ast.expr> expr
 %start <Ast.proc list * Ast.stmt list> main
 
@@ -74,11 +71,11 @@ stmt:
     { st }
 
 declStmt:
-  | VAR v = varExp t=option(preceded(COLON, typeExp)) ASSIGN e = expr SEMI
+  | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e = expr SEMI
     { StmtDecl (v, t, e) }
 
 assignStmt:
-  | v=varExp ASSIGN e=expr SEMI
+  | v=varName ASSIGN e=expr SEMI
     { StmtAssign (v, e) }
 
 returnStmt:
@@ -108,31 +105,32 @@ typeExp:
 
 (* Expressions are what evaluates to a value. *)
 expr:
-  | c = constExp
-    { ExpConst c }
-  | v = varExp        (* then objexp! *)
-    { ExpVar v }
-  | o=opExp
-    { o }
-  | ce=callExp
-    { ce }
-(* objexp to replace varexp *)
   | LPAREN e=expr RPAREN
     { e }
+  (* will this not work at all with old syntax? *)
+  (* | located(constExp | varExp | opExp | callExp) *)
+  | e=constExp
+  | e=varExp
+  | e=opExp
+  | e=callExp
+    { { loc=$loc; value=e } }
+
+(* objexp to replace varexp *)
 
 constExp:
   | i = ICONST
-    { IntVal i }
+    { ExpConst (IntVal i) }
   | f = FCONST
-    { FloatVal f }
+    { ExpConst (FloatVal f) }
 (* | STRCONST | *)
 
 varExp:
   (* later, objExp will have other productions *)
   | v = varName
-    { v }
+    { ExpVar v }
 
 varName:
+  (* later, to add the dot in it *)
   | vn = IDENT_LC
     { vn }
 
