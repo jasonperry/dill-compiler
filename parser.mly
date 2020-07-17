@@ -59,16 +59,12 @@ stmtBlock:
     { sl }
 
 stmt:
-  | st = declStmt
-    { st }
-  | st = assignStmt
-    { st }
-  | st = ifStmt
-    { st }
-  | st = returnStmt
-    { st }
-  | st = callStmt
-    { st }
+  | st=declStmt
+  | st=assignStmt
+  | st=ifStmt
+  | st=returnStmt
+  | st=callStmt
+    { { loc = $loc; value = st } }
 
 declStmt:
   | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e = expr SEMI

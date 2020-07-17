@@ -61,13 +61,15 @@ and expr =
 type typeExpr =
   | TypeName of string  (* type variables later *)
 
-type stmt = 
+type raw_stmt = 
   | StmtDecl of string * typeExpr option * expr
   | StmtAssign of string * expr
   | StmtReturn of expr
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
   | StmtIf of expr * stmt list * (expr * stmt list) list * stmt list option
   | StmtCall of expr  (* have to check the function returns void *)
+
+and stmt = raw_stmt located
 
 type proc = {
     name: string;

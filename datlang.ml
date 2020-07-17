@@ -12,7 +12,7 @@ let rec interpret_exp (e: expr) =
 
 let rec interpret_block sl = 
   List.fold_left (fun prev st -> prev ^ 
-      match st with
+      match st.value with
       | StmtDecl (v, t, e) ->
          "VAR " ^ v 
          ^ (match t with
