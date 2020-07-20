@@ -1,3 +1,8 @@
+(** Abstract syntax tree types *)
+
+(* could put this in a "Common" module. *)
+module StrMap = Map.Make(String)
+
 type consttype =
   | FloatVal of float
   | IntVal of int
@@ -11,37 +16,6 @@ type binary_op =
   | OpTimes
   | OpDiv
 
-(* decorated AST structures *)
-exception TypeError of string
-
-(** type variables for generics *)
-type typevar = {
-    varname: string;
-    interfaces: string list
-  }
-
-(** Information about a type, just to uniquely identify. *)
-type typetag = {
-    typename: string;
-    params: typevar list; (* Later: let them be filled in? *)
-    array: bool;   (* array type (the only native container type for now) *)
-    (* these aren't needed for checking; they go in the full description.
-     * It will be important that type names are unique. *)
-    (* reftype: bool;  (* reference or value type- in the catalog *) *)
-    (* size: int;  (* 4 if a reference type? 8? *) *) 
-  }
-
-type classdata = {
-    classname: string;
-    reftype: bool;
-    interfaces: string list
-  }
-
-(* also need a map (set) of known type names too. "type env" 
- * - differentiate  *)
-
-module StrMap = Map.Make(String)
-type typeenv = typetag StrMap.t
 
 (* position info *)
 type 'a located =
