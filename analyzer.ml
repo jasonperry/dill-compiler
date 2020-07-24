@@ -5,6 +5,8 @@ open Ast
 (* decorated AST structures *)
 exception SemanticError of string
 
+(* May need more structured type data, maybe a module for it. *)
+
 (** in-place type variables for generics, including constraints *)
 type typevar = {
     varname: string;
@@ -70,6 +72,8 @@ type st_procentry = {
     fparams: (string * typetag) list
   }
 
+(** Match a formal with actual parameter list, for typechecking procedure
+  * calls. *)
 let rec match_params (formal: (string * typetag) list) (actual: typetag list) =
   match (formal, actual) with
   | ([], []) -> true
@@ -141,32 +145,20 @@ module Symtable = struct
     nd.children <- newnode :: nd.children;
     newnode
 
-end
+end (* module Symtable *)
 
 (* later just make this in the top-level analyzer function *)
 let root_st = Symtable.empty 
 
-(* How to match a type with an existing one? *)
-(* need result type *)
-
-(* As long as the symbol table has types, maybe we don't need much more
- * info in the AST itself. *)
-(* If we only need the type while checking (erasure!)... *)
-(* --> If we want to call methods on expressions and not just variables, 
- * we need to keep type info with expressions. *)
-(* Maybe first pass only populates symbol table, and typechecking
- * can be done at same time as codegen. It seems redundant to break
- * down every expression again. NO! All possibilities of error should
- * be in the analysis phase, that's clearer design. *)
+(* Analysis pass populates symbol table, including with types. 
+ * Hopefully all possibilities of error can be caught in this phase. *)
 
 (* type checked_node =
   | E of expr * typetag
   | S of stmt (* no, the stmt has to have checked sub-exprs *)
   | P of proc *)
 
-type expr_result =
-  | Ok of expr * typetag
-  | Err of string
+type expr_result = ((expr * typetag), string) Stdlib.result
 
 let rec check_exp syms (tenv: typeenv) (e: expr) =
   match e.value with
@@ -180,7 +172,7 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
   | ExpVar s -> (
     match Symtable.findvar_opt s syms with
     | Some (ent, _) -> Ok (e, ent.symtype)
-    | None -> Err ("Undefined variable " ^ s)
+    | None -> Error ("Undefined variable " ^ s)
   )
   | ExpBinop (e1, _, e2) -> (
     (* TODO: check that operation is defined on types *)
@@ -191,11 +183,11 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
          if ty1 = ty2 then
            Ok (e, ty1)
          else
-           Err ("Type mismatch: " ^ typetag_to_string ty1
+           Error ("Type mismatch: " ^ typetag_to_string ty1
                 ^ ", " ^ typetag_to_string ty2)
-      | Err m -> Err m 
+      | Error m -> Error m 
     )
-    | Err m -> Err m
+    | Error m -> Error m
   )
   | ExpUnop (_, e) ->
      (* TODO: check if op is allowed on e *)
@@ -208,10 +200,10 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
        List.fold_left
          (fun es res -> match res with
                         | Ok _ -> es
-                        | Err m -> es ^ "\n" ^ m
+                        | Error m -> es ^ "\n" ^ m
          ) "" res in
      if errs <> "" then
-       Err errs
+       Error errs
      else
        (* look up functions *)
        let (procs, _) = Symtable.findprocs fname syms in
@@ -220,12 +212,12 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
          List.concat_map
            (fun res -> match res with
                        | Ok (_, ty) -> [ty]
-                       | Err _ -> []
+                       | Error _ -> []
            ) res in
        (* search for matching argument list *)
        let rec searchmatch proclist =
          match proclist with
-         | [] -> Err ("No matching signature for procedure " ^ fname)
+         | [] -> Error ("No matching signature for procedure " ^ fname)
          | p :: rest -> (
             if match_params p.fparams argtypes then
               Ok (e, p.rettype)
@@ -234,7 +226,7 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
          )
        in
        if procs = [] then
-         Err ("Unknown procedure name " ^ fname)
+         Error ("Unknown procedure name " ^ fname)
        else
          searchmatch procs
        (* Do I need to save the types of the argument expressions? *)

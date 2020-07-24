@@ -9,6 +9,7 @@
 
 (executable
   (name datlang)
+  (libraries llvm)
 )
 
 ;; test setups from calc demo
