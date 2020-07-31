@@ -1,25 +1,10 @@
 (** Semantic analyzer for datlang *)
 
+open Types
 open Ast
 
 (* decorated AST structures *)
 exception SemanticError of string
-
-(* May need more structured type data, maybe a module for it. *)
-
-(** in-place type variables for generics, including constraints *)
-type typevar = {
-    varname: string;
-    interfaces: string list
-  }
-
-(** Entry for a class of types, as defined by a record or etc. *)
-type classdata = {
-    classname: string;
-    mut: bool;
-    params: typevar list;
-    implements: string list
-  }
 
 (* BUT I only want types to be defined at the module level, not nested!
  * (at least not mor deeply.) *)
@@ -34,16 +19,6 @@ let base_tenv =
                         implements=[] } (* later: "Arith" *)
   |> StrMap.add "float" { classname="int"; mut=false; params=[];
                           implements=[] }
-
-(** Entry for specific type of a declared var or expression *)
-type typetag = {
-    (* what to do for function type? *)
-    (* typename: string; *)
-    tclass: classdata;
-    paramtypes: (string * string) list; (* typevars that are resolved. *)
-    array: bool;   (* array type (the only native container type for now) *)
-    (* size: int;  (* 4 if a reference type? 8? *) *) 
-  }
 
 let typetag_to_string tt =
   tt.tclass.classname
@@ -161,7 +136,7 @@ let root_st = Symtable.empty
 type expr_result = ((expr * typetag), string) Stdlib.result
 
 let rec check_exp syms (tenv: typeenv) (e: expr) =
-  match e.value with
+  match e.value.e with
   (* The type info in constants is already there...ok I guess *)
   | ExpConst (FloatVal _) ->
      Ok (e, {tclass = StrMap.find "float" tenv;

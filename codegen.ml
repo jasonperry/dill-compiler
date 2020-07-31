@@ -10,6 +10,7 @@ let context = global_context()
 let the_module = create_module context "datlang emitter"
 (* builder keeps track of current insert place *)
 let builder = builder context
+(* How to interface this with my own symbol table? *)
 let named_values:(string, llvalue) Hashtbl.t = Hashtbl.create 10
 let double_type = double_type context
 let int_type = i32_type context

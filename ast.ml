@@ -1,4 +1,6 @@
-(** Abstract syntax tree types *)
+(** Abstract syntax tree structure *)
+
+open Types
 
 (* could put this in a "Common" module. *)
 module StrMap = Map.Make(String)
@@ -16,21 +18,22 @@ type binary_op =
   | OpTimes
   | OpDiv
 
-
 (* position info *)
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
-type raw_expr =
+type typed_expr =
+  { ty: typetag option; e: raw_expr }
+
+and raw_expr =
   | ExpConst of consttype
   | ExpVar of string     (* later a type for pieces of an object expr. *)
   | ExpBinop of expr * binary_op * expr
   | ExpUnop of unary_op * expr
   | ExpCall of string * expr list
-  (* No parentheses *)
 
 and expr =
-  raw_expr located
+  typed_expr located
 
 type typeExpr =
   | TypeName of string  (* type variables later *)

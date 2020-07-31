@@ -3,7 +3,7 @@
 open Ast
 
 let rec interpret_exp (e: expr) =
-  match e.value with
+  match e.value.e with
   | ExpConst _ -> "CONSTEXP "
   | ExpVar v -> "(VAREXP " ^ v ^ ") "
   | ExpBinop (e1, _, e2) -> interpret_exp e1 ^ "BINOP " ^ interpret_exp e2

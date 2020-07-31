@@ -107,16 +107,16 @@ typeExp:
 
 (* Expressions are what evaluates to a value. *)
 expr:
-  | LPAREN e=expr RPAREN
-    { e }
+  | LPAREN ex=expr RPAREN
+    { ex }
   (* will this not work at all with old syntax? *)
   (* | el=located(constExp | varExp | opExp | callExp)
     { el } *)
-  | e=constExp
-  | e=varExp
-  | e=opExp
-  | e=callExp
-    { { loc=$loc; value=e } }
+  | ex=constExp
+  | ex=varExp
+  | ex=opExp
+  | ex=callExp
+    { { loc=$loc; value={ ty=None; e=ex } } }
 
 (* objexp to replace varexp *)
 
