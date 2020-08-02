@@ -50,6 +50,7 @@ and token = parse  (* funny that it's called parse *)
   | "then"  { THEN }
   | "elsif" { ELSIF }
   | "else"  { ELSE }
+  | "endif" { ENDIF }
   | "end"   { END }
   | "proc"  { PROC }
   | "return" { RETURN }

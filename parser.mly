@@ -7,7 +7,7 @@
 (* %token EQUAL COMMA DOT ARROW 
 %token STAR AMP *)
 %token VAR
-%token IF THEN ELSIF ELSE END
+%token IF THEN ELSIF ELSE END ENDIF
 %token UMINUS PLUS MINUS TIMES DIV
 %token PROC RETURN
 %token EOF
@@ -46,8 +46,8 @@ procHeader:
     { { loc = $loc; value = { name=pn; params=pl; rettype=rt } } }
 
 procName:
-  (* later, may include dots and stuff. *)
-  | pn=IDENT_LC { pn }
+  (* A method needs a dot...should I have different syntax? *)
+  | pn=IDENT_UC { pn }
 
 paramList:
   | pl=separated_list(COMMA, nameAndType)
@@ -93,7 +93,7 @@ ifStmt:
     tb=stmtBlock
     eifs=list(elsifBlock)
     eb=option(preceded(ELSE, stmtBlock))
-    END
+    ENDIF
     { StmtIf (e, tb, eifs, eb) }
 
 elsifBlock:
