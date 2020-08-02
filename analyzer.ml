@@ -2,17 +2,16 @@
 
 open Types
 open Ast
+open Symtable1
 
-(* decorated AST structures *)
 exception SemanticError of string
 
-(* BUT I only want types to be defined at the module level, not nested!
- * (at least not mor deeply.) *)
-(* I could have the same structure, just don't spawn children as often.
- * Or I could just start with one global map. *)
-(* Though I should probably have some idea of modules early on. *)
-(* The structure of this also will relate to recursively defined types. *)
-type typeenv = classdata StrMap.t
+
+(** Initial symbol table *)
+(* later just make this in the top-level analyzer function *)
+let root_st = Symtable.empty 
+
+(** Initial type environment *)
 let base_tenv =
   StrMap.empty
   |> StrMap.add "int" { classname="int"; mut=false; params=[];
@@ -20,118 +19,23 @@ let base_tenv =
   |> StrMap.add "float" { classname="int"; mut=false; params=[];
                           implements=[] }
 
-let typetag_to_string tt =
-  tt.tclass.classname
-  ^ List.fold_left
-      (fun s (_, vval) ->
-        s ^ "<" ^ vval ^ "> "
-      ) "" tt.paramtypes
-(* Symtable idea: a map for current scope, parent and children nodes *)
-(* how mutable is appropriate? per-scope, it doesn't need to be
- * because it's made from scratch. *)
-(* Need to keep a "handle" to the root one *)
-(* analyzer functions won't search "down" *)
-(* Node has immutable parent pointer and mutable children (child scopes) 
- * list? Functions that create a new scope assign a new list to their scope. *)
 
-type st_entry = {
-    symname: string;
-    symtype: typetag;
-    (* when I generate code, will I need a (stack or heap) location? *)
-    mut: bool  (* think this can be used from here. *)
-  }
+(* Analysis pass populates symbol table, including with types. 
+ * Hopefully all possibilities of error can be caught in this phase. *)
 
-type st_procentry = {
-    procname: string;
-    rettype: typetag;
-    fparams: (string * typetag) list
-  }
+(* Should I add pointers to the symbol table node for a given scope to the 
+ * AST? Maybe, because if I just rely on following, the order matters,
+ * Or else you'd need a unique identifier for each child. *)
 
-(** Match a formal with actual parameter list, for typechecking procedure
-  * calls. *)
+(** Helper to match a formal with actual parameter list, for
+   typechecking procedure calls. *)
 let rec match_params (formal: (string * typetag) list) (actual: typetag list) =
   match (formal, actual) with
   | ([], []) -> true
   | (_, []) | ([], _) -> false
   | ((_, ftag)::frest, atag::arest) ->
+     (* Later, this could inform code generation of template types *)
      ftag = atag && match_params frest arest
-
-(** Symbol table node that makes a tree data structure. *)
-type st_node = {
-    scopedepth: int; (* New idea, just record depth *)
-    (* have to make these mutable if I record a new scope under the
-     * parent before it's filled. *)
-    mutable syms: st_entry StrMap.t;
-    mutable fsyms: (st_procentry list) StrMap.t;
-    parent: st_node option; (* root has no parent *)
-    mutable children: st_node list
-  }
-
-module Symtable = struct
-  
-  let empty: st_node = {
-      scopedepth = 0;
-      syms = StrMap.empty;
-      (* can have a list of functions for a given name *)
-      fsyms = StrMap.empty;
-      parent = None;
-      children = []
-    }
-
-  (** Add (variable) symbol to current scope of a node. *)
-  let addvar nd (entry: st_entry) = 
-    (* NOTE! This eliminates any previous binding, caller must check first. *)
-    nd.syms <- StrMap.add entry.symname entry nd.syms
-
-  (** Add procedure to current scope of a node. *)
-  let addproc nd entry =
-    match StrMap.find_opt entry.procname nd.fsyms with
-    | None ->
-       nd.fsyms <- StrMap.add entry.procname [entry] nd.fsyms
-    | Some plist ->
-       nd.fsyms <- StrMap.add entry.procname (entry::plist) nd.fsyms
-  
-  let rec findvar_opt name nd =
-    match StrMap.find_opt name nd.syms with
-    | Some entry -> Some (entry, nd.scopedepth)
-    | None -> (
-      match nd.parent with
-      | Some parent -> findvar_opt name parent
-      | None -> None
-    )
-
-  let rec findprocs name nd =
-    match StrMap.find_opt name nd.fsyms with
-    | Some proclist -> (proclist, nd.scopedepth)
-    | None -> (
-      match nd.parent with
-      | Some parent -> findprocs name parent
-      | None -> ([], 0)
-    )
-  
-  let new_scope nd =
-    let newnode = {
-        scopedepth = nd.scopedepth + 1;
-        syms = StrMap.empty;
-        fsyms = StrMap.empty;
-        parent = Some nd;
-        children = []
-      } in
-    nd.children <- newnode :: nd.children;
-    newnode
-
-end (* module Symtable *)
-
-(* later just make this in the top-level analyzer function *)
-let root_st = Symtable.empty 
-
-(* Analysis pass populates symbol table, including with types. 
- * Hopefully all possibilities of error can be caught in this phase. *)
-
-(* type checked_node =
-  | E of expr * typetag
-  | S of stmt (* no, the stmt has to have checked sub-exprs *)
-  | P of proc *)
 
 type expr_result = ((expr * typetag), string) Stdlib.result
 
@@ -169,18 +73,18 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
      check_exp syms tenv e
   | ExpCall (fname, args) ->
      (* recursively typecheck argument expressions and store types in list. *)
-     let res = List.map (check_exp syms tenv) args in
-     (* Concatenate errors and bail out if any *)
+     let args_checked = List.map (check_exp syms tenv) args in
+     (* Concatenate errors from args check and bail out if any *)
      let errs =
        List.fold_left
          (fun es res -> match res with
                         | Ok _ -> es
                         | Error m -> es ^ "\n" ^ m
-         ) "" res in
+         ) "" args_checked in
      if errs <> "" then
        Error errs
      else
-       (* look up functions *)
+       (* get all procs with matching name *)
        let (procs, _) = Symtable.findprocs fname syms in
        (* get argument types (no errors if this far *)
        let argtypes =
@@ -188,8 +92,8 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
            (fun res -> match res with
                        | Ok (_, ty) -> [ty]
                        | Error _ -> []
-           ) res in
-       (* search for matching argument list *)
+           ) args_checked in
+       (* search for a proc with matching argument list *)
        let rec searchmatch proclist =
          match proclist with
          | [] -> Error ("No matching signature for procedure " ^ fname)

@@ -1,5 +1,8 @@
+(** Types for type info, seems this will be used end-to-end *)
 
-(* May need more structured type data, so here is a module for it. *)
+(* could put this in a "Common" module. *)
+module StrMap = Map.Make(String)
+
 
 (** in-place type variables for generics, including constraints *)
 type typevar = {
@@ -7,15 +10,16 @@ type typevar = {
     interfaces: string list
   }
 
-(** Entry for a class of types, as defined by a record or etc. *)
+(** The specification for a class of types, as defined by a record or etc. *)
 type classdata = {
     classname: string;
     mut: bool;
-    params: typevar list;
-    implements: string list
+    params: typevar list; (* generic params *)
+    implements: string list (* interfaces *)
+    (* also need all method signatures. *)
   }
 
-(** Entry for specific type of a declared var or expression *)
+(** Unique name of a concrete type. *)
 type typetag = {
     (* what to do for function type? *)
     (* typename: string; *)
@@ -24,3 +28,11 @@ type typetag = {
     array: bool;   (* array type (the only native container type for now) *)
     (* size: int;  (* 4 if a reference type? 8? *) *) 
   }
+
+(** Convert a type tag to printable format. *)
+let typetag_to_string tt =
+  tt.tclass.classname
+  ^ List.fold_left
+      (fun s (_, vval) ->
+        s ^ "<" ^ vval ^ "> "
+      ) "" tt.paramtypes

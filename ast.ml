@@ -2,9 +2,6 @@
 
 open Types
 
-(* could put this in a "Common" module. *)
-module StrMap = Map.Make(String)
-
 type consttype =
   | FloatVal of float
   | IntVal of int
