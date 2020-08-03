@@ -6,7 +6,6 @@ open Symtable1
 
 exception SemanticError of string
 
-
 (** Initial symbol table *)
 (* later just make this in the top-level analyzer function *)
 let root_st = Symtable.empty 
@@ -37,7 +36,17 @@ let rec match_params (formal: (string * typetag) list) (actual: typetag list) =
      (* Later, this could inform code generation of template types *)
      ftag = atag && match_params frest arest
 
-type expr_result = ((expr * typetag), string) Stdlib.result
+(** make the type expr result return only the tag for now. Seems
+ * easier and I might not need it further down the line. *)
+type typeExpr_result = (typetag, string) Stdlib.result
+
+(** Check that a type expression refers to a valid type in the environment. *)
+let check_typeExpr tenv (TypeName tyname) =
+  match StrMap.find_opt tyname tenv with
+  | Some cdata -> Ok ({ tclass=cdata; paramtypes=[]; array=false })
+  | None -> Error ("Unknown type " ^ tyname)
+
+type expr_result = ((expr * typetag), string located) Stdlib.result
 
 let rec check_exp syms (tenv: typeenv) (e: expr) =
   match e.value.e with
@@ -51,7 +60,7 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
   | ExpVar s -> (
     match Symtable.findvar_opt s syms with
     | Some (ent, _) -> Ok (e, ent.symtype)
-    | None -> Error ("Undefined variable " ^ s)
+    | None -> Error {loc=e.loc; value="Undefined variable " ^ s}
   )
   | ExpBinop (e1, _, e2) -> (
     (* TODO: check that operation is defined on types *)
@@ -62,53 +71,84 @@ let rec check_exp syms (tenv: typeenv) (e: expr) =
          if ty1 = ty2 then
            Ok (e, ty1)
          else
-           Error ("Type mismatch: " ^ typetag_to_string ty1
-                ^ ", " ^ typetag_to_string ty2)
-      | Error m -> Error m 
+           Error {loc=e.loc;
+                  value = ("Type mismatch: " ^ typetag_to_string ty1
+                           ^ ", " ^ typetag_to_string ty2)}
+      | Error e -> Error e
     )
-    | Error m -> Error m
+    | Error e -> Error e
   )
-  | ExpUnop (_, e) ->
+  | ExpUnop (_, exp) ->
      (* TODO: check if op is allowed on e *)
-     check_exp syms tenv e
+     check_exp syms tenv exp
   | ExpCall (fname, args) ->
      (* recursively typecheck argument expressions and store types in list. *)
      let args_checked = List.map (check_exp syms tenv) args in
      (* Concatenate errors from args check and bail out if any *)
-     let errs =
+     let err_strs =
        List.fold_left
          (fun es res -> match res with
                         | Ok _ -> es
-                        | Error m -> es ^ "\n" ^ m
+                        | Error {loc=_; value} -> es ^ "\n" ^ value
          ) "" args_checked in
-     if errs <> "" then
-       Error errs
+     if err_strs <> "" then
+       Error { loc=e.loc; value=err_strs }
      else
-       (* get all procs with matching name *)
-       let (procs, _) = Symtable.findprocs fname syms in
-       (* get argument types (no errors if this far *)
+       (* Hard to make a one-liner since I'm also picking out just the snd *)
        let argtypes =
          List.concat_map
            (fun res -> match res with
                        | Ok (_, ty) -> [ty]
                        | Error _ -> []
            ) args_checked in
-       (* search for a proc with matching argument list *)
-       let rec searchmatch proclist =
-         match proclist with
-         | [] -> Error ("No matching signature for procedure " ^ fname)
-         | p :: rest -> (
-            if match_params p.fparams argtypes then
-              Ok (e, p.rettype)
-            else
-              searchmatch rest
-         )
-       in
-       if procs = [] then
-         Error ("Unknown procedure name " ^ fname)
-       else
-         searchmatch procs
-       (* Do I need to save the types of the argument expressions? *)
+       (* find and match procedure *)
+       match Symtable.findproc fname syms with
+       | Some (pe, _) -> (
+          if match_params pe.fparams argtypes then
+            Ok (e, pe.rettype)
+          else
+            (* TODO: make it print out the arg list *)
+            Error {loc=e.loc; value="Argument match failure for " ^ fname} )
+       | None -> Error {loc=e.loc; value="Unknown procedure name " ^ fname}
 
-        
-     
+
+type stmt_result = ((stmt * st_node), string located) Stdlib.result
+
+let check_stmt syms (tenv: typeenv) (st: stmt) =
+  match st.value with
+    (* Declaration: check for redeclaration, check the exp, make sure
+     * types match if declared. *)
+  | StmtDecl (v, tyopt, e) -> (
+    match Symtable.findvar_opt v syms with
+    | Some (_, scope) when scope = syms.scopedepth ->
+       Error {loc=st.loc; value="Redeclaration of variable " ^ v}
+    | Some _ | None -> (
+      match check_exp syms tenv e with
+      | Error err -> Error err
+      | Ok (e2, ettag) -> (
+        let tycheck_res = (* I might want more lets to make it cleaner *) 
+          match tyopt with
+          | Some dty -> (
+            match check_typeExpr tenv dty with
+            | Ok ttag ->
+               if ttag = ettag then Ok ttag
+               else
+                 Error ("Declared type: " ^ typetag_to_string ttag
+                        ^ " for variable " ^ v
+                        ^ "does not match initializer type:"
+                        ^ typetag_to_string ettag)
+            | Error msg -> Error msg )
+          | None -> Ok ettag in
+        match tycheck_res with
+        | Ok ety -> 
+           (* syms is mutated, so don't need to return it *)
+           Symtable.addvar syms { symname=v; symtype=ety; mut=true };
+           Ok ({loc=st.loc; value=StmtDecl (v, tyopt, e2)}, syms)
+        | Error msg -> Error {loc=st.loc; value=msg}
+  )))
+  | StmtAssign _ -> Error {loc=st.loc; value="Assignment check not implemented"}
+  | StmtReturn _ -> Error {loc=st.loc; value="Return check not implemented"}
+  | StmtIf _ -> Error {loc=st.loc; value="If check not implemented"}
+  | StmtCall _ -> Error {loc=st.loc; value="Call check not implemented"}
+
+

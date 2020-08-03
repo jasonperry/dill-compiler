@@ -2,6 +2,8 @@
 
 open Types
 
+exception SymbolError of string
+
 (* Types can only be defined at the module level, not nested. *)
 (* Start with one global (later per-module) type environment. *)
 (* The structure of this also will relate to recursively defined types. *)
@@ -36,7 +38,8 @@ type st_node = {
     (* have to make these mutable if I record a new scope under the
      * parent before it's filled. *)
     mutable syms: st_entry StrMap.t;
-    mutable fsyms: (st_procentry list) StrMap.t;
+    (* mutable fsyms: (st_procentry list) StrMap.t; *)
+    mutable fsyms: st_procentry StrMap.t;
     parent: st_node option; (* root has no parent *)
     mutable children: st_node list
   }
@@ -62,9 +65,12 @@ module Symtable = struct
   let addproc nd entry =
     match StrMap.find_opt entry.procname nd.fsyms with
     | None ->
-       nd.fsyms <- StrMap.add entry.procname [entry] nd.fsyms
-    | Some plist ->
-       nd.fsyms <- StrMap.add entry.procname (entry::plist) nd.fsyms
+       (* nd.fsyms <- StrMap.add entry.procname [entry] nd.fsyms *)
+       nd.fsyms <- StrMap.add entry.procname entry nd.fsyms
+    | Some _ ->
+       raise (SymbolError ("redefinition of procedure \"" ^ entry.procname
+                          ^ "\""))
+       (* nd.fsyms <- StrMap.add entry.procname (entry::plist) nd.fsyms *)
   
   let rec findvar_opt name nd =
     match StrMap.find_opt name nd.syms with
@@ -75,6 +81,7 @@ module Symtable = struct
       | None -> None
     )
 
+  (* 
   (** Find procs matching a name (at a single scope depth only) *)
   let rec findprocs name nd =
     match StrMap.find_opt name nd.fsyms with
@@ -83,6 +90,16 @@ module Symtable = struct
       match nd.parent with
       | Some parent -> findprocs name parent
       | None -> ([], 0)
+    ) *)
+
+  (** Find a procedure by name. Should it raise instead? *)
+  let rec findproc name nd =
+    match StrMap.find_opt name nd.fsyms with
+    | Some proc -> Some (proc, nd.scopedepth)
+    | None -> (
+      match nd.parent with
+      | Some parent -> findproc name parent
+      | None -> None
     )
 
   (** Create a new nested scope node and return it. *)
