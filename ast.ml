@@ -37,8 +37,8 @@ type typeExpr =
 
 type raw_stmt = 
   | StmtDecl of string * typeExpr option * expr
-  | StmtAssign of string * expr
-  | StmtReturn of expr
+  | StmtAssign of string * expr  (* need to make var expr on left? *)
+  | StmtReturn of expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
   | StmtIf of expr * stmt list * (expr * stmt list) list * stmt list option
   | StmtCall of expr  (* have to check the function returns void *)

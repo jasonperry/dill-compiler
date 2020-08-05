@@ -36,3 +36,14 @@ let typetag_to_string tt =
       (fun s (_, vval) ->
         s ^ "<" ^ vval ^ "> "
       ) "" tt.paramtypes
+
+(* The built-in types are kind of important. I may want to put them 
+ * somewhere else. *)
+let void_class =  { classname="void"; mut=false; params=[];
+                    implements=[] }
+
+(** type tag bound to a name for easy access. *)
+(* Should I have a way to generate tags from classes? *)
+let void_ttag = {tclass = void_class; paramtypes=[];
+                 array=false}
+

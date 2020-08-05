@@ -20,7 +20,8 @@ let rec interpret_block sl =
             | None -> "" )
          ^ " = " ^ interpret_exp e ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ interpret_exp e ^ ";\n"
-      | StmtReturn e -> "return " ^ interpret_exp e ^ ";\n"
+      | StmtReturn (Some e) -> "return " ^ interpret_exp e ^ ";\n"
+      | StmtReturn None -> "return;\n"
       | StmtCall e -> interpret_exp e ^ ";\n"
       | StmtIf (e, tb, eifs, eb) -> interpret_if (e, tb, eifs, eb)
     ) "" sl

@@ -10,15 +10,6 @@ exception SemanticError of string
 (* later just make this in the top-level analyzer function *)
 let root_st = Symtable.empty 
 
-(** Initial type environment *)
-let base_tenv =
-  StrMap.empty
-  |> StrMap.add "int" { classname="int"; mut=false; params=[];
-                        implements=[] } (* later: "Arith" *)
-  |> StrMap.add "float" { classname="int"; mut=false; params=[];
-                          implements=[] }
-
-
 (* Analysis pass populates symbol table, including with types. 
  * Hopefully all possibilities of error can be caught in this phase. *)
 
@@ -116,14 +107,15 @@ type stmt_result = ((stmt * st_node), string located) Stdlib.result
 
 let check_stmt syms (tenv: typeenv) (st: stmt) =
   match st.value with
+    
     (* Declaration: check for redeclaration, check the exp, make sure
      * types match if declared. *)
-  | StmtDecl (v, tyopt, e) -> (
+  | StmtDecl (v, tyopt, initexp) -> (
     match Symtable.findvar_opt v syms with
     | Some (_, scope) when scope = syms.scopedepth ->
        Error {loc=st.loc; value="Redeclaration of variable " ^ v}
     | Some _ | None -> (
-      match check_exp syms tenv e with
+      match check_exp syms tenv initexp with
       | Error err -> Error err
       | Ok (e2, ettag) -> (
         let tycheck_res = (* I might want more lets to make it cleaner *) 
@@ -131,6 +123,7 @@ let check_stmt syms (tenv: typeenv) (st: stmt) =
           | Some dty -> (
             match check_typeExpr tenv dty with
             | Ok ttag ->
+               (* May need a more sophisticated comparison here later. *)
                if ttag = ettag then Ok ttag
                else
                  Error ("Declared type: " ^ typetag_to_string ttag
@@ -142,12 +135,61 @@ let check_stmt syms (tenv: typeenv) (st: stmt) =
         match tycheck_res with
         | Ok ety -> 
            (* syms is mutated, so don't need to return it *)
-           Symtable.addvar syms { symname=v; symtype=ety; mut=true };
+           Symtable.addvar syms { symname=v; symtype=ety; var=true };
            Ok ({loc=st.loc; value=StmtDecl (v, tyopt, e2)}, syms)
         | Error msg -> Error {loc=st.loc; value=msg}
   )))
-  | StmtAssign _ -> Error {loc=st.loc; value="Assignment check not implemented"}
-  | StmtReturn _ -> Error {loc=st.loc; value="Return check not implemented"}
+
+  | StmtAssign (v, e) -> (
+     (* Typecheck e, look up v, make sure types match *)
+     match check_exp syms tenv e with
+     | Error err -> Error err  (* error branch is same for stmt and exp *)
+     | Ok (e, ettag) -> ( (* want to shadow e with new version. *)
+       (* How about object field assignment? See .org for discussion. *)
+       match Symtable.findvar_opt v syms with
+       | None -> Error {loc=st.loc; value="Unknown variable " ^ v}
+       | Some (sym, _) -> (* scope doesn't matter here? *)
+          (* Type error is more fundamental, give priority to report it. *)
+          if sym.symtype <> ettag then
+            Error {loc=st.loc;
+                   value="Assignment type mismatch: "
+                         ^ typetag_to_string sym.symtype ^ " can't store "
+                         ^ typetag_to_string ettag}
+          else if sym.var = false then
+            Error {loc=st.loc;
+                   value="Cannot assign to non-var " ^ "v"}
+          else
+            Ok ({loc=st.loc; value=StmtAssign (v, e)}, syms)
+  ))
+
+  | StmtReturn eopt -> (
+    match syms.in_proc with
+    | None ->
+       Error {loc=st.loc;
+              value="Return statement not allowed "
+                    ^ "outside of procedure context"}
+    | Some inproc -> (
+      match eopt with
+      | None -> if inproc.rettype = void_ttag then
+                  Ok ({loc=st.loc; value=StmtReturn eopt}, syms)
+                else
+                  Error {loc=st.loc;
+                         value="Cannot return void; function return type is "
+                               ^ typetag_to_string inproc.rettype}
+      | Some e -> 
+         (* have to have optional return type expression for void. *)
+         match check_exp syms tenv e with
+         | Error err -> Error err
+         | Ok (e, ettag) -> (
+           if ettag <> inproc.rettype then
+             Error {loc=st.loc;
+                    value="Wrong return type "
+                          ^ typetag_to_string ettag ^ ", needed "
+                          ^ typetag_to_string inproc.rettype}
+           else Ok({loc=st.loc; value=StmtReturn (Some e)}, syms)
+  )))
+     (* have to check if type is return type of enclosing function *)
+     (* then check_proc will only need to make sure all paths return. Yay! *)
   | StmtIf _ -> Error {loc=st.loc; value="If check not implemented"}
   | StmtCall _ -> Error {loc=st.loc; value="Call check not implemented"}
 

@@ -81,8 +81,8 @@ assignStmt:
     { StmtAssign (v, e) }
 
 returnStmt:
-  | RETURN e=expr SEMI
-    { StmtReturn e }
+  | RETURN eopt=option(expr) SEMI
+    { StmtReturn eopt }
 
 callStmt:
   | e=expr SEMI

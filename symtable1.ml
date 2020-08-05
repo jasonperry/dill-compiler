@@ -9,6 +9,17 @@ exception SymbolError of string
 (* The structure of this also will relate to recursively defined types. *)
 type typeenv = classdata StrMap.t
 
+(** Initial type environment *)
+let base_tenv =
+  StrMap.empty
+  |> StrMap.add "void" void_class (* defined in Types *)
+  |> StrMap.add "int" { classname="int"; mut=false; params=[];
+                        implements=[] } (* later: "Arith" *)
+  |> StrMap.add "float" { classname="int"; mut=false; params=[];
+                          implements=[] }
+
+
+
 (* Symtable idea: a map for current scope, parent and children nodes *)
 (* how mutable is appropriate? per-scope, it doesn't need to be
  * because it's made from scratch. *)
@@ -22,13 +33,13 @@ type st_entry = {
     symname: string;
     symtype: typetag;
     (* when I generate code, will I need a (stack or heap) location? *)
-    mut: bool  (* think this can be used from here. *)
+    var: bool  (* "var" semantics means it can be reassigned. *)
   }
 
 (** Symbol table entry type for a procedure. *)
 type st_procentry = {
     procname: string;
-    rettype: typetag;
+    rettype: typetag;  (* there's a void typetag *)
     fparams: (string * typetag) list
   }
 
@@ -41,6 +52,7 @@ type st_node = {
     (* mutable fsyms: (st_procentry list) StrMap.t; *)
     mutable fsyms: st_procentry StrMap.t;
     parent: st_node option; (* root has no parent *)
+    in_proc: st_procentry option;
     mutable children: st_node list
   }
 
@@ -53,6 +65,7 @@ module Symtable = struct
       (* can have a list of functions for a given name *)
       fsyms = StrMap.empty;
       parent = None;
+      in_proc = None;
       children = []
     }
 
@@ -109,10 +122,13 @@ module Symtable = struct
         syms = StrMap.empty;
         fsyms = StrMap.empty;
         parent = Some nd;
+        in_proc = nd.in_proc;
         children = []
       } in
     nd.children <- newnode :: nd.children;
     newnode
+
+  (* Need new_proc_scope to create a procedure scope. *)
 
 end (* module Symtable *)
 
