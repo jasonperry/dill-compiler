@@ -4,10 +4,12 @@
 %token <string> IDENT_UC
 %token LPAREN RPAREN
 %token ASSIGN COLON SEMI COMMA
+%token NULLASSIGN
 (* %token EQUAL COMMA DOT ARROW 
 %token STAR AMP *)
 %token VAR
-%token IF THEN ELSIF ELSE END ENDIF
+%token BEGIN END
+%token IF THEN ELSIF ELSE ENDIF
 %token UMINUS PLUS MINUS TIMES DIV
 %token PROC RETURN
 %token EOF
@@ -33,7 +35,7 @@ main:
     { (procs, block) }
 
 proc:
-  | pd=procHeader ASSIGN sb=stmtBlock END en=procName 
+  | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
     { if pd.value.name = en then
 	{ loc = $loc; value = {decl=pd; body=sb} }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11) *)
@@ -60,7 +62,7 @@ nameAndType:
   | v=varName COLON t=typeExp
     { v, t }
 
-stmtBlock:
+stmtSeq:
   | sl = list(stmt)
     { sl }
 
@@ -70,6 +72,7 @@ stmt:
   | st=ifStmt
   | st=returnStmt
   | st=callStmt
+  | st=blockStmt
     { { loc = $loc; value = st } }
 
 declStmt:
@@ -88,16 +91,20 @@ callStmt:
   | e=expr SEMI
     { StmtCall e }
 
+blockStmt:
+  | BEGIN sb=stmtSeq END
+    { StmtBlock sb }
+
 ifStmt:
   | IF LPAREN e=expr RPAREN THEN
-    tb=stmtBlock
+    tb=stmtSeq
     eifs=list(elsifBlock)
-    eb=option(preceded(ELSE, stmtBlock))
+    eb=option(preceded(ELSE, stmtSeq))
     ENDIF
     { StmtIf (e, tb, eifs, eb) }
 
 elsifBlock:
-  | ELSIF LPAREN e=expr RPAREN THEN body=stmtBlock
+  | ELSIF LPAREN e=expr RPAREN THEN body=stmtSeq
     { (e, body) }
 
 typeExp:
@@ -116,6 +123,7 @@ expr:
   | ex=varExp
   | ex=opExp
   | ex=callExp
+  | ex=nullAssnExp
     { { loc=$loc; value={ ty=None; e=ex } } }
 
 (* objexp to replace varexp *)
@@ -158,6 +166,10 @@ callExp:
 argList:
   | al=separated_list(COMMA, expr)
     { al }
+
+nullAssnExp:
+  | dec=option(VAR) v=varname NULLASSIGN e=expr
+    { ExpNullAssn ( Option.is_some dec, v, e) }
 
 (* parameterized rule to add location info to any nonterminal. *)
 located(X):

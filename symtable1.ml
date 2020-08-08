@@ -1,6 +1,6 @@
 (** Symbol table definitions (could have different for different phases) *)
 
-open Types
+open Types (* as T *)
 
 exception SymbolError of string
 
@@ -9,7 +9,7 @@ exception SymbolError of string
 (* The structure of this also will relate to recursively defined types. *)
 type typeenv = classdata StrMap.t
 
-(** Initial type environment *)
+(** Initial type environment (known classes) *)
 let base_tenv =
   StrMap.empty
   |> StrMap.add "void" void_class (* defined in Types *)
@@ -17,8 +17,8 @@ let base_tenv =
                         implements=[] } (* later: "Arith" *)
   |> StrMap.add "float" { classname="int"; mut=false; params=[];
                           implements=[] }
-
-
+  |> StrMap.add "bool" { classname="bool"; mut=false; params=[];
+                         implements=[] }
 
 (* Symtable idea: a map for current scope, parent and children nodes *)
 (* how mutable is appropriate? per-scope, it doesn't need to be

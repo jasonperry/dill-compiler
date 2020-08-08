@@ -15,49 +15,61 @@ type binary_op =
   | OpTimes
   | OpDiv
 
-(* position info *)
+(** position info to decorate the AST with *)
+type locinfo = { loc: Lexing.position * Lexing.position }
+
+(** This is still used for error messages. *)
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
-type typed_expr =
-  { ty: typetag option; e: raw_expr }
+(** Type info to decorate the second verion of the AST *)
+type typeinfo = { ty: typetag }
+(* type typed_expr =
+  { ty: typetag option; e: raw_expr } *)
 
-and raw_expr =
+type 'a raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
-  | ExpVar of string     (* later a type for pieces of an object expr. *)
-  | ExpBinop of expr * binary_op * expr
-  | ExpUnop of unary_op * expr
-  | ExpCall of string * expr list
+  | ExpVar of string  (* later a type for pieces of an object expr (lvalue?) *)
+  | ExpBinop of 'a raw_expr * binary_op * 'a expr
+  | ExpUnop of unary_op * 'a expr
+  | ExpCall of string * 'a expr list
+  | ExpNullAssn of bool * string * 'a expr (* true if declaring new var *)
 
-and expr =
-  typed_expr located
+and 'a expr = { decor: 'a; e: 'a raw_expr }
 
+(* and expr =
+  typed_expr located *)
+
+(** Like a typeTag, but can contain variables (eventually) *)
 type typeExpr =
-  | TypeName of string  (* type variables later *)
+  | TypeName of string
 
-type raw_stmt = 
-  | StmtDecl of string * typeExpr option * expr
-  | StmtAssign of string * expr  (* need to make var expr on left? *)
-  | StmtReturn of expr option
+type 'a raw_stmt = 
+  | StmtDecl of string * typeExpr option * 'a expr
+  | StmtAssign of string * 'a expr  (* need to make var expr on left? *)
+  | StmtReturn of 'a expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
-  | StmtIf of expr * stmt list * (expr * stmt list) list * stmt list option
-  | StmtCall of expr  (* have to check the function returns void *)
+  | StmtIf of 'a expr * 'a stmt list * ('a expr * 'a stmt list) list
+              * 'a stmt list option
+  | StmtCall of 'a expr  (* have to check the function returns void *)
+  | StmtBlock of 'a stmt list
 
-and stmt = raw_stmt located
+and 'a stmt = { decor: 'a; st: 'a raw_stmt }
+(* and stmt = raw_stmt located *)
 
-type raw_procdecl = {
+type 'a raw_procdecl = {
     name: string;
     params: (string * typeExpr) list;
     rettype: typeExpr
   }
-and procdecl = raw_procdecl located
+and 'a procdecl = { decor: 'a; proc: 'a raw_procdecl }
 
-type raw_proc = {
-    decl: procdecl;
-    body: stmt list
+type 'a raw_proc = {
+    decl: 'a procdecl;
+    body: 'a stmt list
   }
 
-type proc = raw_proc located
+(* type proc = raw_proc located *)
 
 
 (* Idea: use result types for typechecking the AST: either a new decorated

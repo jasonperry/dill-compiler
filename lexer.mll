@@ -45,12 +45,14 @@ and token = parse  (* funny that it's called parse *)
   | ','	    { COMMA }
   | ';'	    { SEMI }
   | ':'	    { COLON }
+  | "?="    { NULLASSIGN }
   | "var"   { VAR }
   | "if"    { IF }
   | "then"  { THEN }
   | "elsif" { ELSIF }
   | "else"  { ELSE }
   | "endif" { ENDIF }
+  | "begin" { BEGIN }
   | "end"   { END }
   | "proc"  { PROC }
   | "return" { RETURN }
