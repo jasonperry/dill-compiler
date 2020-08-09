@@ -2,52 +2,60 @@
 (* "Lexing" is the runtime for ocamllex-generated lexers. *)
 open Ast
 
-let rec interpret_exp (e: expr) =
-  match e.value.e with
+let rec exp_to_string (e: 'a expr) =
+  match e.e with
   | ExpConst _ -> "CONSTEXP "
   | ExpVar v -> "(VAREXP " ^ v ^ ") "
-  | ExpBinop (e1, _, e2) -> interpret_exp e1 ^ "BINOP " ^ interpret_exp e2
-  | ExpUnop (_, e) -> "UNOP " ^ interpret_exp e
+  | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
+  | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
   | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"
+  | ExpNullAssn (decl, v, e) ->
+     (if decl then "var " else "")
+     ^ v ^ " ?= " ^ exp_to_string e
 
-let rec interpret_block sl = 
+let rec block_to_string sl = 
   List.fold_left (fun prev st -> prev ^ 
-      match st.value with
+      match st.st with
       | StmtDecl (v, t, e) ->
          "VAR " ^ v 
          ^ (match t with
             | Some (TypeName tn) -> " : " ^ tn
             | None -> "" )
-         ^ " = " ^ interpret_exp e ^ ";\n"
-      | StmtAssign (v, e) -> v ^ " = " ^ interpret_exp e ^ ";\n"
-      | StmtReturn (Some e) -> "return " ^ interpret_exp e ^ ";\n"
+         ^ " = " ^ exp_to_string e ^ ";\n"
+      | StmtAssign (v, e) -> v ^ " = " ^ exp_to_string e ^ ";\n"
+      | StmtReturn (Some e) -> "return " ^ exp_to_string e ^ ";\n"
       | StmtReturn None -> "return;\n"
-      | StmtCall e -> interpret_exp e ^ ";\n"
-      | StmtIf (e, tb, eifs, eb) -> interpret_if (e, tb, eifs, eb)
+      | StmtCall e -> exp_to_string e ^ ";\n"
+      | StmtIf (e, tb, eifs, eb) -> if_to_string (e, tb, eifs, eb)
+      | StmtBlock sl -> "begin\n" ^ block_to_string sl ^ "end\n"
     ) "" sl
 
-and interpret_elsif (e, sl) =
-  "elsif (" ^ interpret_exp e ^ ") then\n"
-  ^ interpret_block sl
+and elsif_to_string (e, sl) =
+  "elsif (" ^ exp_to_string e ^ ") then\n"
+  ^ block_to_string sl
 
 (* maybe interpret sub-functions will return a label *)
-and interpret_if (e, tb, eifs, els) =
-  "if (" ^ interpret_exp e ^ ") then\n"
-  ^ interpret_block tb
-  ^ List.fold_left (fun s eif -> s ^ interpret_elsif eif) "" eifs
+and if_to_string (e, tb, eifs, els) =
+  "if (" ^ exp_to_string e ^ ") then\n"
+  ^ block_to_string tb
+  ^ List.fold_left (fun s eif -> s ^ elsif_to_string eif) "" eifs
   ^ (match els with
-     | Some sb -> "else " ^ interpret_block sb
+     | Some sb -> "else " ^ block_to_string sb
      | None -> "")
   ^ "end\n"
 
 (* let interpret_params plist =  *)
 
-let interpret_proc pr =
+let proc_to_string pr =
   (* a little ugly, but maybe I will use the pdecl later. *)
-  let pdecl = pr.value.decl.value in
+  let pdecl = pr.proc.decl.pdecl in
   "proc " ^ pdecl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
-  ^ interpret_block pr.value.body
+  ^ block_to_string pr.proc.body
   ^ "\nendproc\n"
+
+let program_to_string (procs, block) =
+  List.fold_left (fun s p -> s ^ proc_to_string p) "" procs
+  ^ block_to_string block
 
 (* let process (line : string) =
   let linebuf = Lexing.from_string line in
@@ -75,16 +83,12 @@ let rec repeat buf =
     repeat buf
  *)
 
-let interpret_program (procs, block) =
-  List.fold_left (fun s p -> s ^ interpret_proc p) "" procs
-  ^ interpret_block block
-
 (* take the whole buffer, letting newlines be treated as whitespace. *)
 let process_whole channel =
   let buf = Lexing.from_channel channel in
   try
     (* Run the parser on this line of input. *)
-    Printf.printf "%s\n%!" (interpret_program (Parser.main Lexer.token buf))
+    Printf.printf "%s\n%!" (program_to_string (Parser.main Lexer.token buf))
   with
   | Lexer.Error msg ->
       Printf.fprintf stderr "%s%!" msg
@@ -100,10 +104,3 @@ let process_whole channel =
   repeat (Lexing.from_channel stdin) *)
 
 let () = process_whole stdin
-
-(* typechecking/decoration ideas:
- *  make a record for the whole environment and tables, pass it in and out.
- *  OR make the environment mutable, each function receives it and 
- *     modifies it. 
- *  The result will be used for code generation.
- *)

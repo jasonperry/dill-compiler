@@ -23,10 +23,10 @@
     open Ast
 %}
 
-%type <Ast.expr> expr
-%type <Ast.stmt> stmt
-%type <Ast.proc> proc
-%start <Ast.proc list * Ast.stmt list> main
+%type <Ast.locinfo Ast.expr> expr
+%type <Ast.locinfo Ast.stmt> stmt
+%type <Ast.locinfo Ast.proc> proc
+%start <Ast.locinfo Ast.proc list * Ast.locinfo Ast.stmt list> main
 
 %%
 
@@ -36,8 +36,8 @@ main:
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
-    { if pd.value.name = en then
-	{ loc = $loc; value = {decl=pd; body=sb} }
+    { if pd.pdecl.name = en then
+	{ decor=$loc; proc={decl=pd; body=sb} }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11) *)
 	$syntaxerror
     }
@@ -45,7 +45,7 @@ proc:
 procHeader:
   | PROC pn=procName LPAREN pl=paramList RPAREN COLON rt=typeExp
     (* construct declaration object! Good idea! *)
-    { { loc = $loc; value = { name=pn; params=pl; rettype=rt } } }
+    { { decor=$loc; pdecl={name=pn; params=pl; rettype=rt} } }
 
 procName:
   (* A method needs a dot...should I have different syntax? *)
@@ -73,7 +73,7 @@ stmt:
   | st=returnStmt
   | st=callStmt
   | st=blockStmt
-    { { loc = $loc; value = st } }
+    { {decor=$loc; st=st} }
 
 declStmt:
   | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e = expr SEMI
@@ -124,7 +124,7 @@ expr:
   | ex=opExp
   | ex=callExp
   | ex=nullAssnExp
-    { { loc=$loc; value={ ty=None; e=ex } } }
+    { {decor=$loc; e=ex} }
 
 (* objexp to replace varexp *)
 
@@ -167,10 +167,14 @@ argList:
   | al=separated_list(COMMA, expr)
     { al }
 
-nullAssnExp:
-  | dec=option(VAR) v=varname NULLASSIGN e=expr
-    { ExpNullAssn ( Option.is_some dec, v, e) }
+nullAssnExp:  (* This needs lookahead, will it work? *)
+  | VAR v=varName NULLASSIGN e=expr
+    { ExpNullAssn (true, v, e) }
+  | v=varName NULLASSIGN e=expr
+    { ExpNullAssn (false, v, e) }
+(*  | dec=option(VAR) v=varName NULLASSIGN e=expr
+    { ExpNullAssn ( Option.is_some dec, v, e) } *)
 
 (* parameterized rule to add location info to any nonterminal. *)
-located(X):
-  | x=X { { loc = $loc; value = x } }
+(* located(X):
+  | x=X { { loc = $loc; value = x } } *)

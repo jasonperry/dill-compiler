@@ -39,17 +39,17 @@ let check_typeExpr tenv (TypeName tyname) =
   | None -> Error ("Unknown type " ^ tyname)
 
 (** Expression result type (remember that exprs have a type field) *)
-type expr_result = (expr, string located) Stdlib.result
+type expr_result = (typeinfo expr, string located) Stdlib.result
 
 (** Check semantics of an expression, replacing with a type *)
-let rec check_expr syms (tenv: typeenv) (e: expr) =
-  match e.value.e with
+let rec check_expr syms (tenv: typeenv) (e: locinfo expr) =
+  match e.e with
   (* The type info in constants is already there...ok I guess *)
   | ExpConst (FloatVal _) ->
-     Ok {e, ty={tclass=StrMap.find "float" tenv;
+     Ok {e; ty={tclass=StrMap.find "float" tenv;
                 paramtypes=[]; array=false; nullable=false}}
   | ExpConst (IntVal _) ->
-     Ok {e, ty={tclass=StrMap.find "int" tenv;
+     Ok {e; ty={tclass=StrMap.find "int" tenv;
                 paramtypes=[]; array=false; nullable=false}}
   | ExpVar s -> (
     match Symtable.findvar_opt s syms with

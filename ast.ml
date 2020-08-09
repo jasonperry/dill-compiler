@@ -16,7 +16,7 @@ type binary_op =
   | OpDiv
 
 (** position info to decorate the AST with *)
-type locinfo = { loc: Lexing.position * Lexing.position }
+type locinfo = Lexing.position * Lexing.position
 
 (** This is still used for error messages. *)
 type 'a located =
@@ -29,8 +29,8 @@ type typeinfo = { ty: typetag }
 
 type 'a raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
-  | ExpVar of string  (* later a type for pieces of an object expr (lvalue?) *)
-  | ExpBinop of 'a raw_expr * binary_op * 'a expr
+  | ExpVar of string  (* later a type for pieces of an object expr *)
+  | ExpBinop of 'a expr * binary_op * 'a expr
   | ExpUnop of unary_op * 'a expr
   | ExpCall of string * 'a expr list
   | ExpNullAssn of bool * string * 'a expr (* true if declaring new var *)
@@ -62,14 +62,14 @@ type 'a raw_procdecl = {
     params: (string * typeExpr) list;
     rettype: typeExpr
   }
-and 'a procdecl = { decor: 'a; proc: 'a raw_procdecl }
+and 'a procdecl = { decor: 'a; pdecl: 'a raw_procdecl }
 
 type 'a raw_proc = {
     decl: 'a procdecl;
     body: 'a stmt list
   }
 
-(* type proc = raw_proc located *)
+type 'a proc = { decor: 'a; proc: 'a raw_proc }
 
 
 (* Idea: use result types for typechecking the AST: either a new decorated

@@ -8,8 +8,9 @@
 )
 
 (executable
-  (name datlang)
+  (name dillc)
   (libraries llvm)
+  (modules :standard \ codegen analyzer)
 )
 
 ;; test setups from calc demo
