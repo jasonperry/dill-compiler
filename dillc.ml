@@ -103,4 +103,11 @@ let process_whole channel =
 (* let () =
   repeat (Lexing.from_channel stdin) *)
 
-let () = process_whole stdin
+let () =
+  let infile =
+    if Array.length Sys.argv > 1 then
+      open_in Sys.argv.(1)
+    else stdin
+  in
+  process_whole infile
+  

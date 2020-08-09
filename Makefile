@@ -1,8 +1,8 @@
 
-testparse: testparse.cmo types.cmo ast.cmo parser.cmo lexer.cmo
+dillc: dillc.cmo types.cmo ast.cmo parser.cmo lexer.cmo
 	ocamlc -o testparse $^
 
-testparse.cmo: testparse.ml lexer.cmi parser.cmi ast.cmi types.cmi
+dillc.cmo: dillc.ml lexer.cmi parser.cmi ast.cmi types.cmi
 	ocamlc -c $<
 
 parser.ml parser.mli: parser.mly ast.cmi types.cmi
