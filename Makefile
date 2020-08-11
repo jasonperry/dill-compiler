@@ -1,6 +1,7 @@
 
-dillc: dillc.cmo types.cmo ast.cmo parser.cmo lexer.cmo
-	ocamlc -o testparse $^
+# order is important: a module must be given before what depends on it.
+dillc: types.cmo ast.cmo lexer.cmo parser.cmo dillc.cmo
+	ocamlc -o dillc $^
 
 dillc.cmo: dillc.ml lexer.cmi parser.cmi ast.cmi types.cmi
 	ocamlc -c $<
