@@ -112,28 +112,29 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
             value="Null-check assignment not allowed in this context"}
 
 (** Check for a redeclaration (name exists at same scope) *)
+(* I'm not using this yet...was a candidate for check_stmt *)
 let is_redecl varname syms =
   match Symtable.findvar_opt varname syms with
   | None -> false
   | Some (_, scope) -> scope = syms.scopedepth
 
-(** Check for special case of assignment expression used in conditionals. *)
-let check_assign_expr syms tenv ex =
-  match ex.e with
+(** Conditional exprs can have an assignment, so handle it specially. *)
+let check_condexp condsyms tenv condexp =
+  match condexp.e with
   | ExpNullAssn (decl, varname, ex) -> (
-    match check_expr syms tenv ex with
+    match check_expr condsyms tenv ex with
     | Error err -> Error err
-    | Ok {e=_; decor=ety} as goodex -> 
+    | Ok {e=_; decor=ety} as goodex -> (
       (* if a var, add it to the symbol table. 
        * It can't be a redeclaration, it's the first thing in the scope! *)
-      if decl then  (* OCaml has this case? *)
-        Symtable.addvar syms {symname=varname; symtype=ety; var=true};
+      if decl then
+        (* Caller will hold the modified 'condsyms' node *) 
+        Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
       goodex
-  )
-  | _ -> failwith "Bug: call to check_assign_expr with wrong expr type"
+  ))
+  | _ -> check_expr condsyms tenv condexp
 
-
-(* Mash list of errors to a single error with list *)
+(** Mash list of error lists into a single error with list *)
 let concat_errors rlist =
   (* the list of errors are each themselves lists. *)
   Error (List.concat (
@@ -239,29 +240,47 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
   )))
 
   | StmtIf (condexp, thenbody, elsifs, elseopt) -> (
-     let thensyms = Symtable.new_scope syms in 
-     let condres = match condexp.e with
-       (* special case of an assignment expression. May add to the symbol
-        * table.*)
-       | ExpNullAssn (_, _, _) -> check_assign_expr thensyms tenv condexp
-       | _ -> check_expr syms tenv condexp in
-     (* don't go on unless condition is good, because it creates scope *)
-     (* I guess it's a one-item scope, other blocks inherit from it *)
-     match condres with
+     let condsyms = Symtable.new_scope syms in 
+     match check_condexp condsyms tenv condexp with
      | Error err -> Error [err]
      | Ok newcond -> (
+       let thensyms = Symtable.new_scope condsyms in
        match check_stmt_seq thensyms tenv thenbody with
        | Error errs -> Error errs
        | Ok newthen -> (
-         (* Need to make new scope for each of these. *)
-         let newelsifs = (* this will be a big concat. *) [] in
-         let newelseopt =
+         let elsifs_result = (* this will be a big concat. *)
+           let allres =
+             List.map (fun (elsifcond, blk) ->
+                 let elsifsyms = Symtable.new_scope condsyms in
+                 match check_condexp elsifsyms tenv elsifcond with
+                 | Error err -> Error [err]
+                 | Ok newelsifcond -> (
+                   match check_stmt_seq elsifsyms tenv blk with
+                   | Error errs -> Error errs
+                   | Ok newblk -> Ok (newelsifcond, newblk)
+                 ))
+               elsifs
+           in
+           if List.exists Result.is_error allres then
+             concat_errors allres
+           else
+             Ok (List.concat_map Result.to_list allres)
+         in
+         match elsifs_result with
+         | Error errs -> Error errs
+         | Ok newelsifs -> (
+           (* each block will give an OK, so have to merge those too.*)
            match elseopt with 
-           | None -> None
-           | Some stmts -> None in
-         Ok {st=StmtIf (newcond, newthen, newelsifs, newelseopt);
-             decor=syms} (* still the outer symtable node *)
-     )))
+           | None -> Ok {st=StmtIf (newcond, newthen, newelsifs, None);
+                         decor=thensyms}
+           | Some elsebody ->  (* as opposed to somebody else. *)
+              let elsesyms = Symtable.new_scope condsyms in
+              match check_stmt_seq elsesyms tenv elsebody with
+              | Error errs -> Error errs
+              | Ok newelse ->
+                 Ok {st=StmtIf (newcond, newthen, newelsifs, Some newelse);
+                     decor=thensyms}
+  ))))
      (* need to annotate whether it returns? Probably easier to just
       * have a separate block_returns checker. It doesn't need to do anything 
       * deep. *)
