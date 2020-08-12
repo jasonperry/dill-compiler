@@ -33,14 +33,17 @@ type st_entry = {
     symname: string;
     symtype: typetag;
     (* when I generate code, will I need a (stack or heap) location? *)
-    var: bool  (* "var" semantics means it can be reassigned. *)
+    var: bool  (* "var" semantics means it can be reassigned. OR
+                * mutating methods called? *)
   }
 
 (** Symbol table entry type for a procedure. *)
 type st_procentry = {
     procname: string;
     rettype: typetag;  (* there's a void typetag *)
-    fparams: (string * typetag) list
+    (* could it be just a list of types, no names? but st_entry also
+     * has the mutability info, very convenient. *)
+    fparams: st_entry list
   }
 
 (** Symbol table node that makes a tree data structure. *)

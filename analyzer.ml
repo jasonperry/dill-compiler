@@ -19,13 +19,13 @@ let root_st = Symtable.empty
 
 (** Helper to match a formal with actual parameter list, for
    typechecking procedure calls. *)
-let rec match_params (formal: (string * typetag) list) (actual: typetag list) =
+let rec match_params (formal: st_entry list) (actual: typetag list) =
   match (formal, actual) with
   | ([], []) -> true
   | (_, []) | ([], _) -> false
-  | ((_, ftag)::frest, atag::arest) ->
+  | (fent::frest, atag::arest) ->
      (* Later, this could inform code generation of template types *)
-     ftag = atag && match_params frest arest
+     fent.symtype = atag && match_params frest arest
 
 (** make the type expr result return only the tag for now. Seems
  * easier and I might not need it further down the line. *)
@@ -317,4 +317,46 @@ and check_stmt_seq syms tenv sseq =
     (* Make one Ok out of all the statements. NOT a stmt_result. *)
     Ok (List.concat_map Result.to_list results)
      
-  
+let check_proc syms tenv pr =
+  (* check name for redeclaration *)
+  let pdecl = pr.proc.decl.pdecl in 
+  match Symtable.findproc pdecl.name syms with
+  | Some (_, scope) when syms.scopedepth = scope ->
+     Error [{loc=pr.decor; value="Redeclaration of procedure " ^ pdecl.name}]
+  | _ -> (
+    let argchecks = List.map (fun (_, texp) -> check_typeExpr tenv texp)
+                      pdecl.params in
+    if List.exists Result.is_error argchecks then
+      let errs =
+        List.concat_map (
+            fun r -> match r with
+                     | Ok _ -> []
+                     | Error msg -> [{loc=pr.proc.decl.decor; value=msg}]
+          ) argchecks
+      in Error errs
+    else
+      let paramentries =
+        List.map2 (
+            fun (paramname, _) r ->
+            match r with
+            | Error _ -> failwith "Bug: errors in param list should be gone"
+            | Ok ttag -> {symname = paramname; symtype=ttag; var=false}
+          ) pdecl.params argchecks in
+      (* create new symbol scope add args, then check body based on that. *)
+      let procscope = Symtable.new_scope syms in
+      List.iter (Symtable.addvar procscope) paramentries;
+      (* Only add the function itself if it's sucessful?, no, need recursion. *)
+      match check_typeExpr tenv pdecl.rettype with
+      | Error msg -> Error [{loc=pr.proc.decl.decor; value=msg}]
+      | Ok rttag -> (
+        let procentry =
+          {procname=pdecl.name; rettype=rttag; fparams=paramentries} in
+        Symtable.addproc syms procentry; (* add proc decl to OUTER scope *)
+        let newpdecl = {pdecl=pdecl; decor=procscope} in
+        match check_stmt_seq procscope tenv pr.proc.body with
+        | Error errs -> Error errs
+        | Ok newslist -> 
+          Ok {proc={decl=newpdecl; body=newslist}; decor=procscope}
+      ))
+        
+        

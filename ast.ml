@@ -65,12 +65,16 @@ type ('a,'b) raw_stmt =
 and ('a,'b) stmt = { st: ('a,'b) raw_stmt; decor: 'b }
 (* and stmt = raw_stmt located *)
 
-type 'a raw_procdecl = {
+(* Note that this doesn't need a decoration type param, it's not recursive. *)
+type raw_procdecl = {
     name: string;
+    (* One could imagine removing the typeExprs after analysis. *)
     params: (string * typeExpr) list;
     rettype: typeExpr
   }
-and 'a procdecl = { pdecl: 'a raw_procdecl; decor: 'a;  }
+(* I thought about removing the decoration from the decl, but it can
+ * stand on its own in an interface file, so I guess it needs it. *)
+and 'a procdecl = { pdecl: raw_procdecl; decor: 'a;  }
 
 type ('a,'b) raw_proc = {
     decl: 'b procdecl;
@@ -79,11 +83,3 @@ type ('a,'b) raw_proc = {
 
 type ('a,'b) proc = { proc: ('a,'b) raw_proc; decor: 'b }
 
-
-(* Idea: use result types for typechecking the AST: either a new decorated
- * node or an error. *)
-
-(* START OF TYPECHECKING CODE (maybe move it) *)
-
-(* check_expr: expr -> typed_expr result or just node? *)
-(* let check_expr env e = [] *)
