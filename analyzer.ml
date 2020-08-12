@@ -38,6 +38,8 @@ let check_typeExpr tenv (TypeName tyname) =
                         nullable=false })
   | None -> Error ("Unknown type " ^ tyname)
 
+
+
 (** Expression result type (remember that exprs have a type field) *)
 type expr_result = (typetag expr, string located) Stdlib.result
 
@@ -78,38 +80,44 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
      (* TODO: check if op is allowed on e *)
      check_expr syms tenv exp
   | ExpCall (fname, args) -> (
-     (* recursively check argument exprs and store types in list. *)
-     let args_res = List.map (check_expr syms tenv) args in
-     (* Concatenate errors from args check and bail out if any *)
-     let err_strs =
-       List.fold_left
-         (fun es res -> match res with
-                        | Ok _ -> es
-                        | Error {loc=_; value} -> es ^ "\n" ^ value
-         ) "" args_res in
-     if err_strs <> "" then
-       (* check_expr doesn't return a list, so stitch into one. *)
-       Error { loc=ex.decor; value=err_strs }
-     else
-       (* could construct these further down... *)
-       let args_typed = List.concat_map Result.to_list args_res in
-       let argtypes = List.map (fun (ae: typetag expr) -> ae.decor)
-                        args_typed in 
-       (* find and match procedure *)
-       match Symtable.findproc fname syms with
-       | Some (proc, _) -> (
-          if match_params proc.fparams argtypes then
-            Ok {e=ExpCall (fname, args_typed); decor=proc.rettype}
-          else
-            (* TODO: make it print out the arg list *)
-            Error {loc=ex.decor;
-                   value="Argument match failure for " ^ fname} )
-       | None -> Error {loc=ex.decor;
-                        value="Unknown procedure name " ^ fname}
+    match check_call syms tenv (fname, args) with
+    | Error msg -> Error { loc=ex.decor; value=msg }
+    | Ok cexp -> Ok cexp
   )
   | ExpNullAssn _ ->
      Error {loc=ex.decor;
             value="Null-check assignment not allowed in this context"}
+
+(** Procedure call check factored out; it's used for both exprs and stmts. *)
+and check_call syms tenv (fname, args) =
+  (* recursively check argument exprs and store types in list. *)
+  let args_res = List.map (check_expr syms tenv) args in
+  (* Concatenate errors from args check and bail out if any *)
+  let err_strs =
+    List.fold_left (
+        fun es res -> match res with
+                      | Ok _ -> es
+                      | Error {loc=_; value} -> es ^ "\n" ^ value
+      ) "" args_res in
+  if err_strs <> "" then
+    (* check_expr doesn't return a list, so stitch into one. *)
+    Error err_strs
+  else
+    (* could construct these further down... *)
+    let args_typed = List.concat_map Result.to_list args_res in
+    let argtypes = List.map (fun (ae: typetag expr) -> ae.decor)
+                     args_typed in 
+    (* find and match procedure *)
+    match Symtable.findproc fname syms with
+    | Some (proc, _) -> (
+      if match_params proc.fparams argtypes then
+        Ok {e=ExpCall (fname, args_typed); decor=proc.rettype}
+      else
+        (* TODO: make it print out the arg list *)
+        Error ("Argument match failure for " ^ fname)
+    )
+    | None -> Error ("Unknown procedure " ^ fname)
+
 
 (** Check for a redeclaration (name exists at same scope) *)
 (* I'm not using this yet...was a candidate for check_stmt *)
@@ -284,10 +292,21 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
      (* need to annotate whether it returns? Probably easier to just
       * have a separate block_returns checker. It doesn't need to do anything 
       * deep. *)
-  | StmtCall _ -> Error [{loc=stm.decor; value="Call check not implemented"}]
-  | StmtBlock _ ->
-     (* Will need to create new scope. *)
-     Error [{loc=stm.decor; value="Block statement check not implemented"}]
+  | StmtCall ex -> (
+     match ex.e with
+     | ExpCall (fname, args) -> (
+        match check_call syms tenv (fname, args) with
+        | Error msg -> Error [{loc=stm.decor; value=msg}]
+        | Ok newcallexp -> Ok {st=StmtCall newcallexp; decor=syms}
+     )
+     | _ -> failwith "BUG: Call statement with non-call expression"
+  )
+
+  | StmtBlock stlist ->
+     let blockscope = Symtable.new_scope syms in
+     match check_stmt_seq blockscope tenv stlist with
+     | Error errs -> Error errs
+     | Ok newstmts -> Ok {st=StmtBlock newstmts; decor=blockscope}
 
 and check_stmt_seq syms tenv sseq =
   let results = List.map (check_stmt syms tenv) sseq in 

@@ -26,7 +26,8 @@
 %type <Ast.locinfo Ast.expr> expr
 %type <(Ast.locinfo, Ast.locinfo) Ast.stmt> stmt
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
-%start <(Ast.locinfo, Ast.locinfo) Ast.proc list * (Ast.locinfo,Ast.locinfo) Ast.stmt list> main
+%start <(Ast.locinfo, Ast.locinfo) Ast.proc list
+        * (Ast.locinfo,Ast.locinfo) Ast.stmt list> main
 
 %%
 
