@@ -131,6 +131,20 @@ module Symtable = struct
     nd.children <- newnode :: nd.children;
     newnode
 
+  (** Create a scope for a new procedure (sets the procedure context) *)
+  let new_proc_scope nd procentry =
+    let newnode = {
+        scopedepth = nd.scopedepth + 1;
+        syms = StrMap.empty;
+        fsyms = StrMap.empty;
+        parent = Some nd;
+        in_proc = Some procentry;
+        children = []
+      } in
+    nd.children <- newnode :: nd.children;
+    newnode
+    
+
   (* Need new_proc_scope to create a procedure scope. *)
 
 end (* module Symtable *)

@@ -289,16 +289,20 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
                  Ok {st=StmtIf (newcond, newthen, newelsifs, Some newelse);
                      decor=thensyms}
   ))))
-     (* need to annotate whether it returns? Probably easier to just
-      * have a separate block_returns checker. It doesn't need to do anything 
-      * deep. *)
   | StmtCall ex -> (
      match ex.e with
      | ExpCall (fname, args) -> (
         match check_call syms tenv (fname, args) with
         | Error msg -> Error [{loc=stm.decor; value=msg}]
-        | Ok newcallexp -> Ok {st=StmtCall newcallexp; decor=syms}
-     )
+        | Ok newcallexp -> (
+          (* non-void call can't be a standalone statement. *)
+          match Symtable.findproc fname syms with
+          | None -> failwith "BUG: proc name was previously found OK."
+          | Some (entry, _) when entry.rettype <> Types.void_ttag ->
+             Error [{loc=stm.decor;
+                     value="Non-void return type must be assigned."}]
+          | _ -> Ok {st=StmtCall newcallexp; decor=syms}
+     ))
      | _ -> failwith "BUG: Call statement with non-call expression"
   )
 
@@ -308,15 +312,50 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
      | Error errs -> Error errs
      | Ok newstmts -> Ok {st=StmtBlock newstmts; decor=blockscope}
 
+(** Check a list of statements. Adds test for unreachable code. *)
 and check_stmt_seq syms tenv sseq =
-  let results = List.map (check_stmt syms tenv) sseq in 
+  let rec check' acc stmts = match stmts with
+    | [] -> acc
+    | stmt::rest -> (
+       let res = check_stmt syms tenv stmt in
+       match stmt.st with
+       | StmtReturn _ when rest <> [] ->
+          let unreach = Error [{loc=stmt.decor;
+                                value="Unreachable code after return"}] in
+          check' (unreach::res::acc) rest
+       | _ -> check' (res::acc) rest
+    )
+  in
+  let results = check' [] sseq in
+  (* let results = List.map (check_stmt syms tenv) sseq in  *)
   if List.exists Result.is_error results then
-    (* If any errors, make one error list out of all. *)
+    (* Make one error list out of all. Matches stmt_result. *)
     concat_errors results
   else
-    (* Make one Ok out of all the statements. NOT a stmt_result. *)
+    (* Make one Ok out of the list of results. NOT a stmt_result. *)
     Ok (List.concat_map Result.to_list results)
-     
+
+(** Determine if a block of statements returns on every path.
+  * Return types and unreachable code are checked elsewhere. *)
+let rec block_returns stlist =
+  match stlist with
+  | [] -> false 
+  | stmt::rest -> (
+    match stmt.st with
+    | StmtReturn _ -> true
+    | StmtDecl _ | StmtAssign _ | StmtCall _ -> block_returns rest
+    | StmtBlock slist -> block_returns slist || block_returns rest
+    | StmtIf (_, thenblk, elsifs, elsblock) -> (
+      (* If all paths return, then OK, else must return after. *)
+      match elsblock with
+      | None -> block_returns rest
+      | Some elsblock -> (
+        if block_returns thenblk
+           && List.for_all (fun (_, elsif) -> block_returns elsif) elsifs
+           && block_returns elsblock then true
+        else block_returns rest
+  )))
+
 let check_proc syms tenv pr =
   (* check name for redeclaration *)
   let pdecl = pr.proc.decl.pdecl in 
@@ -342,21 +381,20 @@ let check_proc syms tenv pr =
             | Error _ -> failwith "Bug: errors in param list should be gone"
             | Ok ttag -> {symname = paramname; symtype=ttag; var=false}
           ) pdecl.params argchecks in
-      (* create new symbol scope add args, then check body based on that. *)
-      let procscope = Symtable.new_scope syms in
-      List.iter (Symtable.addvar procscope) paramentries;
-      (* Only add the function itself if it's sucessful?, no, need recursion. *)
       match check_typeExpr tenv pdecl.rettype with
       | Error msg -> Error [{loc=pr.proc.decl.decor; value=msg}]
       | Ok rttag -> (
+        (* Create procedure symtable entry and add to OUTER scope (recursion). *)
         let procentry =
           {procname=pdecl.name; rettype=rttag; fparams=paramentries} in
-        Symtable.addproc syms procentry; (* add proc decl to OUTER scope *)
+        Symtable.addproc syms procentry;
+        (* create new inner scope pointing to procedure entry, and add args *)
+        let procscope = Symtable.new_proc_scope syms procentry in
+        List.iter (Symtable.addvar procscope) paramentries;
         let newpdecl = {pdecl=pdecl; decor=procscope} in
         match check_stmt_seq procscope tenv pr.proc.body with
         | Error errs -> Error errs
-        | Ok newslist -> 
+        | Ok newslist ->
+         (* Also need to check that it returns. *) 
           Ok {proc={decl=newpdecl; body=newslist}; decor=procscope}
       ))
-        
-        
