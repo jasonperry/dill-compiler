@@ -5,4 +5,4 @@ end Square
 
 
 var y = Square(42);
-y = Square(98);
+Square(98);

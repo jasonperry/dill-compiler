@@ -376,8 +376,8 @@ let check_proc syms tenv pr =
     else
       let paramentries =
         List.map2 (
-            fun (paramname, _) r ->
-            match r with
+            fun (paramname, _) arg ->
+            match arg with
             | Error _ -> failwith "Bug: errors in param list should be gone"
             | Ok ttag -> {symname = paramname; symtype=ttag; var=false}
           ) pdecl.params argchecks in
@@ -398,3 +398,14 @@ let check_proc syms tenv pr =
          (* Also need to check that it returns. *) 
           Ok {proc={decl=newpdecl; body=newslist}; decor=procscope}
       ))
+
+let check_module syms tenv (procs, block) = 
+  let procres = List.map (check_proc syms tenv) procs in
+  if List.exists Result.is_error procres then
+    (* check_proc errors are a list of string locateds. *)
+    concat_errors procres  (* already wraps in result type *)
+  else
+    let newprocs = List.concat_map Result.to_list procres in
+    match check_stmt_seq syms tenv block with
+    | Error errs -> Error errs
+    | Ok newblock -> Ok (newprocs, newblock)
