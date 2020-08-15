@@ -27,6 +27,10 @@ let rec block_to_string sl =
       | StmtReturn None -> "return;\n"
       | StmtCall e -> exp_to_string e ^ ";\n"
       | StmtIf (e, tb, eifs, eb) -> if_to_string (e, tb, eifs, eb)
+      | StmtWhile (cond, body) ->
+         "while (" ^ exp_to_string cond ^ ") loop\n"
+         ^ block_to_string body
+         ^ "endloop"
       | StmtBlock sl -> "begin\n" ^ block_to_string sl ^ "end\n"
     ) "" sl
 

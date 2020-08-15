@@ -31,16 +31,32 @@ and token = parse  (* funny that it's called parse *)
     { token lexbuf }
   | '\r'? '\n'
     { new_line lexbuf; token lexbuf }
+  | iconst as i
+    (* TODO: checking for 32-bit fit. Maybe bigints later! *)
+    { ICONST (int_of_string i) }
   | fconst as f
     { FCONST (float_of_string f) }
-  | iconst as i
-    { ICONST (int_of_string i) }
-  | '+'     { PLUS }
-  | '-'     { MINUS }
-  | '*'     { TIMES }
-  | '/'     { DIV }
   | '('     { LPAREN }
   | ')'     { RPAREN }
+  | '*'     { TIMES }
+  | '/'     { DIV }
+  | '%'     { MOD }
+  | '+'     { PLUS }
+  | '-'     { MINUS }
+  | '&'     { BITAND }
+  | '|'     { BITOR }
+  | '^'     { BITXOR }
+  | '~'     { BITNOT }
+  (* | "++"   { CONCAT } *)
+  | "=="    { EQ }
+  | "!="    { NE }
+  | "<"     { LT }
+  | ">"     { GT }
+  | "<="    { LE }
+  | ">="    { GE }
+  | "&&"    { AND }
+  | "||"    { OR }
+  | '!'     { NOT }
   | '='	    { ASSIGN }
   | ','	    { COMMA }
   | ';'	    { SEMI }
@@ -54,8 +70,13 @@ and token = parse  (* funny that it's called parse *)
   | "endif" { ENDIF }
   | "begin" { BEGIN }
   | "end"   { END }
+  | "while" { WHILE }
+  | "loop"  { LOOP }
+  | "endloop" { ENDLOOP }
   | "proc"  { PROC }
   | "return" { RETURN }
+  | "True" { TRUE }     (* Is this the place to put built-in names? *)
+  | "False" { FALSE }   (* Even if not, bools might be special. *)
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
   | eof     { EOF }

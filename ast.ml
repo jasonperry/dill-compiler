@@ -4,16 +4,31 @@
 
 type consttype =
   | FloatVal of float
-  | IntVal of int
+  | IntVal of int  (* TODO: make int32 to avoid OCaml 31-bit ints *)
+  | BoolVal of bool
 
 type unary_op =
   | OpNeg
+  | OpBitNot
+  | OpNot
 
 type binary_op =
-  | OpPlus
-  | OpMinus
   | OpTimes
   | OpDiv
+  | OpMod  (* Want to make it the "proper" mod *)
+  | OpPlus
+  | OpMinus
+  | OpBitAnd
+  | OpBitOr
+  | OpBitXor
+  | OpEq
+  | OpNe
+  | OpLt
+  | OpGt
+  | OpLe
+  | OpGe
+  | OpAnd
+  | OpOr
 
 (** position info to decorate the AST with *)
 type locinfo = Lexing.position * Lexing.position
@@ -59,6 +74,7 @@ type ('a,'b) raw_stmt =
   | StmtIf of 'a expr * (* cond *)('a,'b) stmt list (* then block *)
               * ('a expr * ('a,'b) stmt list) list (* elsif blocks *)
               * ('a,'b) stmt list option (* else block *)
+  | StmtWhile of 'a expr (* cond *) * ('a, 'b) stmt list (* body *)
   | StmtCall of 'a expr  (* have to check the function returns void *)
   | StmtBlock of ('a,'b) stmt list
 

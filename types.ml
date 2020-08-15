@@ -40,13 +40,24 @@ let typetag_to_string tt =
   ^ (if tt.array then "[]" else "")
   ^ (if tt.nullable then "?" else "")
 
-(* The built-in types are kind of important. I may want to put them 
- * somewhere else. *)
+(* Class definitions for built-in types, and tags for convenience. *)
 let void_class =  { classname="void"; mut=false; params=[];
                     implements=[] }
-
-(** type tag bound to a name for easy access. *)
-(* Should I have a way to generate tags from classes? *)
 let void_ttag = {tclass = void_class; paramtypes=[];
                  array=false; nullable=false}
 
+let int_class = {classname="int"; mut=false; params=[];
+                 implements=[] } (* later: "Arith" *)
+let int_ttag = {tclass=int_class;
+                paramtypes=[]; array=false; nullable=false}
+
+let bool_class = {classname="bool"; mut=false; params=[];
+                  implements=[]}
+let bool_ttag = {tclass=bool_class; paramtypes=[]; array=false;
+                 nullable=false}
+
+let float_class = {classname="float"; mut=false; params=[];
+                   implements=[]}
+let float_ttag = {tclass=bool_class; paramtypes=[]; array=false;
+                  nullable=false}
+(* whether the variable can be mutated is a feature of the symbol table. *)

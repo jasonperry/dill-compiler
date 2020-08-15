@@ -1,0 +1,15 @@
+var x: int = 100;
+var y: bool = False;
+
+if (x > 30) then
+  y = True;
+endif
+
+if (x < 50 && y) then
+  y = !y;
+  x = x + 2;
+elsif (!(x == 2)) then
+  x = x + 3;
+  x = x % 23;
+endif
+

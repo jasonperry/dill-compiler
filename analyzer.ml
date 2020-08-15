@@ -47,38 +47,64 @@ type expr_result = (typetag expr, string located) Stdlib.result
 let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
   match ex.e with
   (* The type info in constants is already there...ok I guess *)
-  | ExpConst (FloatVal _) ->
-     Ok (redeco_exp ex 
-           {tclass=StrMap.find "float" tenv;
-            paramtypes=[]; array=false; nullable=false})
-  | ExpConst (IntVal _) ->
-     Ok (redeco_exp ex
-           {tclass=StrMap.find "int" tenv;
-            paramtypes=[]; array=false; nullable=false})
+  | ExpConst (IntVal i) ->
+     Ok { e=ExpConst (IntVal i); decor=int_ttag }
+  | ExpConst (FloatVal f) ->
+     Ok { e=ExpConst (FloatVal f); decor=float_ttag }
+  | ExpConst (BoolVal b) ->
+     Ok { e=ExpConst(BoolVal b); decor=bool_ttag  }
   | ExpVar s -> (
     match Symtable.findvar_opt s syms with
     | Some (ent, _) -> Ok (redeco_exp ex ent.symtype)
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ s}
   )
   | ExpBinop (e1, oper, e2) -> (
-    (* TODO: check that operation is defined on types *)
     match check_expr syms tenv e1 with
-    | Ok ({e=_; decor=ty1} as e1) -> (
+    | Ok ({e=_; decor=ty1} as e1) -> (  (* without parens whole thing
+                                         * will be e1 *)
       match check_expr syms tenv e2 with
-      | Ok ({e=_; decor=ty2} as e2) ->
-         if ty1 = ty2 then
-           Ok {e=ExpBinop (e1, oper, e2); decor=ty1}
-         else
+      | Ok ({e=_; decor=ty2} as e2) -> (
+         if ty1 <> ty2 then 
            Error {loc=ex.decor;
-                  value = ("Type mismatch: " ^ typetag_to_string ty1
+                  value = ("Operator type mismatch: " ^ typetag_to_string ty1
                            ^ ", " ^ typetag_to_string ty2)}
-      | Error e -> Error e
+         else
+           match oper with
+           | OpEq | OpNe | OpLt | OpGt | OpLe | OpGe ->
+              Ok {e=ExpBinop (e1, oper, e2); decor=bool_ttag}
+           | OpAnd | OpOr when ty1 <> bool_ttag ->
+              if ty1 <> bool_ttag then
+                Error {
+                    loc=ex.decor;
+                    value="Operations && and || only valid for type bool"
+                  }
+              else
+                Ok {e=ExpBinop (e1, oper, e2); decor=bool_ttag}
+           | _ ->
+              (* TODO: check type interfaces for operation. *)
+              Ok {e=ExpBinop (e1, oper, e2); decor=ty1}
+      )
+      | Error err -> Error err
     )
-    | Error e -> Error e
+    | Error err -> Error err
   )
-  | ExpUnop (_, exp) ->
-     (* TODO: check if op is allowed on e *)
-     check_expr syms tenv exp
+
+  | ExpUnop (oper, exp) -> (
+     match check_expr syms tenv exp with
+     | Error err -> Error err
+     | Ok ({e=_; decor=ty} as exp) -> (
+       match oper with
+       | OpNot ->
+          if ty <> bool_ttag then
+            Error {loc=ex.decor;
+                   value="Operation ! only valid for type bool"}
+          else
+            Ok {e=ExpUnop (oper, exp); decor=ty}
+       | _ ->
+          (* TODO: check interfaces of ty for operation *)
+          Ok {e=ExpUnop (oper, exp); decor=ty}
+  ))
+       
   | ExpCall (fname, args) -> (
     match check_call syms tenv (fname, args) with
     | Error msg -> Error { loc=ex.decor; value=msg }
@@ -289,6 +315,18 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
                  Ok {st=StmtIf (newcond, newthen, newelsifs, Some newelse);
                      decor=thensyms}
   ))))
+
+  | StmtWhile (cond, body) -> (
+    let condsyms = Symtable.new_scope syms in 
+    match check_condexp condsyms tenv cond with
+    | Error err -> Error [err]
+    | Ok newcond -> (
+      let bodysyms = Symtable.new_scope condsyms in
+      match check_stmt_seq bodysyms tenv body with
+      | Error errs -> Error errs
+      | Ok newbody -> Ok {st=StmtWhile (newcond, newbody); decor=bodysyms}
+  ))
+
   | StmtCall ex -> (
      match ex.e with
      | ExpCall (fname, args) -> (
@@ -353,8 +391,11 @@ let rec block_returns stlist =
         if block_returns thenblk
            && List.for_all (fun (_, elsif) -> block_returns elsif) elsifs
            && block_returns elsblock then true
-        else block_returns rest
-  )))
+        else block_returns rest ))
+    | StmtWhile (_, _) ->
+       (* While body may never be entered, so can't guarantee *)
+       block_returns rest
+  )
 
 let check_proc syms tenv pr =
   (* check name for redeclaration *)

@@ -13,12 +13,9 @@ type typeenv = classdata StrMap.t
 let base_tenv =
   StrMap.empty
   |> StrMap.add "void" void_class (* defined in Types *)
-  |> StrMap.add "int" { classname="int"; mut=false; params=[];
-                        implements=[] } (* later: "Arith" *)
-  |> StrMap.add "float" { classname="int"; mut=false; params=[];
-                          implements=[] }
-  |> StrMap.add "bool" { classname="bool"; mut=false; params=[];
-                         implements=[] }
+  |> StrMap.add "int" int_class
+  |> StrMap.add "float" float_class
+  |> StrMap.add "bool" bool_class
 
 (* Symtable idea: a map for current scope, parent and children nodes *)
 (* how mutable is appropriate? per-scope, it doesn't need to be
