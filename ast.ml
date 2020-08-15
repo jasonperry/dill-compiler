@@ -52,15 +52,14 @@ type 'a raw_expr = (* should really probably change to inline records *)
   { ty: typetag option; e: raw_expr } *)
 and 'a expr = { e: 'a raw_expr; decor: 'a }
 
-(* "redecorate" helper function. Bummer that we have to reconstruct. *)
-let redeco_exp exp deco =
+(* "redecorate" helper function. so far, not simpler than directly 
+ * reconstructing. *)
+(* let redeco_exp exp deco =
   match exp.e with
   | ExpConst c -> { e=ExpConst c; decor=deco }
   | ExpVar s -> { e=ExpVar s; decor=deco }
   | _ -> failwith "don't need redeco on recursive constructors"
-
-(* and expr =
-  typed_expr located *)
+ *) 
 
 (** Like a typeTag, but can contain variables (eventually) *)
 type typeExpr =

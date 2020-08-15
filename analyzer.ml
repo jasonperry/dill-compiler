@@ -1,4 +1,4 @@
-(** Semantic analyzer for datlang *)
+(** Semantic analyzer: check for errors and build type-decorated AST *)
 
 open Types
 open Ast
@@ -48,20 +48,19 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
   match ex.e with
   (* The type info in constants is already there...ok I guess *)
   | ExpConst (IntVal i) ->
-     Ok { e=ExpConst (IntVal i); decor=int_ttag }
+     Ok {e=ExpConst (IntVal i); decor=int_ttag}
   | ExpConst (FloatVal f) ->
-     Ok { e=ExpConst (FloatVal f); decor=float_ttag }
+     Ok {e=ExpConst (FloatVal f); decor=float_ttag}
   | ExpConst (BoolVal b) ->
-     Ok { e=ExpConst(BoolVal b); decor=bool_ttag  }
+     Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
   | ExpVar s -> (
     match Symtable.findvar_opt s syms with
-    | Some (ent, _) -> Ok (redeco_exp ex ent.symtype)
+    | Some (ent, _) -> Ok { e=ExpVar s; decor=ent.symtype }
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ s}
   )
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
-    | Ok ({e=_; decor=ty1} as e1) -> (  (* without parens whole thing
-                                         * will be e1 *)
+    | Ok ({e=_; decor=ty1} as e1) -> (  (* without () e1 is the whole thing *)
       match check_expr syms tenv e2 with
       | Ok ({e=_; decor=ty2} as e2) -> (
          if ty1 <> ty2 then 

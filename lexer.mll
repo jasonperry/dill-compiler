@@ -12,9 +12,8 @@ let fconst = digit+ '.' digit* exp?
 let ident_lc = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
 let ident_uc = ['A'-'Z'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
 
-(* Temporary, because it's in the calc example.
- * Maybe turn it into "file"?  *)
-rule line = parse
+(* Unused, from the calc example *)
+(* rule line = parse
 | ([^'\n']* '\n') as line
     (* Normal case: one line, no eof. *)
     { Some line, true }
@@ -25,12 +24,15 @@ rule line = parse
     (* Special case: some data but missing '\n', then eof.
        Consider this as the last line, and add the missing '\n'. *)
     { Some (line ^ "\n"), false }
+ *)
 
-and token = parse  (* funny that it's called parse *)
+rule token = parse  (* funny that it's called parse *)
   | [ ' ' '\t' ]
     { token lexbuf }
   | '\r'? '\n'
     { new_line lexbuf; token lexbuf }
+  | "(*"
+    { comment 0 lexbuf }
   | iconst as i
     (* TODO: checking for 32-bit fit. Maybe bigints later! *)
     { ICONST (int_of_string i) }
@@ -80,6 +82,13 @@ and token = parse  (* funny that it's called parse *)
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
   | eof     { EOF }
-  | _
-    { raise (Error (Printf.sprintf "At offset %d: unexpected character.\n" (Lexing.lexeme_start lexbuf))) }
+  | _ as c 
+    { raise (Error (Printf.sprintf "Unexpected character %c" c)) }
+     (* (Printf.sprintf "At offset %d: unexpected character.\n" (Lexing.lexeme_start lexbuf))) } *)
 
+and comment depth = parse
+  | "(*" { comment (depth+1) lexbuf }
+  | "*)" { if depth = 0 then token lexbuf else comment (depth-1) lexbuf }
+  | eof { raise (Error "Unterminated comment at end of file") }
+  | _ { comment depth lexbuf }
+  

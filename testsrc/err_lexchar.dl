@@ -1,0 +1,6 @@
+var x: int = 45;
+var y: float = 33.3;
+
+`  (* how did that get there? *)
+
+y = y * 2.0;

@@ -118,7 +118,8 @@ let process_module channel =
     | Lexer.Error msg ->
        let spos, epos = (Lexing.lexeme_start_p buf, Lexing.lexeme_end_p buf) in
        print_string
-         ("At line " ^ format_loc spos epos ^ ": lexical error:\n    " ^ msg);
+         ("At line " ^ format_loc spos epos ^ ": lexical error:\n    "
+          ^ msg ^ "\n");
        failwith "Compilation terminated at lexing."
     | Parser.Error ->
        let spos, epos = (Lexing.lexeme_start_p buf, Lexing.lexeme_end_p buf) in

@@ -8,8 +8,8 @@ endif
 if (x < 50 && y) then
   y = !y;
   x = x + 2;
-elsif (!(x == 2)) then  (* need the paren here. *)
+elsif (!(x == 2)) then  (* Not going to terminate this :)
   x = x + 3;
-  x = x % 23;  (* let's have a (* nested comment test *) too. *)
+  x = x % 23;
 endif
 
