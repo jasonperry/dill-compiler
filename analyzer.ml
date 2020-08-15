@@ -165,7 +165,18 @@ let check_condexp condsyms tenv condexp =
         Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
       goodex
   ))
-  | _ -> check_expr condsyms tenv condexp
+  | _ -> (
+     (* Otherwise, it has to be bool *)
+     match check_expr condsyms tenv condexp with
+     | Error err -> Error err
+     | Ok {e=_; decor=ety} as goodex ->
+        if ety <> bool_ttag then
+          Error {loc=condexp.decor;
+                 value=("Conditional expression must have type bool, found"
+                        ^ typetag_to_string ety)}
+        else
+          goodex
+  )
 
 (** Mash list of error lists into a single error with list *)
 let concat_errors rlist =
