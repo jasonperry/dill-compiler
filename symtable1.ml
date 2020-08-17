@@ -53,7 +53,8 @@ type st_node = {
     mutable fsyms: st_procentry StrMap.t;
     parent: st_node option; (* root has no parent *)
     in_proc: st_procentry option;
-    mutable children: st_node list
+    mutable children: st_node list;
+    mutable uninit: StrSet.t
   }
 
 (** Values and functions for the st_node type. *)
@@ -66,7 +67,8 @@ module Symtable = struct
       fsyms = StrMap.empty;
       parent = None;
       in_proc = None;
-      children = []
+      children = [];
+      uninit = StrSet.empty
     }
 
   (** Add (variable) symbol to current scope of a node. *)
@@ -123,7 +125,9 @@ module Symtable = struct
         fsyms = StrMap.empty;
         parent = Some nd;
         in_proc = nd.in_proc;
-        children = []
+        children = [];
+        (* No copy constructor so... *)
+        uninit = StrSet.fold StrSet.add StrSet.empty nd.uninit
       } in
     nd.children <- newnode :: nd.children;
     newnode
@@ -136,7 +140,8 @@ module Symtable = struct
         fsyms = StrMap.empty;
         parent = Some nd;
         in_proc = Some procentry;
-        children = []
+        children = [];
+        uninit = StrSet.fold StrSet.add StrSet.empty nd.uninit
       } in
     nd.children <- newnode :: nd.children;
     newnode

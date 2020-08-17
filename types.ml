@@ -1,8 +1,8 @@
 (** Types for type info, seems this will be used end-to-end *)
 
-(* could put this in a "Common" module. *)
+(* could put these in a "Common" module. *)
 module StrMap = Map.Make(String)
-
+module StrSet = Set.Make(String)
 
 (** in-place type variables for generics, including constraints *)
 type typevar = {

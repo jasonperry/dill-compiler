@@ -386,6 +386,8 @@ and check_stmt_seq syms tenv sseq =
 (** Determine if a block of statements returns on every path.
   * Return types and unreachable code are checked elsewhere. *)
 let rec block_returns stlist =
+  (* If I add a break statement, this also has to make sure it doesn't happen
+   * before a return. *)
   match stlist with
   | [] -> false 
   | stmt::rest -> (
