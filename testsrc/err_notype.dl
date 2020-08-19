@@ -1,0 +1,5 @@
+
+var w: bool = True;
+var x: int;
+var y = 4.5;
+var z;

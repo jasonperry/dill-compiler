@@ -1,0 +1,5 @@
+
+var w: bool = 4;  (* different declared and initializer type *)
+var x: int;
+var y = 4.5;
+var z: float = 3; (* here too *)

@@ -200,37 +200,53 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
   match stm.st with    
     (* Declaration: check for redeclaration, check the exp, make sure
      * types match if declared. *)
-  | StmtDecl (v, tyopt, initexp) -> (
+  | StmtDecl (v, tyopt, initopt) -> (
     (* Should I factor this logic into a try_add symtable method *)
     match Symtable.findvar_opt v syms with
     | Some (_, scope) when scope = syms.scopedepth ->
        Error [{loc=stm.decor; value="Redeclaration of variable " ^ v}]
     | Some _ | None -> (
-      match check_expr syms tenv initexp with
-      | Error err -> Error [err]
-      | Ok ({e=_; decor=ettag} as e2) -> (
-        let tycheck_res = (* I might want more lets to make it cleaner *) 
-          match tyopt with
-          | Some dty -> (
+      match initopt with
+      | None -> (
+         match tyopt with
+         | None ->
+            Error [{loc=stm.decor;
+                    value="Var declaration must have type or initializer"}]
+         | Some dty ->
             match check_typeExpr tenv dty with
+            | Error msg -> Error [{loc=stm.decor; value=msg}] 
             | Ok ttag ->
-               (* May need a more sophisticated comparison here later. *)
-               if ttag = ettag then Ok ttag
-               else
-                 Error [{loc=stm.decor;
-                         value="Declared type: " ^ typetag_to_string ttag
-                               ^ " for variable " ^ v
-                               ^ "does not match initializer type:"
-                               ^ typetag_to_string ettag}]
-            | Error msg -> Error [{loc=stm.decor; value=msg}] )
-          | None -> Ok ettag in
-        match tycheck_res with
-        | Ok ety -> 
-           (* syms is mutated, so don't need to return it *)
-           Symtable.addvar syms {symname=v; symtype=ety; var=true};
-           Ok {st=StmtDecl (v, tyopt, e2); decor=syms}
-        | Error errs -> Error errs
-  )))
+               Symtable.addvar syms {symname=v; symtype=ttag; var=true};
+               (* Add to uninitialized variable set *)
+               syms.uninit <- StrSet.add v syms.uninit;
+               Ok {st=StmtDecl (v, tyopt, None); decor=syms}
+      )                                            
+      | Some initexp -> (
+        match check_expr syms tenv initexp with
+        | Error err -> Error [err]
+        | Ok ({e=_; decor=ettag} as e2) -> (
+          let tycheck_res = (* I might want more lets to make it cleaner *) 
+            match tyopt with
+            | Some dty -> (
+              match check_typeExpr tenv dty with
+              | Ok ttag ->
+                 (* May need a more sophisticated comparison here later. *)
+                 if ttag = ettag then Ok ttag
+                 else
+                   Error [{loc=stm.decor;
+                           value="Declared type: " ^ typetag_to_string ttag
+                                 ^ " for variable " ^ v
+                                 ^ " does not match initializer type: "
+                                 ^ typetag_to_string ettag}]
+              | Error msg -> Error [{loc=stm.decor; value=msg}] )
+            | None -> Ok ettag in
+          match tycheck_res with
+          | Ok ety -> 
+             (* syms is mutated, so don't need to return it *)
+             Symtable.addvar syms {symname=v; symtype=ety; var=true};
+             Ok {st=StmtDecl (v, tyopt, Some e2); decor=syms}
+          | Error errs -> Error errs
+  ))))
 
   | StmtAssign (v, e) -> (
      (* Typecheck e, look up v, make sure types match *)

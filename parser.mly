@@ -87,8 +87,10 @@ stmt:
     { {decor=$loc; st=st} }
 
 declStmt:
-  | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e = expr SEMI
-    { StmtDecl (v, t, e) }
+  | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e=expr SEMI
+    { StmtDecl (v, t, Some e) }
+  | VAR v=varName t=option(preceded(COLON, typeExp)) SEMI
+    { StmtDecl (v, t, None) }
 
 assignStmt:
   | v=varName ASSIGN e=expr SEMI

@@ -61,12 +61,12 @@ and 'a expr = { e: 'a raw_expr; decor: 'a }
   | _ -> failwith "don't need redeco on recursive constructors"
  *) 
 
-(** Like a typeTag, but can contain variables (eventually) *)
+(** Syntactic type expression. Needs to be expanded for generics. *)
 type typeExpr =
   | TypeName of string
 
 type ('a,'b) raw_stmt = 
-  | StmtDecl of string * typeExpr option * 'a expr
+  | StmtDecl of string * typeExpr option * 'a expr option
   | StmtAssign of string * 'a expr  (* need to make var expr on left? *)
   | StmtReturn of 'a expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)

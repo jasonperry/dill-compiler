@@ -16,12 +16,15 @@ let rec exp_to_string (e: 'a expr) =
 let rec block_to_string sl = 
   List.fold_left (fun prev st -> prev ^ 
       match st.st with
-      | StmtDecl (v, t, e) ->
+      | StmtDecl (v, t, eopt) ->
          "VAR " ^ v 
          ^ (match t with
             | Some (TypeName tn) -> " : " ^ tn
             | None -> "" )
-         ^ " = " ^ exp_to_string e ^ ";\n"
+         ^ " = " ^ (match eopt with
+                    | Some e -> exp_to_string e
+                    | None -> "")
+         ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ exp_to_string e ^ ";\n"
       | StmtReturn (Some e) -> "return " ^ exp_to_string e ^ ";\n"
       | StmtReturn None -> "return;\n"
