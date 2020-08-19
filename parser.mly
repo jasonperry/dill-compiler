@@ -238,10 +238,12 @@ argList:
     { al }
 
 nullAssnExp:  (* This needs lookahead, will it work? *)
+  | VAR v=varName COLON ty=typeExp NULLASSIGN e=expr
+    { ExpNullAssn (true, v, Some ty, e) }
   | VAR v=varName NULLASSIGN e=expr
-    { ExpNullAssn (true, v, e) }
+    { ExpNullAssn (true, v, None, e) }
   | v=varName NULLASSIGN e=expr
-    { ExpNullAssn (false, v, e) }
+    { ExpNullAssn (false, v, None, e) }
 (*  | dec=option(VAR) v=varName NULLASSIGN e=expr
     { ExpNullAssn ( Option.is_some dec, v, e) } *)
 

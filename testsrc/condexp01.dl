@@ -1,0 +1,9 @@
+var x: int;
+
+if (x ?= 42) then
+  x = 33;
+endif
+
+if (var y: int ?= 33) then
+  y = 42;
+endif

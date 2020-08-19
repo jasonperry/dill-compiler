@@ -58,6 +58,6 @@ let bool_ttag = {tclass=bool_class; paramtypes=[]; array=false;
 
 let float_class = {classname="float"; mut=false; params=[];
                    implements=[]}
-let float_ttag = {tclass=bool_class; paramtypes=[]; array=false;
+let float_ttag = {tclass=float_class; paramtypes=[]; array=false;
                   nullable=false}
 (* whether the variable can be mutated is a feature of the symbol table. *)

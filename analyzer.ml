@@ -154,16 +154,33 @@ let is_redecl varname syms =
 (** Conditional exprs can have an assignment, so handle it specially. *)
 let check_condexp condsyms tenv condexp =
   match condexp.e with
-  | ExpNullAssn (decl, varname, ex) -> (
+  | ExpNullAssn (decl, varname, tyopt, ex) -> (
     match check_expr condsyms tenv ex with
     | Error err -> Error err
+    (* TODO: check that expression has option type. *)
     | Ok {e=_; decor=ety} as goodex -> (
       (* if a var, add it to the symbol table. 
        * It can't be a redeclaration, it's the first thing in the scope! *)
       if decl then
-        (* Caller will hold the modified 'condsyms' node *) 
-        Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
-      goodex
+        match tyopt with
+        | None -> 
+           (* Caller will hold the modified 'condsyms' node *) 
+           Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
+           goodex
+        | Some tyexp -> (
+          match check_typeExpr tenv tyexp with
+          | Error msg -> Error {loc=condexp.decor; value=msg}
+          | Ok dty when dty <> ety ->
+             Error {loc=condexp.decor;
+                    value="Declared type: " ^ typetag_to_string dty
+                          ^ " for variable " ^ varname
+                          ^ " does not match initializer type: "
+                          ^ typetag_to_string ety}
+          | Ok _ ->
+             Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
+             goodex)
+      else
+        goodex
   ))
   | _ -> (
      (* Otherwise, it has to be bool *)
@@ -261,6 +278,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
           if sym.symtype <> ettag then
             Error [{loc=stm.decor;
                     value="Assignment type mismatch: "
+                          ^ " variable " ^ v ^ " of type " 
                           ^ typetag_to_string sym.symtype ^ " can't store "
                           ^ typetag_to_string ettag}]
           else if sym.var = false then

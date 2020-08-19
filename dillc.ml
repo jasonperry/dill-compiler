@@ -2,6 +2,12 @@
 (* "Lexing" is the runtime for ocamllex-generated lexers. *)
 open Ast
 
+(* eventually move these printing functions elsewhere. *)
+
+let typeExpr_to_string te =
+  match te with
+  | TypeName s -> s
+
 let rec exp_to_string (e: 'a expr) =
   match e.e with
   | ExpConst _ -> "CONSTEXP "
@@ -9,9 +15,10 @@ let rec exp_to_string (e: 'a expr) =
   | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
   | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"
-  | ExpNullAssn (decl, v, e) ->
+  | ExpNullAssn (decl, v, tyopt, e) ->
      (if decl then "var " else "")
-     ^ v ^ " ?= " ^ exp_to_string e
+     ^ v ^ Option.fold ~none:"" ~some:typeExpr_to_string tyopt
+     ^ " ?= " ^ exp_to_string e
 
 let rec block_to_string sl = 
   List.fold_left (fun prev st -> prev ^ 
@@ -64,32 +71,6 @@ let program_to_string (procs, block) =
   List.fold_left (fun s p -> s ^ proc_to_string p) "" procs
   ^ block_to_string block
 
-(* let process (line : string) =
-  let linebuf = Lexing.from_string line in
-  try
-    (* Run the parser on this line of input. *)
-    Printf.printf "%s\n%!" (interpret_block (Parser.main Lexer.token linebuf))
-  with
-  | Lexer.Error msg ->
-      Printf.fprintf stderr "%s%!" msg
-  | Parser.Error ->
-      Printf.fprintf stderr "At offset %d: syntax error.\n%!" (Lexing.lexeme_start linebuf) 
-
-let process (optional_line : string option) =
-  match optional_line with
-  | None ->
-      ()
-  | Some line ->
-      process line
-
-let rec repeat buf =
-  (* Attempt to read one line. *)
-  let optional_line, continue = Lexer.line buf in
-  process optional_line;
-  if continue then
-    repeat buf
- *)
-
 (** Format two Lexing.location objects as a string showing the range. *)
 let format_loc (spos: Lexing.position) (epos: Lexing.position) =
   if spos.pos_lnum = epos.pos_lnum then
@@ -110,9 +91,11 @@ let format_errors elist =
     (* TODO: distinguish between error and warning. *)
     "Error: " ^ format_loc (fst loc) (snd loc) ^ ":\n    " ^ value
   in
-  String.concat "\n" (List.map format1 elist) ^ "\n"
+  (* errors append at beginning, so need to reverse the list. *)
+  let errstrs = List.rev_map format1 elist in
+  String.concat "\n" errstrs ^ "\n"
 
-(* take the whole buffer, letting newlines be treated as whitespace. *)
+(** Run as many phases as we have on one module. *)
 let process_module channel =
   let buf = Lexing.from_channel channel in
   let modtree = try

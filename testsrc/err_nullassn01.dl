@@ -1,0 +1,9 @@
+var x: int;
+
+if (x ?= 42) then  (* not allowed on declared variable. *)
+  x = 33;
+endif
+
+if (var y: int ?= 3.3) then  (* assignment mismatch in condexp *)
+  y = 4.2;
+endif

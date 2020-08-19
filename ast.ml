@@ -40,13 +40,19 @@ type 'a located =
 (** Type info to decorate the second verion of the AST *)
 (* type typeinfo = { ty: typetag } *) (* just use typetag directly. *)
 
+(** Syntactic type expression. Needs to be expanded for arrays, nullable, and 
+  * generics. *)
+type typeExpr =
+  | TypeName of string
+
 type 'a raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
   | ExpVar of string  (* later a type for pieces of an object expr *)
   | ExpBinop of 'a expr * binary_op * 'a expr
   | ExpUnop of unary_op * 'a expr
   | ExpCall of string * 'a expr list
-  | ExpNullAssn of bool * string * 'a expr (* true if declaring new var *)
+  (* the bool is true if declaring a new var *)
+  | ExpNullAssn of bool * string * typeExpr option * 'a expr
 
 (* type typed_expr =
   { ty: typetag option; e: raw_expr } *)
@@ -60,10 +66,6 @@ and 'a expr = { e: 'a raw_expr; decor: 'a }
   | ExpVar s -> { e=ExpVar s; decor=deco }
   | _ -> failwith "don't need redeco on recursive constructors"
  *) 
-
-(** Syntactic type expression. Needs to be expanded for generics. *)
-type typeExpr =
-  | TypeName of string
 
 type ('a,'b) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'a expr option
