@@ -1,5 +1,8 @@
 var x: int;
 
+(* this is only temporarily correct; x will eventually have to have type
+ * int? *)
+
 if (x ?= 42) then  (* not allowed on declared variable. *)
   x = 33;
 endif

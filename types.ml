@@ -33,9 +33,7 @@ type typetag = {
 (** Convert a type tag to printable format. *)
 let typetag_to_string tt =
   List.fold_left
-    (fun s (_, vval) ->
-      s ^ "<" ^ vval ^ "> "
-    ) "" tt.paramtypes
+    (fun s (_, vval) -> s ^ "<" ^ vval ^ "> ") "" tt.paramtypes
   ^ tt.tclass.classname
   ^ (if tt.array then "[]" else "")
   ^ (if tt.nullable then "?" else "")

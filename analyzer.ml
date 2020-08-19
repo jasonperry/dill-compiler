@@ -53,10 +53,15 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
      Ok {e=ExpConst (FloatVal f); decor=float_ttag}
   | ExpConst (BoolVal b) ->
      Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
-  | ExpVar s -> (
-    match Symtable.findvar_opt s syms with
-    | Some (ent, _) -> Ok { e=ExpVar s; decor=ent.symtype }
-    | None -> Error {loc=ex.decor; value="Undefined variable " ^ s}
+  | ExpVar varname -> (
+    match Symtable.findvar_opt varname syms with
+    | Some (ent, _) ->
+       if StrSet.mem varname syms.uninit then
+         Error {loc=ex.decor;
+                value="Variable " ^ varname ^ " may not be initialized"}
+       else 
+         Ok { e=ExpVar varname; decor=ent.symtype }
+    | None -> Error {loc=ex.decor; value="Undefined variable " ^ varname}
   )
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
@@ -178,9 +183,13 @@ let check_condexp condsyms tenv condexp =
                           ^ typetag_to_string ety}
           | Ok _ ->
              Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
-             goodex)
-      else
+             goodex
+        )
+      else (
+        (* remove assigned variable from uninit'ed set. *)
+        condsyms.uninit <- StrSet.remove varname condsyms.uninit;
         goodex
+      )
   ))
   | _ -> (
      (* Otherwise, it has to be bool *)
@@ -284,8 +293,11 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
           else if sym.var = false then
             Error [{loc=stm.decor;
                     value="Cannot assign to non-var " ^ "v"}]
-          else
+          else (
+            (* remove variable from unitialized set. *)
+            syms.uninit <- StrSet.remove v syms.uninit;
             Ok {st=StmtAssign (v, te); decor=syms}
+          )
   ))
 
   | StmtReturn eopt -> (

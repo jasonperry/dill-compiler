@@ -1,0 +1,8 @@
+
+var x: int;
+var b: bool; (*  = False; *)
+
+if (b) then
+  (* x = 5; *)
+  x = x + 1; (* OK because initialized here. *)
+endif
