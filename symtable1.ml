@@ -52,6 +52,7 @@ type st_node = {
     (* mutable fsyms: (st_procentry list) StrMap.t; *)
     mutable fsyms: st_procentry StrMap.t;
     parent: st_node option; (* root has no parent *)
+    mutable parent_init: StrSet.t; (* vars initialized from higher scope *)
     in_proc: st_procentry option;
     mutable children: st_node list;
     mutable uninit: StrSet.t
@@ -66,6 +67,7 @@ module Symtable = struct
       (* can have a list of functions for a given name *)
       fsyms = StrMap.empty;
       parent = None;
+      parent_init = StrSet.empty;
       in_proc = None;
       children = [];
       uninit = StrSet.empty
@@ -84,7 +86,7 @@ module Symtable = struct
        nd.fsyms <- StrMap.add entry.procname entry nd.fsyms
     | Some _ ->
        raise (SymbolError ("redefinition of procedure \"" ^ entry.procname
-                          ^ "\""))
+                           ^ "\""))
        (* nd.fsyms <- StrMap.add entry.procname (entry::plist) nd.fsyms *)
   
   let rec findvar_opt name nd =
@@ -124,10 +126,11 @@ module Symtable = struct
         syms = StrMap.empty;
         fsyms = StrMap.empty;
         parent = Some nd;
+        parent_init = StrSet.empty;
         in_proc = nd.in_proc;
         children = [];
         (* No copy constructor so... *)
-        uninit = StrSet.fold StrSet.add StrSet.empty nd.uninit
+        uninit = StrSet.union StrSet.empty nd.uninit
       } in
     nd.children <- newnode :: nd.children;
     newnode
@@ -139,6 +142,7 @@ module Symtable = struct
         syms = StrMap.empty;
         fsyms = StrMap.empty;
         parent = Some nd;
+        parent_init = StrSet.empty;
         in_proc = Some procentry;
         children = [];
         uninit = StrSet.fold StrSet.add StrSet.empty nd.uninit

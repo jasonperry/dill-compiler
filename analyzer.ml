@@ -246,7 +246,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
                (* Add to uninitialized variable set *)
                syms.uninit <- StrSet.add v syms.uninit;
                Ok {st=StmtDecl (v, tyopt, None); decor=syms}
-      )                                            
+      )
       | Some initexp -> (
         match check_expr syms tenv initexp with
         | Error err -> Error [err]
@@ -282,7 +282,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
        (* How about object field assignment? See .org for discussion. *)
        match Symtable.findvar_opt v syms with
        | None -> Error [{loc=stm.decor; value="Unknown variable " ^ v}]
-       | Some (sym, _) -> (* scope doesn't matter here? *)
+       | Some (sym, scope) ->
           (* Type error is more fundamental, give priority to report it. *)
           if sym.symtype <> ettag then
             Error [{loc=stm.decor;
@@ -296,6 +296,11 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
           else (
             (* remove variable from unitialized set. *)
             syms.uninit <- StrSet.remove v syms.uninit;
+            if scope < syms.scopedepth then 
+              (* print_string
+                ("Initializing variable from parent scope: " ^ v ^ "\n");
+               *)
+              syms.parent_init <- StrSet.add v syms.parent_init;
             Ok {st=StmtAssign (v, te); decor=syms}
           )
   ))
@@ -347,7 +352,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
                  | Ok newelsifcond -> (
                    match check_stmt_seq elsifsyms tenv blk with
                    | Error errs -> Error errs
-                   | Ok newblk -> Ok (newelsifcond, newblk)
+                   (* return the elsif symbol tables for checking inits. *)
+                   | Ok newblk -> Ok ((newelsifcond, newblk), elsifsyms)
                  ))
                elsifs
            in
@@ -358,16 +364,32 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
          in
          match elsifs_result with
          | Error errs -> Error errs
-         | Ok newelsifs -> (
-           (* each block will give an OK, so have to merge those too.*)
+         | Ok elsifres -> (
+           let newelsifs = List.map fst elsifres in
+           let elsifsyms = List.map snd elsifres in 
            match elseopt with 
            | None -> Ok {st=StmtIf (newcond, newthen, newelsifs, None);
                          decor=thensyms}
-           | Some elsebody ->  (* as opposed to somebody else. *)
+           | Some elsebody -> 
               let elsesyms = Symtable.new_scope condsyms in
               match check_stmt_seq elsesyms tenv elsebody with
               | Error errs -> Error errs
-              | Ok newelse ->
+              | Ok newelse -> 
+                 if not (StrSet.is_empty syms.uninit) then (
+                   (* intersect all parent-initted symbols of the blocks. *)
+                   let init_ifelse =
+                     StrSet.inter thensyms.parent_init elsesyms.parent_init in
+                   let initted_by_all =
+                     List.fold_left StrSet.inter init_ifelse
+                       (List.map (fun nd -> nd.parent_init) elsifsyms) in
+                   (* print_string ("Initted by all blocks: "
+                                 ^ StrSet.fold (fun v acc -> acc ^ ", " ^ v)
+                                     initted_by_all "" ^ "\n"); *)
+                   (* remove from uninitialized. *)
+                   syms.uninit <-
+                     (* It's a right fold. *)
+                     StrSet.fold StrSet.remove initted_by_all syms.uninit
+                 );
                  Ok {st=StmtIf (newcond, newthen, newelsifs, Some newelse);
                      decor=thensyms}
   ))))

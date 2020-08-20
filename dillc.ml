@@ -117,7 +117,7 @@ let process_module channel =
   let analyzedmod = Analyzer.check_module Symtable.empty base_tenv
                       modtree in
   match analyzedmod with
-  | Ok _ -> print_string "Success!\n"
+  | Ok _ -> print_string "No errors.\n"
   | Error errs -> print_string (format_errors errs)
 
 (* let () =

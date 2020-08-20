@@ -1,17 +1,22 @@
 
 var x: int;
+var y: float;
 var b: bool = False;
 
 (* x = 5; *)
 
 if (b) then
+  y = 2.2;
   x = 5;
   x = x + 1;
-(* elsif (b) then
+elsif (b) then
+  (* y = 1.1; *)
   x = 7;
-  b = True;  *)
+  b = True;
 else
+  y = 3.3;
   x = 6;
 endif
 
-var y = x;  (* should be OK, all branches of if statement set it. *)
+var z = x; 
+var w = y;
