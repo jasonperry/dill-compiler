@@ -1,0 +1,8 @@
+
+var x: int;
+var y: float = 3.4;
+
+var z: float = y * y;
+
+x = 14;
+x = x * x;

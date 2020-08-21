@@ -40,10 +40,9 @@ type 'a located =
 (** Type info to decorate the second verion of the AST *)
 (* type typeinfo = { ty: typetag } *) (* just use typetag directly. *)
 
-(** Syntactic type expression. Needs to be expanded for arrays, nullable, and 
-  * generics. *)
+(** Syntactic type expression. Needs to be expanded *)
 type typeExpr =
-  | TypeName of string
+  | TypeName of string  (* module, params, array, null *)
 
 type 'a raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
@@ -54,33 +53,25 @@ type 'a raw_expr = (* should really probably change to inline records *)
   (* the bool is true if declaring a new var *)
   | ExpNullAssn of bool * string * typeExpr option * 'a expr
 
-(* type typed_expr =
-  { ty: typetag option; e: raw_expr } *)
+(** Decorated expression type *)
 and 'a expr = { e: 'a raw_expr; decor: 'a }
 
-(* "redecorate" helper function. so far, not simpler than directly 
- * reconstructing. *)
-(* let redeco_exp exp deco =
-  match exp.e with
-  | ExpConst c -> { e=ExpConst c; decor=deco }
-  | ExpVar s -> { e=ExpVar s; decor=deco }
-  | _ -> failwith "don't need redeco on recursive constructors"
- *) 
 
 type ('a,'b) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'a expr option
   | StmtAssign of string * 'a expr  (* need to make var expr on left? *)
   | StmtReturn of 'a expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
-  | StmtIf of 'a expr * (* cond *)('a,'b) stmt list (* then block *)
+  | StmtIf of 'a expr (* cond *)
+              * ('a,'b) stmt list (* then block *)
               * ('a expr * ('a,'b) stmt list) list (* elsif blocks *)
               * ('a,'b) stmt list option (* else block *)
   | StmtWhile of 'a expr (* cond *) * ('a, 'b) stmt list (* body *)
   | StmtCall of 'a expr  (* have to check the function returns void *)
   | StmtBlock of ('a,'b) stmt list
 
+(** Decorated statement type *)
 and ('a,'b) stmt = { st: ('a,'b) raw_stmt; decor: 'b }
-(* and stmt = raw_stmt located *)
 
 (* Note that this doesn't need a decoration type param, it's not recursive. *)
 type raw_procdecl = {
@@ -100,3 +91,74 @@ type ('a,'b) raw_proc = {
 
 type ('a,'b) proc = { proc: ('a,'b) raw_proc; decor: 'b }
 
+
+
+(* printing functions start here *)
+
+let typeExpr_to_string te =
+  match te with
+  | TypeName s -> s
+
+let rec exp_to_string (e: 'a expr) =
+  match e.e with
+  | ExpConst _ -> "CONSTEXP "
+  | ExpVar v -> "(VAREXP " ^ v ^ ") "
+  | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
+  | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
+  | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"
+  | ExpNullAssn (decl, v, tyopt, e) ->
+     (if decl then "var " else "")
+     ^ v ^ Option.fold ~none:"" ~some:typeExpr_to_string tyopt
+     ^ " ?= " ^ exp_to_string e
+
+let rec stmt_to_string st = 
+      match st.st with
+      | StmtDecl (v, t, eopt) ->
+         "var " ^ v 
+         ^ (match t with
+            | Some (TypeName tn) -> " : " ^ tn
+            | None -> "" )
+         ^ " = " ^ (match eopt with
+                    | Some e -> exp_to_string e
+                    | None -> "")
+         ^ ";\n"
+      | StmtAssign (v, e) -> v ^ " = " ^ exp_to_string e ^ ";\n"
+      | StmtReturn (Some e) -> "return " ^ exp_to_string e ^ ";\n"
+      | StmtReturn None -> "return;\n"
+      | StmtCall e -> exp_to_string e ^ ";\n"
+      | StmtIf (e, tb, eifs, eb) -> if_to_string (e, tb, eifs, eb)
+      | StmtWhile (cond, body) ->
+         "while (" ^ exp_to_string cond ^ ") loop\n"
+         ^ block_to_string body
+         ^ "endloop"
+      | StmtBlock sl -> "begin\n" ^ block_to_string sl ^ "end\n"
+
+and block_to_string sl = 
+  List.fold_left (fun prev st -> prev ^ stmt_to_string st) "" sl
+
+and elsif_to_string (e, sl) =
+  "elsif (" ^ exp_to_string e ^ ") then\n"
+  ^ block_to_string sl
+
+(* maybe interpret sub-functions will return a label *)
+and if_to_string (e, tb, eifs, els) =
+  "if (" ^ exp_to_string e ^ ") then\n"
+  ^ block_to_string tb
+  ^ List.fold_left (fun s eif -> s ^ elsif_to_string eif) "" eifs
+  ^ (match els with
+     | Some sb -> "else " ^ block_to_string sb
+     | None -> "")
+  ^ "end\n"
+
+(* let interpret_params plist =  *)
+
+let proc_to_string pr =
+  (* a little ugly, but maybe I will use the pdecl later. *)
+  let pdecl = pr.proc.decl.pdecl in
+  "proc " ^ pdecl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
+  ^ block_to_string pr.proc.body
+  ^ "\nendproc\n"
+
+let program_to_string (procs, block) =
+  List.fold_left (fun s p -> s ^ proc_to_string p) "" procs
+  ^ block_to_string block

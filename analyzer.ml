@@ -6,10 +6,6 @@ open Symtable1
 
 exception SemanticError of string
 
-(** Initial symbol table *)
-(* later just make this in the top-level analyzer function *)
-let root_st = Symtable.empty 
-
 (* Analysis pass populates symbol table, including with types. 
  * Hopefully all possibilities of error can be caught in this phase. *)
 
@@ -19,7 +15,7 @@ let root_st = Symtable.empty
 
 (** Helper to match a formal with actual parameter list, for
    typechecking procedure calls. *)
-let rec match_params (formal: st_entry list) (actual: typetag list) =
+let rec match_params (formal: 'a st_entry list) (actual: typetag list) =
   match (formal, actual) with
   | ([], []) -> true
   | (_, []) | ([], _) -> false
@@ -170,7 +166,8 @@ let check_condexp condsyms tenv condexp =
         match tyopt with
         | None -> 
            (* Caller will hold the modified 'condsyms' node *) 
-           Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
+           Symtable.addvar condsyms
+             {symname=varname; symtype=ety; var=true; addr=None};
            goodex
         | Some tyexp -> (
           match check_typeExpr tenv tyexp with
@@ -182,7 +179,8 @@ let check_condexp condsyms tenv condexp =
                           ^ " does not match initializer type: "
                           ^ typetag_to_string ety}
           | Ok _ ->
-             Symtable.addvar condsyms {symname=varname; symtype=ety; var=true};
+             Symtable.addvar condsyms
+               {symname=varname; symtype=ety; var=true; addr=None};
              goodex
         )
       else (
@@ -219,10 +217,10 @@ let concat_errors rlist =
  * traversals, or else I need a way to pick the correct child.
  * Or, I could assume traversal in the same order. *)
 (* Exprs never start their own new scope! *)
-type stmt_result = ((typetag, st_node) stmt, string located list)
+type 'a stmt_result = ((typetag, 'a st_node) stmt, string located list)
                      Stdlib.result
 
-let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
+let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
   match stm.st with    
     (* Declaration: check for redeclaration, check the exp, make sure
      * types match if declared. *)
@@ -242,7 +240,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
             match check_typeExpr tenv dty with
             | Error msg -> Error [{loc=stm.decor; value=msg}] 
             | Ok ttag ->
-               Symtable.addvar syms {symname=v; symtype=ttag; var=true};
+               Symtable.addvar syms
+                 {symname=v; symtype=ttag; var=true; addr=None};
                (* Add to uninitialized variable set *)
                syms.uninit <- StrSet.add v syms.uninit;
                Ok {st=StmtDecl (v, tyopt, None); decor=syms}
@@ -269,7 +268,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
           match tycheck_res with
           | Ok ety -> 
              (* syms is mutated, so don't need to return it *)
-             Symtable.addvar syms {symname=v; symtype=ety; var=true};
+             Symtable.addvar syms
+               {symname=v; symtype=ety; var=true; addr=None};
              Ok {st=StmtDecl (v, tyopt, Some e2); decor=syms}
           | Error errs -> Error errs
   ))))
@@ -431,7 +431,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : stmt_result =
 (** Check a list of statements. Adds test for unreachable code. *)
 and check_stmt_seq syms tenv sseq =
   let rec check' acc stmts = match stmts with
-    | [] -> acc
+    | [] -> List.rev acc
     | stmt::rest -> (
        let res = check_stmt syms tenv stmt in
        match stmt.st with
@@ -500,7 +500,8 @@ let check_proc syms tenv pr =
             fun (paramname, _) arg ->
             match arg with
             | Error _ -> failwith "Bug: errors in param list should be gone"
-            | Ok ttag -> {symname = paramname; symtype=ttag; var=false}
+            | Ok ttag ->
+               {symname = paramname; symtype=ttag; var=false; addr=None}
           ) pdecl.params argchecks in
       match check_typeExpr tenv pdecl.rettype with
       | Error msg -> Error [{loc=pr.proc.decl.decor; value=msg}]

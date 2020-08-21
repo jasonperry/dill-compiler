@@ -127,7 +127,7 @@ whileStmt:
     { StmtWhile (cond, body) }
 
 typeExp:
-  (* This will be elaborated to include array, list, type variables,... *)
+  (* This will be elaborated to include array, null, type variables,... *)
   | tn=IDENT_LC
     { TypeName tn }
 

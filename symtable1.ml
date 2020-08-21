@@ -26,42 +26,55 @@ let base_tenv =
  * list? Functions that create a new scope assign a new list to their scope. *)
 
 (** Symbol table entry type for a variable. *)
-type st_entry = {
+type 'a st_entry = {
     symname: string;
     symtype: typetag;
     (* when I generate code, will I need a (stack or heap) location? *)
-    var: bool  (* "var" semantics means it can be reassigned. OR
-                * mutating methods called? *)
+    var: bool;  (* "var" semantics means it can be reassigned. OR
+                 * mutating methods called? *)
+    addr: 'a option
   }
 
 (** Symbol table entry type for a procedure. *)
-type st_procentry = {
+type 'a st_procentry = {
     procname: string;
     rettype: typetag;  (* there's a void typetag *)
     (* could it be just a list of types, no names? but st_entry also
      * has the mutability info, very convenient. *)
-    fparams: st_entry list
+    fparams: 'a st_entry list
   }
 
 (** Symbol table node that makes a tree data structure. *)
-type st_node = {
+type 'a st_node = {
     scopedepth: int; (* New idea, just record depth *)
     (* have to make these mutable if I record a new scope under the
      * parent before it's filled. *)
-    mutable syms: st_entry StrMap.t;
+    mutable syms: 'a st_entry StrMap.t;
     (* mutable fsyms: (st_procentry list) StrMap.t; *)
-    mutable fsyms: st_procentry StrMap.t;
-    parent: st_node option; (* root has no parent *)
+    mutable fsyms: 'a st_procentry StrMap.t;
+    parent: 'a st_node option; (* root has no parent *)
     mutable parent_init: StrSet.t; (* vars initialized from higher scope *)
-    in_proc: st_procentry option;
-    mutable children: st_node list;
+    in_proc: 'a st_procentry option;
+    mutable children: 'a st_node list;
     mutable uninit: StrSet.t
   }
 
 (** Values and functions for the st_node type. *)
-module Symtable = struct
-  
-  let empty: st_node = {
+(* module type SYMTABLE = sig
+  val make_empty : unit -> 'a st_node
+  val addvar : 'a st_node -> 'a st_entry -> unit
+  val addproc : 'a st_node -> 'a st_procentry -> unit
+  val findvar_opt : string -> 'a st_node -> ('a st_entry * int) option
+  val findproc :
+    string -> 'a st_node -> ('a st_procentry * int) option
+  val new_scope : 'a st_node -> 'a st_node
+  val new_proc_scope : 'a st_node -> 'a st_procentry -> 'a st_node
+end *)
+
+module Symtable (* : SYMTABLE *) = struct
+
+  (* I ran up against a generalization error when I made this a value *)
+  let make_empty () = {
       scopedepth = 0;
       syms = StrMap.empty;
       (* can have a list of functions for a given name *)
@@ -74,10 +87,20 @@ module Symtable = struct
     }
 
   (** Add (variable) symbol to current scope of a node. *)
-  let addvar nd (entry: st_entry) = 
+  let addvar nd entry = 
     (* NOTE! This eliminates any previous binding, caller must check first. *)
     nd.syms <- StrMap.add entry.symname entry nd.syms
 
+  (** Set address of existing symbol. *)
+  let set_addr nd varname addr =
+    (* should only be done for symbols in this scope..fail is a bug *)
+    nd.syms <-
+      StrMap.update varname
+        (function
+         | Some entry -> Some { entry with addr=Some addr }
+         | None -> failwith ("BUG: Varname " ^ " not found for addr"))
+        nd.syms     
+  
   (** Add procedure to current scope of a node. *)
   let addproc nd entry =
     match StrMap.find_opt entry.procname nd.fsyms with
@@ -88,7 +111,8 @@ module Symtable = struct
        raise (SymbolError ("redefinition of procedure \"" ^ entry.procname
                            ^ "\""))
        (* nd.fsyms <- StrMap.add entry.procname (entry::plist) nd.fsyms *)
-  
+
+  (* Use this in typechecking. *)
   let rec findvar_opt name nd =
     match StrMap.find_opt name nd.syms with
     | Some entry -> Some (entry, nd.scopedepth)
@@ -97,6 +121,12 @@ module Symtable = struct
       | Some parent -> findvar_opt name parent
       | None -> None
     )
+
+  (* Use this in codegen. *)
+  let findvar name nd =
+    match findvar_opt name nd with
+    | Some ent -> ent
+    | None -> raise Not_found
 
   (* 
   (** Find procs matching a name (at a single scope depth only) *)
@@ -148,8 +178,7 @@ module Symtable = struct
         uninit = StrSet.fold StrSet.add StrSet.empty nd.uninit
       } in
     nd.children <- newnode :: nd.children;
-    newnode
-    
+    newnode    
 
   (* Need new_proc_scope to create a procedure scope. *)
 

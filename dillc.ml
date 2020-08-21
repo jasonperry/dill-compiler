@@ -2,74 +2,6 @@
 (* "Lexing" is the runtime for ocamllex-generated lexers. *)
 open Ast
 
-(* eventually move these printing functions elsewhere. *)
-
-let typeExpr_to_string te =
-  match te with
-  | TypeName s -> s
-
-let rec exp_to_string (e: 'a expr) =
-  match e.e with
-  | ExpConst _ -> "CONSTEXP "
-  | ExpVar v -> "(VAREXP " ^ v ^ ") "
-  | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
-  | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
-  | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"
-  | ExpNullAssn (decl, v, tyopt, e) ->
-     (if decl then "var " else "")
-     ^ v ^ Option.fold ~none:"" ~some:typeExpr_to_string tyopt
-     ^ " ?= " ^ exp_to_string e
-
-let rec block_to_string sl = 
-  List.fold_left (fun prev st -> prev ^ 
-      match st.st with
-      | StmtDecl (v, t, eopt) ->
-         "VAR " ^ v 
-         ^ (match t with
-            | Some (TypeName tn) -> " : " ^ tn
-            | None -> "" )
-         ^ " = " ^ (match eopt with
-                    | Some e -> exp_to_string e
-                    | None -> "")
-         ^ ";\n"
-      | StmtAssign (v, e) -> v ^ " = " ^ exp_to_string e ^ ";\n"
-      | StmtReturn (Some e) -> "return " ^ exp_to_string e ^ ";\n"
-      | StmtReturn None -> "return;\n"
-      | StmtCall e -> exp_to_string e ^ ";\n"
-      | StmtIf (e, tb, eifs, eb) -> if_to_string (e, tb, eifs, eb)
-      | StmtWhile (cond, body) ->
-         "while (" ^ exp_to_string cond ^ ") loop\n"
-         ^ block_to_string body
-         ^ "endloop"
-      | StmtBlock sl -> "begin\n" ^ block_to_string sl ^ "end\n"
-    ) "" sl
-
-and elsif_to_string (e, sl) =
-  "elsif (" ^ exp_to_string e ^ ") then\n"
-  ^ block_to_string sl
-
-(* maybe interpret sub-functions will return a label *)
-and if_to_string (e, tb, eifs, els) =
-  "if (" ^ exp_to_string e ^ ") then\n"
-  ^ block_to_string tb
-  ^ List.fold_left (fun s eif -> s ^ elsif_to_string eif) "" eifs
-  ^ (match els with
-     | Some sb -> "else " ^ block_to_string sb
-     | None -> "")
-  ^ "end\n"
-
-(* let interpret_params plist =  *)
-
-let proc_to_string pr =
-  (* a little ugly, but maybe I will use the pdecl later. *)
-  let pdecl = pr.proc.decl.pdecl in
-  "proc " ^ pdecl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
-  ^ block_to_string pr.proc.body
-  ^ "\nendproc\n"
-
-let program_to_string (procs, block) =
-  List.fold_left (fun s p -> s ^ proc_to_string p) "" procs
-  ^ block_to_string block
 
 (** Format two Lexing.location objects as a string showing the range. *)
 let format_loc (spos: Lexing.position) (epos: Lexing.position) =
@@ -114,11 +46,16 @@ let process_module channel =
        failwith "Compilation terminated at parsing." 
   in
   let open Symtable1 in 
-  let analyzedmod = Analyzer.check_module Symtable.empty base_tenv
+  let analyzedmod = Analyzer.check_module
+                      (* Wow, this works? *)
+                      (Symtable.make_empty (): Llvm.llvalue st_node)
+                      base_tenv
                       modtree in
   match analyzedmod with
-  | Ok _ -> print_string "No errors.\n"
   | Error errs -> print_string (format_errors errs)
+  | Ok themod -> (
+    print_string (program_to_string themod);
+    Codegen.gen_module base_tenv themod )
 
 (* let () =
   repeat (Lexing.from_channel stdin) *)

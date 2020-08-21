@@ -1,0 +1,13 @@
+var x: int;
+var b: bool = True;
+var y: float;
+
+if (!b) then
+  x = 2;
+elsif (b) then
+  x = 3;    
+else
+  var x = 4; (* doesn't initialize var in outer scope. *)
+endif
+
+var z = x + 1;
