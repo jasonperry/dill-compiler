@@ -13,7 +13,7 @@ exception CodegenError of string
 
 (* will I need sub-contexts later? for modules, yes *)
 let context = global_context()
-let the_module = create_module context "dill single-module"
+let the_module = create_module context "dillout.ll"
 (* builder keeps track of current insert place *)
 let builder = builder context
 let float_type = double_type context
@@ -30,7 +30,7 @@ let rec gen_expr syms tenv ex =
      let (entry, _) = Symtable.findvar varname syms in
      match entry.addr with
      | None -> failwith ("BUG: alloca address not present for " ^ varname)
-     | Some alloca -> build_load alloca varname builder        
+     | Some alloca -> build_load alloca varname builder
   )
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
@@ -87,7 +87,6 @@ let rec gen_expr syms tenv ex =
   | ExpNullAssn (_, _, _, _) -> failwith "not implemented yet"
 
 let rec gen_stmt tenv (stmt: (_, _) stmt) =
-  print_string ("got as far as gen_stmt\n");
   let syms = stmt.decor in
   (* later: look up types in tenv *)
   match stmt.st with
@@ -106,8 +105,7 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
     Symtable.set_addr syms varname
       (* TODO If in a function, will need to build it in entry block,
        * so it goes in the stack frame *) 
-      (build_alloca allocatype ("alloc_" ^ varname) (builder_at context));
-      print_string ("Set address for " ^ varname);
+      (declare_global allocatype varname the_module);
     match eopt with
     | None -> ()
     | Some initexp ->
@@ -120,7 +118,9 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
      match entry.addr with
      | None -> failwith ("BUG: alloca address not present for " ^ varname)
      | Some alloca ->
-        ignore (build_store expval alloca builder)     
+        print_string "Found allocator for assignment, building store...\n";
+        let store = build_store expval alloca builder in
+        print_string (string_of_llvalue store)
   )
   | StmtReturn _ -> failwith "not implemented"
   | StmtIf (_, _, _, _) -> failwith "not implemented"
@@ -132,10 +132,9 @@ let gen_proc _ _ _ =
   failwith "Not implemented yet"
 
 let gen_module tenv (_, block) =
-  List.iter (fun stmt ->
-      print_string ("Generating for " ^ stmt_to_string stmt);
-      gen_stmt tenv stmt)
-    block;
-  dump_module the_module
+  List.iter (gen_stmt tenv) block;
+  (* print_module "./dillout.ll" the_module *)
+  print_string (string_of_llmodule the_module);
+  the_module
   
   

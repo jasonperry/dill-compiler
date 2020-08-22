@@ -53,9 +53,10 @@ let process_module channel =
                       modtree in
   match analyzedmod with
   | Error errs -> print_string (format_errors errs)
-  | Ok themod -> (
+  | Ok themod ->
     print_string (program_to_string themod);
-    Codegen.gen_module base_tenv themod )
+    let modcode = Codegen.gen_module base_tenv themod in 
+    Llvm.dump_module modcode  (* prints at top! *)
 
 (* let () =
   repeat (Lexing.from_channel stdin) *)
