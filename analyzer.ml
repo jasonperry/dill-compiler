@@ -477,12 +477,12 @@ let rec block_returns stlist =
        block_returns rest
   )
 
-let check_proc syms tenv pr =
+let check_pdecl syms tenv pd =
+  let pdecl = pd.pdecl in
   (* check name for redeclaration *)
-  let pdecl = pr.proc.decl.pdecl in 
   match Symtable.findproc pdecl.name syms with
   | Some (_, scope) when syms.scopedepth = scope ->
-     Error [{loc=pr.decor; value="Redeclaration of procedure " ^ pdecl.name}]
+     Error [{loc=pd.decor; value="Redeclaration of procedure " ^ pdecl.name}]
   | _ -> (
     let argchecks = List.map (fun (_, texp) -> check_typeExpr tenv texp)
                       pdecl.params in
@@ -491,7 +491,7 @@ let check_proc syms tenv pr =
         List.concat_map (
             fun r -> match r with
                      | Ok _ -> []
-                     | Error msg -> [{loc=pr.proc.decl.decor; value=msg}]
+                     | Error msg -> [{loc=pd.decor; value=msg}]
           ) argchecks
       in Error errs
     else
@@ -504,7 +504,7 @@ let check_proc syms tenv pr =
                {symname = paramname; symtype=ttag; var=false; addr=None}
           ) pdecl.params argchecks in
       match check_typeExpr tenv pdecl.rettype with
-      | Error msg -> Error [{loc=pr.proc.decl.decor; value=msg}]
+      | Error msg -> Error [{loc=pd.decor; value=msg}]
       | Ok rttag -> (
         (* Create procedure symtable entry and add to OUTER scope (recursion). *)
         let procentry =
@@ -513,21 +513,42 @@ let check_proc syms tenv pr =
         (* create new inner scope pointing to procedure entry, and add args *)
         let procscope = Symtable.new_proc_scope syms procentry in
         List.iter (Symtable.addvar procscope) paramentries;
-        let newpdecl = {pdecl=pdecl; decor=procscope} in
-        match check_stmt_seq procscope tenv pr.proc.body with
-        | Error errs -> Error errs
-        | Ok newslist ->
-         (* Also need to check that it returns. *) 
-          Ok {proc={decl=newpdecl; body=newslist}; decor=procscope}
-      ))
+        Ok {pdecl=pdecl; decor=procscope}
+  ))
 
-let check_module syms tenv (procs, block) = 
-  let procres = List.map (check_proc syms tenv) procs in
-  if List.exists Result.is_error procres then
-    (* check_proc errors are a list of string locateds. *)
-    concat_errors procres  (* already wraps in result type *)
-  else
-    let newprocs = List.concat_map Result.to_list procres in
-    match check_stmt_seq syms tenv block with
-    | Error errs -> Error errs
-    | Ok newblock -> Ok (newprocs, newblock)
+(** Check the body of a procedure whose header has already been checked *)
+let check_proc tenv (pd: 'a st_node procdecl) pr =  
+  let procscope = pd.decor in
+  match check_stmt_seq procscope tenv pr.proc.body with
+  | Error errs -> Error errs
+  | Ok newslist ->
+     (* Also need to check that it returns. *) 
+     Ok {proc={decl=pd; body=newslist}; decor=procscope}
+
+let check_module syms tenv dmod =
+  (* maybe need a global stmt check that only accepts decls and const exprs. *)
+  match check_stmt_seq syms tenv dmod.globals with
+  | Error errs -> Error errs
+  | Ok newglobals -> (
+    let pdeclres = List.map (fun pr -> check_pdecl syms tenv pr.proc.decl)
+                     dmod.procs in
+    if List.exists Result.is_error pdeclres then
+      (* check_proc errors are a list of string locateds. *)
+      concat_errors pdeclres  (* already wraps in result type *)
+    else (
+      let newdecls = List.concat_map Result.to_list pdeclres in 
+      let procres = List.map2 (check_proc tenv) newdecls dmod.procs in
+      if List.exists Result.is_error procres then
+        concat_errors procres  (* already wraps in result type *)
+      else (
+        let newprocs = List.concat_map Result.to_list procres in
+        (* tricky to check that globals are initialized. For now, just
+         * make sure they're initted (direclty) in the init block. *)
+        match check_stmt_seq syms tenv dmod.initblock with
+        | Error errs -> Error errs
+        | Ok newblock ->
+           (* TODO: check topmost scope for uninitted globals. *)
+           Ok {name=dmod.name; globals=newglobals; procs=newprocs;
+               initblock=newblock}
+  )))
+      

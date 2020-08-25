@@ -30,7 +30,7 @@ let format_errors elist =
 (** Run as many phases as we have on one module. *)
 let process_module channel =
   let buf = Lexing.from_channel channel in
-  let modtree = try
+  let parsedmod = try
       Parser.main Lexer.token buf
     with
     | Lexer.Error msg ->
@@ -50,13 +50,13 @@ let process_module channel =
                       (* Wow, this works? *)
                       (Symtable.make_empty (): Llvm.llvalue st_node)
                       base_tenv
-                      modtree in
+                      parsedmod in
   match analyzedmod with
   | Error errs -> print_string (format_errors errs)
   | Ok themod ->
-    print_string (program_to_string themod);
-    let modcode = Codegen.gen_module base_tenv themod in 
-    Llvm.dump_module modcode  (* prints at top! *)
+    print_string (module_to_string themod)
+    (* let modcode = Codegen.gen_module base_tenv themod in 
+    Llvm.dump_module modcode  (* prints at top! *) *)
 
 (* let () =
   repeat (Lexing.from_channel stdin) *)

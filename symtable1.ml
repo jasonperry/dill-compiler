@@ -50,8 +50,7 @@ type 'a st_node = {
     (* have to make these mutable if I record a new scope under the
      * parent before it's filled. *)
     mutable syms: 'a st_entry StrMap.t;
-    (* mutable fsyms: (st_procentry list) StrMap.t; *)
-    mutable fsyms: 'a st_procentry StrMap.t;
+    mutable fsyms: 'a st_procentry StrMap.t;  (* No overloading! *)
     parent: 'a st_node option; (* root has no parent *)
     mutable parent_init: StrSet.t; (* vars initialized from higher scope *)
     in_proc: 'a st_procentry option;

@@ -118,7 +118,6 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
      match entry.addr with
      | None -> failwith ("BUG: alloca address not present for " ^ varname)
      | Some alloca ->
-        print_string "Found allocator for assignment, building store...\n";
         let store = build_store expval alloca builder in
         print_string (string_of_llvalue store)
   )

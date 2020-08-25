@@ -91,7 +91,16 @@ type ('a,'b) raw_proc = {
 
 type ('a,'b) proc = { proc: ('a,'b) raw_proc; decor: 'b }
 
+type ('a,'b) dillmodule = {
+    name: string;
+    globals: ('a, 'b) stmt list;
+    procs: ('a,'b) proc list;
+    initblock: ('a,'b) stmt list
+  }
 
+(* Maybe have a module type too *)
+(*   | globals=list(declStmt) procs=list(proc) block=option(blockStmt) EOF
+    { (globals, procs, block) } *)
 
 (* printing functions start here *)
 
@@ -159,6 +168,7 @@ let proc_to_string pr =
   ^ block_to_string pr.proc.body
   ^ "\nendproc\n"
 
-let program_to_string (procs, block) =
-  List.fold_left (fun s p -> s ^ proc_to_string p) "" procs
-  ^ block_to_string block
+let module_to_string dmod =
+  block_to_string dmod.globals
+  ^ List.fold_left (fun s p -> s ^ proc_to_string p) "" dmod.procs
+  ^ block_to_string dmod.initblock

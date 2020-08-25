@@ -35,20 +35,29 @@
 %type <Ast.locinfo Ast.expr> expr
 %type <(Ast.locinfo, Ast.locinfo) Ast.stmt> stmt
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
-%start <(Ast.locinfo, Ast.locinfo) Ast.proc list
-        * (Ast.locinfo,Ast.locinfo) Ast.stmt list> main
+(* Thinking of eventually allowing multiple modules/file. *)
+%start <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> main
+(* %start <(Ast.locinfo, Ast.locinfo) Ast.proc list
+        * (Ast.locinfo,Ast.locinfo) Ast.stmt list> main *)
 
 %%
 
-main:
-  | procs=list(proc) block=nonempty_list(stmt) EOF
-    { (procs, block) }
+main:  (* TODO: let the init block come before or after. And imports. *)
+  | gl=list(declStmt) pr=list(proc) bl=option(blockStmt) EOF
+    { let initstmts = match bl with
+	| Some (StmtBlock slist) -> slist
+	| _ -> [] in
+      {name="YourModuleNameHere";
+       globals=gl;
+       procs=pr;
+       initblock=initstmts} }
 
 proc:
-  | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
+  | pd=procHeader ASSIGN BEGIN sb=stmtSeq END en=procName 
     { if pd.pdecl.name = en then
 	{ decor=$loc; proc={decl=pd; body=sb} }
-      else  (* TODO: try "new way" error handling (Menhir Ch. 11) *)
+      else  (* TODO: try "new way" error handling (Menhir Ch. 11)
+             * (or wait for a hand-rolled parser? *)
 	$syntaxerror
     }
 
@@ -58,8 +67,8 @@ procHeader:
     { { decor=$loc; pdecl={name=pn; params=pl; rettype=rt} } }
 
 procName:
-  (* A method needs a dot...should I have different syntax? *)
-  | pn=IDENT_UC { pn }
+  (* TODO: A method needs a dot or an arrow. *)
+  | pn=IDENT_LC { pn }
 
 paramList:
   | pl=separated_list(COMMA, nameAndType)
@@ -77,7 +86,8 @@ stmtSeq:
     { sl }
 
 stmt:
-  | st=declStmt
+  | ds=declStmt  (* gets its decor early b/c used in other contexts. *)
+    { ds }
   | st=assignStmt
   | st=ifStmt
   | st=whileStmt
@@ -88,9 +98,9 @@ stmt:
 
 declStmt:
   | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e=expr SEMI
-    { StmtDecl (v, t, Some e) }
+    { {decor=$loc; st=StmtDecl (v, t, Some e)} }
   | VAR v=varName t=option(preceded(COLON, typeExp)) SEMI
-    { StmtDecl (v, t, None) }
+    { {decor=$loc; st=StmtDecl (v, t, None)} }
 
 assignStmt:
   | v=varName ASSIGN e=expr SEMI
@@ -128,16 +138,13 @@ whileStmt:
 
 typeExp:
   (* This will be elaborated to include array, null, type variables,... *)
-  | tn=IDENT_LC
+  | tn=IDENT_UC
     { TypeName tn }
 
 (* Expressions are what evaluates to a value. *)
 expr:
   | LPAREN ex=expr RPAREN
     { ex }
-  (* will this not work at all with old syntax? *)
-  (* | el=located(constExp | varExp | opExp | callExp)
-    { el } *)
   | ex=constExp
   | ex=varExp
   | ex=opExp

@@ -1,5 +1,5 @@
-var x: int = 100;
-var y: bool = False;
+var x: Int = 100;
+var y: Bool = False;
 
 if (x > 30) then
   y = True;
