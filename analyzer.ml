@@ -13,6 +13,22 @@ exception SemanticError of string
  * AST? Maybe, because if I just rely on following, the order matters,
  * Or else you'd need a unique identifier for each child. *)
 
+(** Mash list of error lists into a single error with list *)
+let concat_errors rlist =
+  (* the list of errors are each themselves lists. *)
+  Error (List.concat (
+             List.concat_map (
+                 fun r -> match r with
+                          | Ok _ -> []
+                          | Error erec -> [erec]
+               ) rlist
+    ))
+
+(** Combine all OKs into a single list *)
+let concat_ok rlist = List.concat_map Result.to_list rlist
+
+(* TODO: a check_list that does the map and concat error/Ok *)
+
 (** Helper to match a formal with actual parameter list, for
    typechecking procedure calls. *)
 let rec match_params (formal: 'a st_entry list) (actual: typetag list) =
@@ -130,7 +146,7 @@ and check_call syms tenv (fname, args) =
     Error err_strs
   else
     (* could construct these further down... *)
-    let args_typed = List.concat_map Result.to_list args_res in
+    let args_typed = concat_ok args_res in
     let argtypes = List.map (fun (ae: typetag expr) -> ae.decor)
                      args_typed in 
     (* find and match procedure *)
@@ -201,17 +217,6 @@ let check_condexp condsyms tenv condexp =
         else
           goodex
   )
-
-(** Mash list of error lists into a single error with list *)
-let concat_errors rlist =
-  (* the list of errors are each themselves lists. *)
-  Error (List.concat (
-             List.concat_map (
-                 fun r ->match r with
-                         | Ok _ -> []
-                         | Error erec -> [erec]
-               ) rlist
-    ))
 
 (* Statements need a pointer back to their symbol table for future
  * traversals, or else I need a way to pick the correct child.
@@ -360,7 +365,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
            if List.exists Result.is_error allres then
              concat_errors allres
            else
-             Ok (List.concat_map Result.to_list allres)
+             Ok (concat_ok allres)
          in
          match elsifs_result with
          | Error errs -> Error errs
@@ -449,7 +454,7 @@ and check_stmt_seq syms tenv sseq =
     concat_errors results
   else
     (* Make one Ok out of the list of results. NOT a stmt_result. *)
-    Ok (List.concat_map Result.to_list results)
+    Ok (concat_ok results)
 
 (** Determine if a block of statements returns on every path.
   * Return types and unreachable code are checked elsewhere. *)
@@ -525,23 +530,49 @@ let check_proc tenv (pd: 'a st_node procdecl) pr =
      (* Also need to check that it returns. *) 
      Ok {proc={decl=pd; body=newslist}; decor=procscope}
 
+let rec is_const_expr = function
+    (* if true, I could eval and replace it in the AST. But...
+     * what if numerics don't match the target? Let LLVM do it. *)
+  | ExpConst _ -> true
+  | ExpVar _ -> false (* TODO: check in syms if it's a const *)
+  | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
+  | ExpUnop (_, e1) -> is_const_expr e1.e
+  | _ -> false
+
+(** Check a global declaration statement (extra constraints) *)
+let check_globdecl syms tenv st =
+  match st.st with
+  | StmtDecl (_, _, initopt) -> (
+    match initopt with
+    | Some initexp when not (is_const_expr initexp.e) -> 
+       Error [{loc=initexp.decor;
+               value="Global initializer must be constant expression"}]
+    | _ -> (
+      match check_stmt syms tenv st with (* catch redecl, type mismatch *)
+      | Error errs -> Error errs
+      | Ok newstmt -> Ok newstmt
+  ))
+  | _ -> failwith "BUG: non-decl global should be caught at parsing."
+                                        
+
 let check_module syms tenv dmod =
-  (* maybe need a global stmt check that only accepts decls and const exprs. *)
-  match check_stmt_seq syms tenv dmod.globals with
-  | Error errs -> Error errs
-  | Ok newglobals -> (
+  let globalres = List.map (check_globdecl syms tenv) dmod.globals in
+  if List.exists Result.is_error globalres then
+    concat_errors globalres
+  else
+    let newglobals = concat_ok globalres in 
     let pdeclres = List.map (fun pr -> check_pdecl syms tenv pr.proc.decl)
                      dmod.procs in
     if List.exists Result.is_error pdeclres then
       (* check_proc errors are a list of string locateds. *)
       concat_errors pdeclres  (* already wraps in result type *)
     else (
-      let newdecls = List.concat_map Result.to_list pdeclres in 
+      let newdecls = concat_ok pdeclres in 
       let procres = List.map2 (check_proc tenv) newdecls dmod.procs in
       if List.exists Result.is_error procres then
         concat_errors procres  (* already wraps in result type *)
       else (
-        let newprocs = List.concat_map Result.to_list procres in
+        let newprocs = concat_ok procres in
         (* tricky to check that globals are initialized. For now, just
          * make sure they're initted (direclty) in the init block. *)
         match check_stmt_seq syms tenv dmod.initblock with
@@ -550,5 +581,5 @@ let check_module syms tenv dmod =
            (* TODO: check topmost scope for uninitted globals. *)
            Ok {name=dmod.name; globals=newglobals; procs=newprocs;
                initblock=newblock}
-  )))
+  ))
       
