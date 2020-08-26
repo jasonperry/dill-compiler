@@ -39,22 +39,22 @@ let typetag_to_string tt =
   ^ (if tt.nullable then "?" else "")
 
 (* Class definitions for built-in types, and tags for convenience. *)
-let void_class =  { classname="void"; mut=false; params=[];
+let void_class =  { classname="Void"; mut=false; params=[];
                     implements=[] }
 let void_ttag = {tclass = void_class; paramtypes=[];
                  array=false; nullable=false}
 
-let int_class = {classname="int"; mut=false; params=[];
+let int_class = {classname="Int"; mut=false; params=[];
                  implements=[] } (* later: "Arith" *)
 let int_ttag = {tclass=int_class;
                 paramtypes=[]; array=false; nullable=false}
 
-let bool_class = {classname="bool"; mut=false; params=[];
+let bool_class = {classname="Bool"; mut=false; params=[];
                   implements=[]}
 let bool_ttag = {tclass=bool_class; paramtypes=[]; array=false;
                  nullable=false}
 
-let float_class = {classname="float"; mut=false; params=[];
+let float_class = {classname="Float"; mut=false; params=[];
                    implements=[]}
 let float_ttag = {tclass=float_class; paramtypes=[]; array=false;
                   nullable=false}

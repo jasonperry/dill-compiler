@@ -575,11 +575,19 @@ let check_module syms tenv dmod =
         let newprocs = concat_ok procres in
         (* tricky to check that globals are initialized. For now, just
          * make sure they're initted (direclty) in the init block. *)
-        match check_stmt_seq syms tenv dmod.initblock with
+        let blocksyms = Symtable.new_scope syms in
+        (* Oh, I have to let it initialize globals upward, like with if-then *)
+        match check_stmt_seq blocksyms tenv dmod.initblock with
         | Error errs -> Error errs
         | Ok newblock ->
-           (* TODO: check topmost scope for uninitted globals. *)
-           Ok {name=dmod.name; globals=newglobals; procs=newprocs;
-               initblock=newblock}
+           let global_uninit = StrSet.diff syms.uninit blocksyms.parent_init in
+           if not (StrSet.is_empty global_uninit) then
+             Error (StrSet.fold (fun v strs ->
+                        {loc=(List.hd dmod.initblock).decor; (* fudge *)
+                         value="Uninitialized global variable " ^ v ^ "\n"}
+                        :: strs) global_uninit [])
+           else 
+             Ok {name=dmod.name; globals=newglobals; procs=newprocs;
+                 initblock=newblock}
   ))
       

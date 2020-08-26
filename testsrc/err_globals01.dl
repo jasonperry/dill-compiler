@@ -1,0 +1,9 @@
+
+var x: Int;
+var y: Float; (* = 4.0; *)
+
+begin
+ (*  x = 14; *) (* uninitialized *)
+ (* y = 4.1;   *)
+ var pp = 3;
+end
