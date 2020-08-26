@@ -1,0 +1,5 @@
+var x = 42;
+var y: Float = 33.3;
+var b = False;
+
+(* all initialized, no block needed *)

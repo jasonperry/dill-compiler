@@ -1,0 +1,4 @@
+
+var x: Int;
+var y: Float;
+var z: Bool;

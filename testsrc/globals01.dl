@@ -5,4 +5,5 @@ var y : Float (* = 4.0; *);
 begin
   x = 14;
   y = 2.2;
+  var pp = x + 33;
 end
