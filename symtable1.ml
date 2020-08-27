@@ -31,7 +31,8 @@ type 'a st_entry = {
     symtype: typetag;
     (* when I generate code, will I need a (stack or heap) location? *)
     var: bool;  (* "var" semantics means it can be reassigned. OR
-                 * mutating methods called? *)
+                 * mutating methods called? No, they're different *)
+    (* may_mut: bool; *)
     addr: 'a option
   }
 

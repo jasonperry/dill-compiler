@@ -99,7 +99,7 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
       else if entry.symtype = bool_ttag then bool_type
       else failwith "Unknown type for allocation"
     in
-    print_string ("about to try allocating for " ^ varname ^ "\n");
+    (* print_string ("about to try allocating for " ^ varname ^ "\n"); *)
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     Symtable.set_addr syms varname
@@ -118,8 +118,8 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
      match entry.addr with
      | None -> failwith ("BUG: alloca address not present for " ^ varname)
      | Some alloca ->
-        let store = build_store expval alloca builder in
-        print_string (string_of_llvalue store)
+        ignore (build_store expval alloca builder)
+        (* print_string (string_of_llvalue store) *)
   )
   | StmtReturn _ -> failwith "not implemented"
   | StmtIf (_, _, _, _) -> failwith "not implemented"
@@ -130,10 +130,39 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
 let gen_proc _ _ _ =
   failwith "Not implemented yet"
 
-let gen_module tenv (_, block) =
-  List.iter (gen_stmt tenv) block;
-  (* print_module "./dillout.ll" the_module *)
-  print_string (string_of_llmodule the_module);
+let gen_global_decl tenv stmt =
+  match stmt.st with 
+  | StmtDecl (varname, _, eopt) -> (
+    let syms = stmt.decor in
+    let (entry, _) = Symtable.findvar varname syms in
+    let allocatype =
+      (* I'll need some kind of ttag->llvm type mapping eventually. *)
+      if entry.symtype = int_ttag then int_type
+      else if entry.symtype = float_ttag then float_type
+      else if entry.symtype = bool_ttag then bool_type
+      else failwith "Unknown type for allocation" in
+    let alloca = declare_global allocatype varname the_module in
+    (match eopt with
+     | Some ex ->
+        let gval = gen_expr syms tenv ex in
+        ignore (build_store gval alloca builder)
+     | None -> ());
+    Symtable.set_addr syms varname alloca
+  )
+  | _ -> failwith "BUG: Global statements should be checked to be decls"
+
+let gen_module tenv modtree =
+  (* if there are globals or an init block, create an init procedure *)
+  if modtree.globals <> [] || modtree.initblock <> [] then (
+    let initproc =
+      declare_function "Module.__init"
+        (function_type (void_type context) [|void_type context|])
+        the_module in
+    let bb = append_block context "entry" initproc in
+    position_at_end bb builder; (* now global inits will go there *)
+    List.iter (gen_global_decl tenv) modtree.globals;
+    List.iter (gen_stmt tenv) modtree.initblock;
+    (* print_module "./dillout.ll" the_module *)
+  );
   the_module
-  
-  
+

@@ -187,7 +187,7 @@ opExp:
   | e1=expr MOD e2=expr
     { ExpBinop (e1, OpMod, e2) } 
   | e1=expr PLUS e2=expr
-    { ExpBinop (e1, OpMinus, e2) }
+    { ExpBinop (e1, OpPlus, e2) }
   | e1=expr MINUS e2=expr
     { ExpBinop (e1, OpMinus, e2) }
   | e1=expr BITAND e2=expr
