@@ -310,6 +310,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
           )
   ))
 
+  | StmtNop -> Ok {st=StmtNop; decor=syms}
+
   | StmtReturn eopt -> (
     (* checks that type is return type of the enclosing function, 
      * so check_proc only needs to make sure all paths return. *)
@@ -466,7 +468,7 @@ let rec block_returns stlist =
   | stmt::rest -> (
     match stmt.st with
     | StmtReturn _ -> true
-    | StmtDecl _ | StmtAssign _ | StmtCall _ -> block_returns rest
+    | StmtDecl _ | StmtAssign _ | StmtNop | StmtCall _ -> block_returns rest
     | StmtBlock slist -> block_returns slist || block_returns rest
     | StmtIf (_, thenblk, elsifs, elsblock) -> (
       (* If all paths return, then OK, else must return after. *)

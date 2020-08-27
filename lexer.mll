@@ -77,7 +77,8 @@ rule token = parse  (* funny that it's called parse *)
   | "endloop" { ENDLOOP }
   | "proc"  { PROC }
   | "return" { RETURN }
-  | "True" { TRUE }     (* Is this the place to put built-in names? *)
+  | "nop"   { NOP }
+  | "True"  { TRUE }    (* Is this the place to put built-in names? *)
   | "False" { FALSE }   (* Even if not, bools might be special. *)
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }

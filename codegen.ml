@@ -3,22 +3,17 @@ open Types
 open Symtable1
 open Llvm
 
-(* code to set up IR builder... *)
 exception CodegenError of string
 
-(* Augmented symentry record, with methods to easily add/get? *)
-(* Maybe this is where I could use flex records or some kind of polymorphic 
-   variant. Add new variants to symentry.
-   Or, do it the old-fashioned way and just have a new node type also. *)
-
-(* will I need sub-contexts later? for modules, yes *)
+(* code to set up IR builder. Later can be per-module *)
 let context = global_context()
-let the_module = create_module context "dillout.ll"
-(* builder keeps track of current insert place *)
-let builder = builder context
 let float_type = double_type context
 let int_type = i32_type context
 let bool_type = i1_type context
+
+let the_module = create_module context "dillout.ll"
+(* builder keeps track of current insert place *)
+let builder = builder context
 
 let rec gen_expr syms tenv ex = 
   match ex.e with
@@ -121,6 +116,7 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
         ignore (build_store expval alloca builder)
         (* print_string (string_of_llvalue store) *)
   )
+  | StmtNop -> ()
   | StmtReturn _ -> failwith "not implemented"
   | StmtIf (_, _, _, _) -> failwith "not implemented"
   | StmtWhile (_, _) -> failwith "not implemented"
@@ -156,13 +152,13 @@ let gen_module tenv modtree =
   if modtree.globals <> [] || modtree.initblock <> [] then (
     let initproc =
       declare_function "Module.__init"
-        (function_type (void_type context) [|void_type context|])
+        (function_type (void_type context) [||])
         the_module in
     let bb = append_block context "entry" initproc in
     position_at_end bb builder; (* now global inits will go there *)
     List.iter (gen_global_decl tenv) modtree.globals;
     List.iter (gen_stmt tenv) modtree.initblock;
+    ignore (build_ret_void builder)
     (* print_module "./dillout.ll" the_module *)
   );
   the_module
-

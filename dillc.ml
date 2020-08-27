@@ -54,7 +54,7 @@ let process_module channel =
   match analyzedmod with
   | Error errs -> print_string (format_errors errs)
   | Ok themod ->
-     print_string (module_to_string themod);
+     (* print_string (module_to_string themod); *)
      let modcode = Codegen.gen_module base_tenv themod in 
      Llvm.dump_module modcode  (* prints at top! *) 
 

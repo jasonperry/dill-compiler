@@ -15,7 +15,7 @@
 %token NULLASSIGN
 %token IF THEN ELSIF ELSE ENDIF
 %token WHILE LOOP ENDLOOP
-%token PROC RETURN
+%token PROC RETURN NOP
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -53,7 +53,7 @@ main:  (* TODO: let the init block come before or after. And imports. *)
        initblock=initstmts} }
 
 proc:
-  | pd=procHeader ASSIGN BEGIN sb=stmtSeq END en=procName 
+  | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
     { if pd.pdecl.name = en then
 	{ decor=$loc; proc={decl=pd; body=sb} }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11)
@@ -91,6 +91,7 @@ stmt:
   | st=assignStmt
   | st=ifStmt
   | st=whileStmt
+  | st=nopStmt
   | st=returnStmt
   | st=callStmt
   | st=blockStmt
@@ -105,6 +106,10 @@ declStmt:
 assignStmt:
   | v=varName ASSIGN e=expr SEMI
     { StmtAssign (v, e) }
+
+nopStmt:
+  | NOP SEMI
+    { StmtNop }
 
 returnStmt:
   | RETURN eopt=option(expr) SEMI

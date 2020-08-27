@@ -60,6 +60,7 @@ and 'a expr = { e: 'a raw_expr; decor: 'a }
 type ('a,'b) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'a expr option
   | StmtAssign of string * 'a expr  (* need to make var expr on left? *)
+  | StmtNop
   | StmtReturn of 'a expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
   | StmtIf of 'a expr (* cond *)
@@ -132,6 +133,7 @@ let rec stmt_to_string st =
                     | None -> "")
          ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ exp_to_string e ^ ";\n"
+      | StmtNop -> "nop;\n"
       | StmtReturn (Some e) -> "return " ^ exp_to_string e ^ ";\n"
       | StmtReturn None -> "return;\n"
       | StmtCall e -> exp_to_string e ^ ";\n"
