@@ -10,6 +10,7 @@ let context = global_context()
 let float_type = double_type context
 let int_type = i32_type context
 let bool_type = i1_type context
+let void_type = void_type context
 
 let the_module = create_module context "dillout.ll"
 (* builder keeps track of current insert place *)
@@ -116,11 +117,23 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
         ignore (build_store expval alloca builder)
         (* print_string (string_of_llvalue store) *)
   )
-  | StmtNop -> ()
+  | StmtNop -> () (* will I need to generate so labels work? *)
   | StmtReturn _ -> failwith "not implemented"
   | StmtIf (_, _, _, _) -> failwith "not implemented"
   | StmtWhile (_, _) -> failwith "not implemented"
-  | StmtCall _ -> failwith "not implemented"
+  | StmtCall {decor=_; e=ExpCall (fname, params)} -> (
+    match lookup_function fname the_module with
+    (* assumes function names are unique. this may mean that
+     * procedure entries will need to store a "canonicalized" proc name
+     * (or at least the class name, so it can be generated.) *)
+    | None -> failwith "BUG: unknown function name in codegen"
+    | Some callee ->
+       let args = List.map (gen_expr syms tenv) params
+                  |> Array.of_list in
+       (* instructions returning void cannot have a name *)
+       ignore (build_call callee args "" builder)
+  )
+  | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
   | StmtBlock _ -> failwith "not implemented"
 
 let gen_proc _ _ _ =
@@ -147,12 +160,34 @@ let gen_global_decl tenv stmt =
   )
   | _ -> failwith "BUG: Global statements should be checked to be decls"
 
-let gen_module tenv modtree =
+(** Convert a type tag from the AST into a suitable LLVM type. *)
+let ttag_to_llvmtype ttag =
+  if ttag = void_ttag then void_type
+  else if ttag = int_ttag then int_type
+  else if ttag = float_ttag then float_type
+  else failwith "Unsupported type for procedure"   
+
+(** Generate llvm function decls for a set of procs from the AST. *)
+let gen_fdecls fsyms =
+  StrMap.iter (fun _ procentry ->
+      let rtype = ttag_to_llvmtype procentry.rettype in
+      let params = List.map (fun entry -> ttag_to_llvmtype entry.symtype)
+                     procentry.fparams
+                   |> Array.of_list in
+      ignore (declare_function procentry.procname
+                (function_type (rtype) params) the_module))
+    fsyms
+
+(** Generate code for an entire module. *)
+let gen_module tenv initsyms modtree =
+  (* shouldn't the fsyms be added to the AST already? *)
+  gen_fdecls initsyms.fsyms;
   (* if there are globals or an init block, create an init procedure *)
   if modtree.globals <> [] || modtree.initblock <> [] then (
     let initproc =
-      declare_function "Module.__init"
-        (function_type (void_type context) [||])
+      (* TODO: figure out how to pick a main. *)
+      declare_function "main" (* "Module.__init" *)
+        (function_type (void_type) [||])
         the_module in
     let bb = append_block context "entry" initproc in
     position_at_end bb builder; (* now global inits will go there *)

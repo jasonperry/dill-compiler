@@ -17,45 +17,39 @@ let base_tenv =
   |> StrMap.add float_class.classname float_class
   |> StrMap.add bool_class.classname bool_class
 
-(* Symtable idea: a map for current scope, parent and children nodes *)
-(* how mutable is appropriate? per-scope, it doesn't need to be
- * because it's made from scratch. *)
-(* Need to keep a "handle" to the root one *)
-(* analyzer functions won't search "down" *)
-(* Node has immutable parent pointer and mutable children (child scopes) 
- * list? Functions that create a new scope assign a new list to their scope. *)
+(* Symtable concept: a map for current scope, parent and children nodes *)
 
 (** Symbol table entry type for a variable. *)
-type 'a st_entry = {
+type 'addr st_entry = {
     symname: string;
     symtype: typetag;
     (* when I generate code, will I need a (stack or heap) location? *)
     var: bool;  (* "var" semantics means it can be reassigned. OR
                  * mutating methods called? No, they're different *)
     (* may_mut: bool; *)
-    addr: 'a option
+    addr: 'addr option
   }
 
 (** Symbol table entry type for a procedure. *)
-type 'a st_procentry = {
+type 'addr st_procentry = {
     procname: string;
     rettype: typetag;  (* there's a void typetag *)
     (* could it be just a list of types, no names? but st_entry also
      * has the mutability info, very convenient. *)
-    fparams: 'a st_entry list
+    fparams: 'addr st_entry list
   }
 
 (** Symbol table node that makes a tree data structure. *)
-type 'a st_node = {
+type 'addr st_node = {
     scopedepth: int; (* New idea, just record depth *)
     (* have to make these mutable if I record a new scope under the
      * parent before it's filled. *)
-    mutable syms: 'a st_entry StrMap.t;
-    mutable fsyms: 'a st_procentry StrMap.t;  (* No overloading! *)
-    parent: 'a st_node option; (* root has no parent *)
+    mutable syms: 'addr st_entry StrMap.t;
+    mutable fsyms: 'addr st_procentry StrMap.t;  (* No overloading! *)
+    parent: 'addr st_node option; (* root has no parent *)
     mutable parent_init: StrSet.t; (* vars initialized from higher scope *)
-    in_proc: 'a st_procentry option;
-    mutable children: 'a st_node list;
+    in_proc: 'addr st_procentry option;
+    mutable children: 'addr st_node list;
     mutable uninit: StrSet.t
   }
 
@@ -73,7 +67,7 @@ end *)
 
 module Symtable (* : SYMTABLE *) = struct
 
-  (* I ran up against a generalization error when I made this a value *)
+  (* top-level value can't have unbound type parameter *)
   let make_empty () = {
       scopedepth = 0;
       syms = StrMap.empty;

@@ -1,7 +1,7 @@
 
 (* "Lexing" is the runtime for ocamllex-generated lexers. *)
 open Ast
-
+open Pervasives
 
 (** Format two Lexing.location objects as a string showing the range. *)
 let format_loc (spos: Lexing.position) (epos: Lexing.position) =
@@ -45,21 +45,19 @@ let process_module channel =
          ("At line " ^ format_loc spos epos ^ ": syntax error.\n");
        failwith "Compilation terminated at parsing." 
   in
-  let open Symtable1 in 
+  let open Symtable1 in
+  (* populate top-level symbol table. *)
+  let topsyms : Llvm.llvalue st_node = pervasive_syms () in
   let analyzedmod = Analyzer.check_module
-                      (* Wow, this works? *)
-                      (Symtable.make_empty (): Llvm.llvalue st_node)
+                      topsyms
                       base_tenv
                       parsedmod in
   match analyzedmod with
   | Error errs -> print_string (format_errors errs)
   | Ok themod ->
      (* print_string (module_to_string themod); *)
-     let modcode = Codegen.gen_module base_tenv themod in 
+     let modcode = Codegen.gen_module base_tenv topsyms themod in 
      Llvm.dump_module modcode  (* prints at top! *) 
-
-(* let () =
-  repeat (Lexing.from_channel stdin) *)
 
 let () =
   let infile =

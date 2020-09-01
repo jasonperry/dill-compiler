@@ -1,0 +1,4 @@
+
+begin
+  printInt(42);
+end

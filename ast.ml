@@ -71,7 +71,7 @@ type ('a,'b) raw_stmt =
   | StmtCall of 'a expr  (* have to check the function returns void *)
   | StmtBlock of ('a,'b) stmt list
 
-(** Decorated statement type *)
+(** Decorated statement type ('a is for the decor of embedded exprs) *)
 and ('a,'b) stmt = { st: ('a,'b) raw_stmt; decor: 'b }
 
 (* Note that this doesn't need a decoration type param, it's not recursive. *)
@@ -94,14 +94,11 @@ type ('a,'b) proc = { proc: ('a,'b) raw_proc; decor: 'b }
 
 type ('a,'b) dillmodule = {
     name: string;
+    (* Should I have a 'b symbol table here? so I don't have to dig for it. *)
     globals: ('a, 'b) stmt list;
     procs: ('a,'b) proc list;
     initblock: ('a,'b) stmt list
   }
-
-(* Maybe have a module type too *)
-(*   | globals=list(declStmt) procs=list(proc) block=option(blockStmt) EOF
-    { (globals, procs, block) } *)
 
 (* printing functions start here *)
 
