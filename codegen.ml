@@ -25,7 +25,9 @@ let rec gen_expr syms tenv ex =
   | ExpVar varname -> (
      let (entry, _) = Symtable.findvar varname syms in
      match entry.addr with
-     | None -> failwith ("BUG: alloca address not present for " ^ varname)
+     | None ->
+        (* find it in the params and use the llvalue directly *)
+        failwith ("BUG: alloca address not present for " ^ varname)
      | Some alloca -> build_load alloca varname builder
   )
   | ExpUnop (op, e1) -> (
@@ -79,7 +81,17 @@ let rec gen_expr syms tenv ex =
     else
       failwith "unknown type for binary operation"
   )
-  | ExpCall (_, _) -> failwith "not implemented yet"
+  | ExpCall (fname, params) -> (
+    match lookup_function fname the_module with
+    (* assumes function names are unique. this may mean that
+     * procedure entries will need to store a "canonicalized" proc name
+     * (or at least the class name, so it can be generated.) *)
+    | None -> failwith "BUG: unknown function name in codegen"
+    | Some callee ->
+       let args = List.map (gen_expr syms tenv) params
+                  |> Array.of_list in
+       build_call callee args "calltmp" builder
+  )
   | ExpNullAssn (_, _, _, _) -> failwith "not implemented yet"
 
 let rec gen_stmt tenv (stmt: (_, _) stmt) =
@@ -98,10 +110,14 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
     (* print_string ("about to try allocating for " ^ varname ^ "\n"); *)
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
-    Symtable.set_addr syms varname
+    let blockstart =
+      builder_at context (instr_begin (insertion_block builder)) in
+    let alloca = build_alloca allocatype varname blockstart in 
+    Symtable.set_addr syms varname alloca;
       (* TODO If in a function, will need to build it in entry block,
-       * so it goes in the stack frame *) 
-      (declare_global allocatype varname the_module);
+       * so it goes in the stack frame *)
+      (* BUT, let's just try to alloca it wherever we are? 
+       * No, let's do it in the entry block. shadowing will just work? *)
     match eopt with
     | None -> ()
     | Some initexp ->
@@ -118,7 +134,13 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
         (* print_string (string_of_llvalue store) *)
   )
   | StmtNop -> () (* will I need to generate so labels work? *)
-  | StmtReturn _ -> failwith "not implemented"
+  | StmtReturn eopt -> (
+    match eopt with
+    | None -> ignore (build_ret_void builder)
+    | Some rexp -> 
+       let expval = gen_expr syms tenv rexp in
+       ignore (build_ret expval builder)
+  )
   | StmtIf (_, _, _, _) -> failwith "not implemented"
   | StmtWhile (_, _) -> failwith "not implemented"
   | StmtCall {decor=_; e=ExpCall (fname, params)} -> (
@@ -136,9 +158,7 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
   | StmtBlock _ -> failwith "not implemented"
 
-let gen_proc _ _ _ =
-  failwith "Not implemented yet"
-
+(** generate code for a global variable declaration *)
 let gen_global_decl tenv stmt =
   match stmt.st with 
   | StmtDecl (varname, _, eopt) -> (
@@ -150,10 +170,12 @@ let gen_global_decl tenv stmt =
       else if entry.symtype = float_ttag then float_type
       else if entry.symtype = bool_ttag then bool_type
       else failwith "Unknown type for allocation" in
+    (* I guess declare_global puts at the top automatically? *)
     let alloca = declare_global allocatype varname the_module in
     (match eopt with
      | Some ex ->
         let gval = gen_expr syms tenv ex in
+        (* This assumes builder is positioned correctly. *)
         ignore (build_store gval alloca builder)
      | None -> ());
     Symtable.set_addr syms varname alloca
@@ -175,25 +197,56 @@ let gen_fdecls fsyms =
                      procentry.fparams
                    |> Array.of_list in
       ignore (declare_function procentry.procname
-                (function_type (rtype) params) the_module))
-    fsyms
+                (function_type (rtype) params) the_module)
+    (* set names for arguments and store in symtable addr. 
+     * actually, don't need to store? *)
+    (* print_string ("Generated llvm decl for " ^ procentry.procname ^ "\n") *)
+    ) fsyms  (* returns () *)
+
+(** generate code for a procedure body (its declaration should already
+ * be defined *)
+let gen_proc tenv pr =
+  let fname = pr.proc.decl.pdecl.name in  (* sheesh. *)
+  match lookup_function fname the_module with
+  | None -> failwith "BUG: llvm function lookup failed"
+  | Some func -> (* do I need to prevent redecl here? Think not. *)
+     (* should I define_function here, not add to the existing decl? *)
+     let bb = append_block context "entry" func in
+     position_at_end bb builder;
+     List.iteri (fun i (varname, _) ->
+         (* I need the type of the param *)
+         let entrybuilder =
+           builder_at context (instr_begin (entry_block func)) in
+         let alloca =
+           build_alloca (type_of (param func i)) varname entrybuilder in
+         ignore (build_store (param func i) alloca builder);
+         Symtable.set_addr pr.decor varname alloca
+       ) pr.proc.decl.pdecl.params;
+     List.iter (gen_stmt tenv) (pr.proc.body)
+     (* return void even if already there? *)
+     (* ignore (build_ret_void builder) *)
+     (* if (Symtable.findproc fname pr.decor) *)
+
 
 (** Generate code for an entire module. *)
-let gen_module tenv initsyms modtree =
-  (* shouldn't the fsyms be added to the AST already? *)
-  gen_fdecls initsyms.fsyms;
+let gen_module tenv topsyms modtree =
+  (* Procedures declared in this module should already be here. *)
+  gen_fdecls topsyms.fsyms;
   (* if there are globals or an init block, create an init procedure *)
   if modtree.globals <> [] || modtree.initblock <> [] then (
     let initproc =
       (* TODO: figure out how to pick a main. *)
-      declare_function "main" (* "Module.__init" *)
+      define_function "main" (* "Module.__init" *)
         (function_type (void_type) [||])
         the_module in
-    let bb = append_block context "entry" initproc in
-    position_at_end bb builder; (* now global inits will go there *)
+    (* let bb = append_block context "entry" initproc in *)
+    position_at_end (entry_block initproc) builder; (* global inits will go there *)
     List.iter (gen_global_decl tenv) modtree.globals;
     List.iter (gen_stmt tenv) modtree.initblock;
     ignore (build_ret_void builder)
     (* print_module "./dillout.ll" the_module *)
   );
+  (* generate code for procs - how to associate with syms? 
+   * probably easiest just to use llvm lookup_function after declare *)
+  List.iter (gen_proc tenv) modtree.procs;
   the_module

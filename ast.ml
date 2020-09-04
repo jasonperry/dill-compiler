@@ -44,35 +44,36 @@ type 'a located =
 type typeExpr =
   | TypeName of string  (* module, params, array, null *)
 
-type 'a raw_expr = (* should really probably change to inline records *)
+type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
   | ExpVar of string  (* later a type for pieces of an object expr *)
-  | ExpBinop of 'a expr * binary_op * 'a expr
-  | ExpUnop of unary_op * 'a expr
-  | ExpCall of string * 'a expr list
+  | ExpBinop of 'ed expr * binary_op * 'ed expr
+  | ExpUnop of unary_op * 'ed expr
+  | ExpCall of string * 'ed expr list
   (* the bool is true if declaring a new var *)
-  | ExpNullAssn of bool * string * typeExpr option * 'a expr
+  | ExpNullAssn of bool * string * typeExpr option * 'ed expr
 
 (** Decorated expression type *)
-and 'a expr = { e: 'a raw_expr; decor: 'a }
+and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
 
-type ('a,'b) raw_stmt = 
-  | StmtDecl of string * typeExpr option * 'a expr option
-  | StmtAssign of string * 'a expr  (* need to make var expr on left? *)
+type ('ed,'b) raw_stmt = 
+  | StmtDecl of string * typeExpr option * 'ed expr option
+  | StmtAssign of string * 'ed expr  (* need to make var expr on left? *)
   | StmtNop
-  | StmtReturn of 'a expr option
+  | StmtReturn of 'ed expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
-  | StmtIf of 'a expr (* cond *)
-              * ('a,'b) stmt list (* then block *)
-              * ('a expr * ('a,'b) stmt list) list (* elsif blocks *)
-              * ('a,'b) stmt list option (* else block *)
-  | StmtWhile of 'a expr (* cond *) * ('a, 'b) stmt list (* body *)
-  | StmtCall of 'a expr  (* have to check the function returns void *)
-  | StmtBlock of ('a,'b) stmt list
+  | StmtIf of 'ed expr (* cond *)
+              * ('ed,'b) stmt list (* then block *)
+              * ('ed expr * ('ed,'b) stmt list) list (* elsif blocks *)
+              * ('ed,'b) stmt list option (* else block *)
+  | StmtWhile of 'ed expr (* cond *)
+                 * ('ed, 'b) stmt list (* body *)
+  | StmtCall of 'ed expr  (* have to check the function returns void *)
+  | StmtBlock of ('ed,'b) stmt list
 
 (** Decorated statement type ('a is for the decor of embedded exprs) *)
-and ('a,'b) stmt = { st: ('a,'b) raw_stmt; decor: 'b }
+and ('ed,'sd) stmt = { st: ('ed,'sd) raw_stmt; decor: 'sd }
 
 (* Note that this doesn't need a decoration type param, it's not recursive. *)
 type raw_procdecl = {
@@ -94,7 +95,8 @@ type ('a,'b) proc = { proc: ('a,'b) raw_proc; decor: 'b }
 
 type ('a,'b) dillmodule = {
     name: string;
-    (* Should I have a 'b symbol table here? so I don't have to dig for it. *)
+    (* No, AST should not have a symbol table in it! 
+     * I can keep the top level symbol table with the control function. *)
     globals: ('a, 'b) stmt list;
     procs: ('a,'b) proc list;
     initblock: ('a,'b) stmt list

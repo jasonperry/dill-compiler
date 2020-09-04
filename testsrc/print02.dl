@@ -1,0 +1,3 @@
+begin
+  printFloat(42.1);
+end

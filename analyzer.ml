@@ -484,6 +484,7 @@ let rec block_returns stlist =
        block_returns rest
   )
 
+(** Check a procedure declaration and add it to the given symbol node. *)
 let check_pdecl syms tenv pd =
   let pdecl = pd.pdecl in
   (* check name for redeclaration *)
@@ -513,11 +514,11 @@ let check_pdecl syms tenv pd =
       match check_typeExpr tenv pdecl.rettype with
       | Error msg -> Error [{loc=pd.decor; value=msg}]
       | Ok rttag -> (
-        (* Create procedure symtable entry and add to OUTER scope (recursion). *)
+        (* Create procedure symtable entry and add to OUTER (module) scope. *)
         let procentry =
           {procname=pdecl.name; rettype=rttag; fparams=paramentries} in
         Symtable.addproc syms procentry;
-        (* create new inner scope pointing to procedure entry, and add args *)
+        (* create new inner scope under the procedure, and add args *)
         let procscope = Symtable.new_proc_scope syms procentry in
         List.iter (Symtable.addvar procscope) paramentries;
         Ok {pdecl=pdecl; decor=procscope}
@@ -529,7 +530,8 @@ let check_proc tenv (pd: 'a st_node procdecl) pr =
   match check_stmt_seq procscope tenv pr.proc.body with
   | Error errs -> Error errs
   | Ok newslist ->
-     (* Also need to check that it returns. *) 
+     (* procedure's decoration is its inner symbol table *)
+     (* return check is done afterwards. *)
      Ok {proc={decl=pd; body=newslist}; decor=procscope}
 
 let rec is_const_expr = function

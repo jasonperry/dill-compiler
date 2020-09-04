@@ -28,6 +28,7 @@ type 'addr st_entry = {
                  * mutating methods called? No, they're different *)
     (* may_mut: bool; *)
     addr: 'addr option
+                (* instead of an option, how about an "addr decorated" version *)
   }
 
 (** Symbol table entry type for a procedure. *)
@@ -143,6 +144,9 @@ module Symtable (* : SYMTABLE *) = struct
       | None -> None
     )
 
+  let getproc name nd =
+    StrMap.find name nd.fsyms
+
   (** Create a new nested scope node and return it. *)
   let new_scope nd =
     let newnode = {
@@ -159,7 +163,7 @@ module Symtable (* : SYMTABLE *) = struct
     nd.children <- newnode :: nd.children;
     newnode
 
-  (** Create a scope for a new procedure (sets the procedure context) *)
+  (** Create a scope for a new procedure (sets "in_proc") *)
   let new_proc_scope nd procentry =
     let newnode = {
         scopedepth = nd.scopedepth + 1;
