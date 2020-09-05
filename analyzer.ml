@@ -525,14 +525,14 @@ let check_pdecl syms tenv pd =
   ))
 
 (** Check the body of a procedure whose header has already been checked *)
-let check_proc tenv (pd: 'a st_node procdecl) pr =  
+let check_proc tenv (pd: 'addr st_node procdecl) proc =  
   let procscope = pd.decor in
-  match check_stmt_seq procscope tenv pr.proc.body with
+  match check_stmt_seq procscope tenv proc.body with
   | Error errs -> Error errs
   | Ok newslist ->
      (* procedure's decoration is its inner symbol table *)
      (* return check is done afterwards. *)
-     Ok {proc={decl=pd; body=newslist}; decor=procscope}
+     Ok {decl=pd; body=newslist; decor=procscope}
 
 let rec is_const_expr = function
     (* if true, I could eval and replace it in the AST. But...
@@ -565,7 +565,7 @@ let check_module syms tenv dmod =
     concat_errors globalres
   else
     let newglobals = concat_ok globalres in 
-    let pdeclres = List.map (fun pr -> check_pdecl syms tenv pr.proc.decl)
+    let pdeclres = List.map (fun proc -> check_pdecl syms tenv proc.decl)
                      dmod.procs in
     if List.exists Result.is_error pdeclres then
       (* check_proc errors are a list of string locateds. *)

@@ -1,0 +1,25 @@
+proc isEven(x: Int) : Bool =
+  if (x == 0) then
+    return True;
+  else
+    return isOdd(x-1);
+  endif
+  return False; (* unreachable - stopgap to satisfy LLVM *)
+end isEven
+
+proc isOdd(x: Int) : Bool =
+  if (x == 0) then
+    return False;
+  else
+    return isEven(x-1);
+  endif
+  return False;
+end isOdd
+
+begin
+if (isEven(42)) then
+  printInt(0);  (* temp substitute for printBool *)
+else
+  printInt(1);
+endif
+end

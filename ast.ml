@@ -57,20 +57,20 @@ type 'ed raw_expr = (* should really probably change to inline records *)
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
 
-type ('ed,'b) raw_stmt = 
+type ('ed,'sd) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'ed expr option
   | StmtAssign of string * 'ed expr  (* need to make var expr on left? *)
   | StmtNop
   | StmtReturn of 'ed expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
   | StmtIf of 'ed expr (* cond *)
-              * ('ed,'b) stmt list (* then block *)
-              * ('ed expr * ('ed,'b) stmt list) list (* elsif blocks *)
-              * ('ed,'b) stmt list option (* else block *)
+              * ('ed,'sd) stmt list (* then block *)
+              * ('ed expr * ('ed,'sd) stmt list) list (* elsif blocks *)
+              * ('ed,'sd) stmt list option (* else block *)
   | StmtWhile of 'ed expr (* cond *)
-                 * ('ed, 'b) stmt list (* body *)
+                 * ('ed, 'sd) stmt list (* body *)
   | StmtCall of 'ed expr  (* have to check the function returns void *)
-  | StmtBlock of ('ed,'b) stmt list
+  | StmtBlock of ('ed,'sd) stmt list
 
 (** Decorated statement type ('a is for the decor of embedded exprs) *)
 and ('ed,'sd) stmt = { st: ('ed,'sd) raw_stmt; decor: 'sd }
@@ -84,14 +84,12 @@ type raw_procdecl = {
   }
 (* I thought about removing the decoration from the decl, but it can
  * stand on its own in an interface file, so I guess it needs it. *)
-and 'a procdecl = { pdecl: raw_procdecl; decor: 'a;  }
+and 'sd procdecl = { pdecl: raw_procdecl; decor: 'sd;  }
 
-type ('a,'b) raw_proc = {
-    decl: 'b procdecl;
-    body: ('a,'b) stmt list
-  }
-
-type ('a,'b) proc = { proc: ('a,'b) raw_proc; decor: 'b }
+type ('ed,'sd) proc = {
+    decl: 'sd procdecl;
+    body: ('ed,'sd) stmt list;
+    decor: 'sd }
 
 type ('a,'b) dillmodule = {
     name: string;
@@ -162,11 +160,11 @@ and if_to_string (e, tb, eifs, els) =
 
 (* let interpret_params plist =  *)
 
-let proc_to_string pr =
+let proc_to_string proc =
   (* a little ugly, but maybe I will use the pdecl later. *)
-  let pdecl = pr.proc.decl.pdecl in
+  let pdecl = proc.decl.pdecl in
   "proc " ^ pdecl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
-  ^ block_to_string pr.proc.body
+  ^ block_to_string proc.body
   ^ "\nendproc\n"
 
 let module_to_string dmod =

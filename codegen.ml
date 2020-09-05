@@ -92,7 +92,8 @@ let rec gen_expr syms tenv ex =
                   |> Array.of_list in
        build_call callee args "calltmp" builder
   )
-  | ExpNullAssn (_, _, _, _) -> failwith "not implemented yet"
+  | ExpNullAssn (_, _, _, _) ->
+     failwith "BUG: null assign found outside condition"
 
 let rec gen_stmt tenv (stmt: (_, _) stmt) =
   let syms = stmt.decor in
@@ -141,7 +142,44 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
        let expval = gen_expr syms tenv rexp in
        ignore (build_ret expval builder)
   )
-  | StmtIf (_, _, _, _) -> failwith "not implemented"
+  | StmtIf (cond, thenblock, _, elsopt) -> (
+    let condres = 
+      match cond.e with
+      | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
+         (* if it's a null-assignment, set the var's addr in thenblock's syms *)
+         failwith "Null assignment not implemented yet"
+      | _ -> gen_expr syms tenv cond
+    in
+    (* Maybe I don't need this, could just use the i1 value in the branch. *)
+    (* let one = const_int bool_type 1 in
+     * let condval = build_icmp Icmp.Eq condres one "ifcond" builder in *)
+    (* wonder if it's easier to make the elsif blocks nested. *)
+    let start_bb = insertion_block builder in
+    let outer_bb = block_parent start_bb in
+    let then_bb = append_block context "then" outer_bb in
+    position_at_end then_bb builder;
+    List.iter (gen_stmt tenv) thenblock;
+    let new_then_bb = insertion_block builder in
+    (* generating dummy else block regardless. *)
+    let else_bb = append_block context "else" outer_bb in
+    position_at_end else_bb builder;
+    (match elsopt with
+     | Some elseblock ->
+        List.iter (gen_stmt tenv) elseblock
+     | None -> ());
+    let new_else_bb = insertion_block builder in
+    let merge_bb = append_block context "ifcont" outer_bb in
+    (* kaleidoscope inserts the phi here *)
+    (* position_at_end merge_bb builder; *)
+    position_at_end start_bb builder;
+    ignore(build_cond_br condres then_bb else_bb builder);
+    (* add unconditional jumps at end of blocks *)
+    position_at_end new_then_bb builder;
+    ignore (build_br merge_bb builder);
+    position_at_end new_else_bb builder;
+    ignore (build_br merge_bb builder);
+    position_at_end merge_bb builder
+  )
   | StmtWhile (_, _) -> failwith "not implemented"
   | StmtCall {decor=_; e=ExpCall (fname, params)} -> (
     match lookup_function fname the_module with
@@ -187,6 +225,7 @@ let ttag_to_llvmtype ttag =
   if ttag = void_ttag then void_type
   else if ttag = int_ttag then int_type
   else if ttag = float_ttag then float_type
+  else if ttag = bool_ttag then bool_type
   else failwith "Unsupported type for procedure"   
 
 (** Generate llvm function decls for a set of procs from the AST. *)
@@ -205,8 +244,8 @@ let gen_fdecls fsyms =
 
 (** generate code for a procedure body (its declaration should already
  * be defined *)
-let gen_proc tenv pr =
-  let fname = pr.proc.decl.pdecl.name in  (* sheesh. *)
+let gen_proc tenv proc =
+  let fname = proc.decl.pdecl.name in  (* sheesh. *)
   match lookup_function fname the_module with
   | None -> failwith "BUG: llvm function lookup failed"
   | Some func -> (* do I need to prevent redecl here? Think not. *)
@@ -220,9 +259,9 @@ let gen_proc tenv pr =
          let alloca =
            build_alloca (type_of (param func i)) varname entrybuilder in
          ignore (build_store (param func i) alloca builder);
-         Symtable.set_addr pr.decor varname alloca
-       ) pr.proc.decl.pdecl.params;
-     List.iter (gen_stmt tenv) (pr.proc.body)
+         Symtable.set_addr proc.decor varname alloca
+       ) proc.decl.pdecl.params;
+     List.iter (gen_stmt tenv) (proc.body)
      (* return void even if already there? *)
      (* ignore (build_ret_void builder) *)
      (* if (Symtable.findproc fname pr.decor) *)

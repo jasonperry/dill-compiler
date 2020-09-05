@@ -1,0 +1,16 @@
+(* if/else test, conditional assignment *)
+
+begin
+
+var x = 11;
+var y: Float;
+
+if (x == 11) then
+  y = 11.0;
+else
+  y = 10.0;
+endif
+
+printFloat(y);
+
+end

@@ -55,7 +55,7 @@ main:  (* TODO: let the init block come before or after. And imports. *)
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
     { if pd.pdecl.name = en then
-	{ decor=$loc; proc={decl=pd; body=sb} }
+	{ decor=$loc; decl=pd; body=sb }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11)
              * (or wait for a hand-rolled parser? *)
 	$syntaxerror
