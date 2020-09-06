@@ -246,6 +246,10 @@ let gen_fdecls fsyms =
  * be defined *)
 let gen_proc tenv proc =
   let fname = proc.decl.pdecl.name in  (* sheesh. *)
+  let fentry = match Symtable.findproc fname proc.decor with
+    (* Maybe it's okay that the function name is in a parent scope. *)
+    | None -> failwith "BUG: function not defined"
+    | Some (procentry, _) -> procentry in
   match lookup_function fname the_module with
   | None -> failwith "BUG: llvm function lookup failed"
   | Some func -> (* do I need to prevent redecl here? Think not. *)
@@ -263,9 +267,14 @@ let gen_proc tenv proc =
          Symtable.set_addr proc.decor varname alloca
        ) proc.decl.pdecl.params;
      List.iter (gen_stmt tenv) (proc.body);
-     (* would like to test if last instruction is a return *)
-     (* but the dummy branch seems to work fine! *)
-     ignore (build_br entry_bb builder)
+     (* If it doesn't end in a terminator, add either a void return or a 
+      * dummy branch. *)
+     if Option.is_none (block_terminator (insertion_block builder)) then
+       (* if return_type (type_of func) = void_type then *)
+       if fentry.rettype = void_ttag then
+         ignore (build_ret_void builder)
+       else 
+         ignore (build_br entry_bb builder)
 
 
 (** Generate code for an entire module. *)

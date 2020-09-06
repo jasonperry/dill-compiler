@@ -40,15 +40,13 @@ type 'addr st_procentry = {
     fparams: 'addr st_entry list
   }
 
-(** Symbol table node that makes a tree data structure. *)
+(** Symbol table tree node for a single scope *)
 type 'addr st_node = {
-    scopedepth: int; (* New idea, just record depth *)
-    (* have to make these mutable if I record a new scope under the
-     * parent before it's filled. *)
+    scopedepth: int; (* Just keeping the depth should be enough *)
     mutable syms: 'addr st_entry StrMap.t;
     mutable fsyms: 'addr st_procentry StrMap.t;  (* No overloading! *)
     parent: 'addr st_node option; (* root has no parent *)
-    mutable parent_init: StrSet.t; (* vars initialized from higher scope *)
+    mutable parent_init: StrSet.t; (* vars from higher scope that are initted *)
     in_proc: 'addr st_procentry option;
     mutable children: 'addr st_node list;
     mutable uninit: StrSet.t
@@ -144,6 +142,7 @@ module Symtable (* : SYMTABLE *) = struct
       | None -> None
     )
 
+  (** For codegen. Get a proc's symtable entry when it must exist. *)
   let getproc name nd =
     StrMap.find name nd.fsyms
 

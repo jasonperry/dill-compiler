@@ -1,0 +1,13 @@
+(* self-recursive function *)
+
+proc fac(n: Int) : Int =
+  if (n == 0) then
+    return 1;
+  else
+    return n * fac(n-1);
+  endif
+end fac
+
+begin
+  printInt(fac(6));
+end
