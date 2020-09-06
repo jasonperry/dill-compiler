@@ -250,10 +250,11 @@ let gen_proc tenv proc =
   | None -> failwith "BUG: llvm function lookup failed"
   | Some func -> (* do I need to prevent redecl here? Think not. *)
      (* should I define_function here, not add to the existing decl? *)
-     let bb = append_block context "entry" func in
-     position_at_end bb builder;
+     let entry_bb = append_block context "entry" func in
+     position_at_end entry_bb builder;
+     (* create storage for all params (needed for uniformity in
+      * codegen for vars. *)
      List.iteri (fun i (varname, _) ->
-         (* I need the type of the param *)
          let entrybuilder =
            builder_at context (instr_begin (entry_block func)) in
          let alloca =
@@ -261,10 +262,10 @@ let gen_proc tenv proc =
          ignore (build_store (param func i) alloca builder);
          Symtable.set_addr proc.decor varname alloca
        ) proc.decl.pdecl.params;
-     List.iter (gen_stmt tenv) (proc.body)
-     (* return void even if already there? *)
-     (* ignore (build_ret_void builder) *)
-     (* if (Symtable.findproc fname pr.decor) *)
+     List.iter (gen_stmt tenv) (proc.body);
+     (* would like to test if last instruction is a return *)
+     (* but the dummy branch seems to work fine! *)
+     ignore (build_br entry_bb builder)
 
 
 (** Generate code for an entire module. *)
@@ -278,7 +279,7 @@ let gen_module tenv topsyms modtree =
       define_function "main" (* "Module.__init" *)
         (function_type (void_type) [||])
         the_module in
-    (* let bb = append_block context "entry" initproc in *)
+    (* let entry_bb = append_block context "entry" initproc in *)
     position_at_end (entry_block initproc) builder; (* global inits will go there *)
     List.iter (gen_global_decl tenv) modtree.globals;
     List.iter (gen_stmt tenv) modtree.initblock;

@@ -4,22 +4,23 @@ proc isEven(x: Int) : Bool =
   else
     return isOdd(x-1);
   endif
-  return False; (* unreachable - stopgap to satisfy LLVM *)
+  (* return False; (* unreachable - stopgap to satisfy LLVM *) *)
 end isEven
 
 proc isOdd(x: Int) : Bool =
   if (x == 0) then
     return False;
   else
+    printInt(x);
     return isEven(x-1);
   endif
-  return False;
+  (* return False; *)
 end isOdd
 
 begin
 if (isEven(42)) then
-  printInt(0);  (* temp substitute for printBool *)
+  printInt(3734);  (* temp substitute for printBool *)
 else
-  printInt(1);
+  printInt(033);
 endif
 end
