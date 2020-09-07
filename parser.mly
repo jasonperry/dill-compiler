@@ -22,8 +22,9 @@
 %left OR
 %left AND
 %left EQ NE LT LE GE
+%left BITAND BITOR BITXOR
 %left PLUS MINUS
-%left TIMES DIV
+%left TIMES DIV MOD
 %nonassoc UMINUS
 %nonassoc BITNOT
 %nonassoc NOT

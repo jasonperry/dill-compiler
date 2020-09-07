@@ -30,17 +30,19 @@ let format_errors elist =
 (** Run as many phases as we have on one module. *)
 let process_module channel =
   let buf = Lexing.from_channel channel in
-  let parsedmod = try
+  let parsedmod =
+    let open Lexing in 
+    try
       Parser.main Lexer.token buf
     with
     | Lexer.Error msg ->
-       let spos, epos = (Lexing.lexeme_start_p buf, Lexing.lexeme_end_p buf) in
+       let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
        print_string
          ("At line " ^ format_loc spos epos ^ ": lexical error:\n    "
           ^ msg ^ "\n");
        failwith "Compilation terminated at lexing."
     | Parser.Error ->
-       let spos, epos = (Lexing.lexeme_start_p buf, Lexing.lexeme_end_p buf) in
+       let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
        print_string
          ("At line " ^ format_loc spos epos ^ ": syntax error.\n");
        failwith "Compilation terminated at parsing." 
@@ -48,10 +50,7 @@ let process_module channel =
   let open Symtable1 in
   (* populate top-level symbol table. *)
   let topsyms : Llvm.llvalue st_node = pervasive_syms () in
-  let analyzedmod = Analyzer.check_module
-                      topsyms
-                      base_tenv
-                      parsedmod in
+  let analyzedmod = Analyzer.check_module topsyms base_tenv parsedmod in
   match analyzedmod with
   | Error errs -> print_string (format_errors errs)
   | Ok themod ->

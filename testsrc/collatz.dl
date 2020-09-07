@@ -4,7 +4,7 @@ proc collatz(n: Int) : Int =
   var count = 0;
   printInt(i);
   while (i != 1) loop
-    if ((i % 2) == 0) then  (* precedence still not working *)
+    if (i % 2 == 0) then
       i = i / 2;
     else
       i = 3*i + 1;
