@@ -172,7 +172,8 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
     (* kaleidoscope inserts the phi here *)
     (* position_at_end merge_bb builder; *)
     position_at_end start_bb builder;
-    ignore(build_cond_br condres then_bb else_bb builder);
+    (* Still loop to the /original/ then block! *)
+    ignore (build_cond_br condres then_bb else_bb builder);
     (* add unconditional jumps at end of blocks *)
     position_at_end new_then_bb builder;
     ignore (build_br merge_bb builder);
@@ -180,7 +181,31 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
     ignore (build_br merge_bb builder);
     position_at_end merge_bb builder
   )
-  | StmtWhile (_, _) -> failwith "not implemented"
+  | StmtWhile (cond, body) -> (
+    (* test block, loop block, afterloop block. *)
+    let the_function = block_parent (insertion_block builder) in 
+    let test_bb = append_block context "test" the_function in
+    (* jump from current block into this one *)
+    ignore (build_br test_bb builder);
+    (* insert code in test block to compute condition (put test in later) *)
+    position_at_end test_bb builder;
+    let condres = match cond.e with
+      | ExpNullAssn (_,_,_,_) -> failwith "null assign not yet implemented"
+      | _ -> gen_expr syms tenv cond in
+    (* Create loop block and fill it in *)
+    let loop_bb = append_block context "loop" the_function in
+    position_at_end loop_bb builder;
+    List.iter (gen_stmt tenv) body;
+    (* add unconditional jump back to test *)
+    let new_loop_bb = insertion_block builder in (* don't need? *)
+    position_at_end new_loop_bb builder;         (* is it there already? *)
+    ignore (build_br test_bb builder);
+    let merge_bb = append_block context "afterloop" the_function in
+    (* Now, add the conditional branch in the test block. *)
+    position_at_end test_bb builder;
+    ignore (build_cond_br condres loop_bb merge_bb builder);
+    position_at_end merge_bb builder    
+  )
   | StmtCall {decor=_; e=ExpCall (fname, params)} -> (
     match lookup_function fname the_module with
     (* assumes function names are unique. this may mean that
@@ -289,7 +314,7 @@ let gen_module tenv topsyms modtree =
         (function_type (void_type) [||])
         the_module in
     (* let entry_bb = append_block context "entry" initproc in *)
-    position_at_end (entry_block initproc) builder; (* global inits will go there *)
+    position_at_end (entry_block initproc) builder; (* global inits go there *)
     List.iter (gen_global_decl tenv) modtree.globals;
     List.iter (gen_stmt tenv) modtree.initblock;
     ignore (build_ret_void builder)

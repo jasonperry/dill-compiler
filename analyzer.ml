@@ -1,4 +1,5 @@
-(** Semantic analyzer: check for errors and build type-decorated AST *)
+(** Semantic analyzer: check for errors and build type- and scope- 
+  * decorated AST *)
 
 open Types
 open Ast
@@ -335,7 +336,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
          | Ok ({e=_; decor=ettag} as te) -> (
            if ettag <> inproc.rettype then
              Error [{loc=stm.decor;
-                     value="Wrong return type "
+                     value="Wrong return type: "
                            ^ typetag_to_string ettag ^ ", needed "
                            ^ typetag_to_string inproc.rettype}]
            else Ok {st=StmtReturn (Some te); decor=syms}

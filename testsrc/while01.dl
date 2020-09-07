@@ -1,11 +1,17 @@
-var i: int = 14;
 
-while (i > 0) loop
-  var j = 2*i+1;
+begin 
+
+var i = 14;
+var j: Int = 0;
+
+while (i != 0) loop
+  j = 2*i+1;  (* declaring j each time through eats memory. Not good.
+               * could the LLVM optimizer fix it? *)
+  printInt(i);
   i = i - 1;
 endloop
 
-if (i > 0) then
-  while (j > i) loop
-    j = j + 1;
-endloop endif
+printInt(i);
+printInt(j);
+
+end
