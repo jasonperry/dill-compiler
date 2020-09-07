@@ -1,0 +1,19 @@
+begin
+
+var i = 42;
+
+if (i == 10) then
+  i = 11;
+  printInt(i);
+elsif (i == 19) then
+  i = 15;
+  printInt(i);
+elsif (i == 42) then
+  i = 22;
+  printInt(i);    (* this should be it *)
+else
+  i = 33;
+  printInt(i);
+endif
+
+end

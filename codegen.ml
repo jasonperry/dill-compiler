@@ -16,7 +16,7 @@ let the_module = create_module context "dillout.ll"
 (* builder keeps track of current insert place *)
 let builder = builder context
 
-let rec gen_expr syms tenv ex = 
+let rec gen_expr syms tenv (ex: typetag expr) = 
   match ex.e with
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
@@ -95,7 +95,7 @@ let rec gen_expr syms tenv ex =
   | ExpNullAssn (_, _, _, _) ->
      failwith "BUG: null assign found outside condition"
 
-let rec gen_stmt tenv (stmt: (_, _) stmt) =
+let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
   let syms = stmt.decor in
   (* later: look up types in tenv *)
   match stmt.st with
@@ -142,7 +142,7 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
        let expval = gen_expr syms tenv rexp in
        ignore (build_ret expval builder)
   )
-  | StmtIf (cond, thenblock, _, elsopt) -> (
+  | StmtIf (cond, thenblock, elsifs, elsopt) -> (
     let condres = 
       match cond.e with
       | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
@@ -155,28 +155,64 @@ let rec gen_stmt tenv (stmt: (_, _) stmt) =
      * let condval = build_icmp Icmp.Eq condres one "ifcond" builder in *)
     (* wonder if it's easier to make the elsif blocks nested. *)
     let start_bb = insertion_block builder in
-    let outer_bb = block_parent start_bb in
-    let then_bb = append_block context "then" outer_bb in
+    let the_function = block_parent start_bb in
+    let then_bb = append_block context "then" the_function in
     position_at_end then_bb builder;
     List.iter (gen_stmt tenv) thenblock;
     let new_then_bb = insertion_block builder in
+    (* elsif generating code *)
+    let gen_elsif (cond, block) =
+      (* however, need to insert conditional jump and jump-to-merge later *)
+      let cond_bb = append_block context "elsifcond" the_function in
+      position_at_end cond_bb builder;
+      let condres = 
+        match cond.e with
+        | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
+           (* if it's a null-assignment, set the var's addr in thenblock's syms *)
+           failwith "Null assignment not implemented yet"
+        | _ -> gen_expr syms tenv cond in
+      let then_bb = append_block context "elsifthen" the_function in
+      position_at_end then_bb builder;
+      List.iter (gen_stmt tenv) block;
+      (condres, cond_bb, then_bb, insertion_block builder) (* for jumps *)
+    in
+    let elsif_blocks = List.map gen_elsif elsifs in
     (* generating dummy else block regardless. *)
-    let else_bb = append_block context "else" outer_bb in
+    let else_bb = append_block context "else" the_function in
     position_at_end else_bb builder;
     (match elsopt with
      | Some elseblock ->
         List.iter (gen_stmt tenv) elseblock
      | None -> ());
     let new_else_bb = insertion_block builder in
-    let merge_bb = append_block context "ifcont" outer_bb in
+    let merge_bb = append_block context "ifcont" the_function in
     (* kaleidoscope inserts the phi here *)
     (* position_at_end merge_bb builder; *)
     position_at_end start_bb builder;
     (* Still loop to the /original/ then block! *)
-    ignore (build_cond_br condres then_bb else_bb builder);
-    (* add unconditional jumps at end of blocks *)
+    let firstelse =
+      match elsif_blocks with
+      | [] -> else_bb
+      | (_, condblk, _, _) :: _ -> condblk in
+    ignore (build_cond_br condres then_bb firstelse builder);
     position_at_end new_then_bb builder;
     ignore (build_br merge_bb builder);
+    (* add conditional and unconditional jumps between elsif blocks *)
+    let rec add_elsif_jumps = function
+      | [] -> ()
+      | (condres, condblk, thenblk, endblk) :: rest ->
+         position_at_end condblk builder;
+         (match rest with
+          | [] ->
+             ignore (build_cond_br condres thenblk else_bb builder);
+          | (_, nextblk, _, _) :: _ -> 
+             ignore (build_cond_br condres thenblk nextblk builder);
+         );
+         position_at_end endblk builder;
+         ignore (build_br merge_bb builder);
+         add_elsif_jumps rest
+    in
+    add_elsif_jumps elsif_blocks;
     position_at_end new_else_bb builder;
     ignore (build_br merge_bb builder);
     position_at_end merge_bb builder
