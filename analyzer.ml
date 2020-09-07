@@ -486,12 +486,11 @@ let rec block_returns stlist =
   )
 
 (** Check a procedure declaration and add it to the given symbol node. *)
-let check_pdecl syms tenv pd =
-  let pdecl = pd.pdecl in
+let check_pdecl syms tenv (pdecl: 'loc procdecl) =
   (* check name for redeclaration *)
   match Symtable.findproc pdecl.name syms with
   | Some (_, scope) when syms.scopedepth = scope ->
-     Error [{loc=pd.decor; value="Redeclaration of procedure " ^ pdecl.name}]
+     Error [{loc=pdecl.decor; value="Redeclaration of procedure " ^ pdecl.name}]
   | _ -> (
     let argchecks = List.map (fun (_, texp) -> check_typeExpr tenv texp)
                       pdecl.params in
@@ -500,7 +499,7 @@ let check_pdecl syms tenv pd =
         List.concat_map (
             fun r -> match r with
                      | Ok _ -> []
-                     | Error msg -> [{loc=pd.decor; value=msg}]
+                     | Error msg -> [{loc=pdecl.decor; value=msg}]
           ) argchecks
       in Error errs
     else
@@ -513,7 +512,7 @@ let check_pdecl syms tenv pd =
                {symname = paramname; symtype=ttag; var=false; addr=None}
           ) pdecl.params argchecks in
       match check_typeExpr tenv pdecl.rettype with
-      | Error msg -> Error [{loc=pd.decor; value=msg}]
+      | Error msg -> Error [{loc=pdecl.decor; value=msg}]
       | Ok rttag -> (
         (* Create procedure symtable entry and add to OUTER (module) scope. *)
         let procentry =
@@ -524,7 +523,8 @@ let check_pdecl syms tenv pd =
         let procscope = Symtable.new_proc_scope syms procentry in
         Symtable.addproc procscope procentry;
         List.iter (Symtable.addvar procscope) paramentries;
-        Ok {pdecl=pdecl; decor=procscope}
+        Ok {name=pdecl.name; params=pdecl.params;
+            rettype=pdecl.rettype; decor=procscope}
   ))
 
 (** Check the body of a procedure whose header has already been checked *)
@@ -535,10 +535,10 @@ let check_proc tenv (pdecl: 'addr st_node procdecl) proc =
   | Ok newslist ->
      (* procedure's decoration is its inner symbol table *)
      (* return check is done afterwards. No it's not, what's up? *)
-     let rettype = (Symtable.getproc pdecl.pdecl.name procscope).rettype in
+     let rettype = (Symtable.getproc pdecl.name procscope).rettype in
      if rettype <> void_ttag && not (block_returns proc.body) then 
        Error [{loc=proc.decor;
-               value="Non-void procedure " ^ pdecl.pdecl.name
+               value="Non-void procedure " ^ pdecl.name
                      ^ " may not return a value"}]
      else
        Ok {decl=pdecl; body=newslist; decor=procscope}

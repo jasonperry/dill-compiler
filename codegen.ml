@@ -314,10 +314,9 @@ let gen_fdecls fsyms =
 (** generate code for a procedure body (its declaration should already
  * be defined *)
 let gen_proc tenv proc =
-  let fname = proc.decl.pdecl.name in  (* sheesh. *)
+  let fname = proc.decl.name in
   (* procedure is now defined in its own scope, so "getproc" *)
   let fentry = Symtable.getproc fname proc.decor in (* with
-    (* Maybe it's okay that the function name is in a parent scope. *)
     | None -> failwith "BUG: function not defined"
     | Some (procentry, _) -> procentry in *)
   match lookup_function fname the_module with
@@ -335,7 +334,7 @@ let gen_proc tenv proc =
            build_alloca (type_of (param func i)) varname entrybuilder in
          ignore (build_store (param func i) alloca builder);
          Symtable.set_addr proc.decor varname alloca
-       ) proc.decl.pdecl.params;
+       ) proc.decl.params;
      List.iter (gen_stmt tenv) (proc.body);
      (* If it doesn't end in a terminator, add either a void return or a 
       * dummy branch. *)
@@ -363,9 +362,6 @@ let gen_module tenv topsyms modtree =
     List.iter (gen_global_decl tenv) modtree.globals;
     List.iter (gen_stmt tenv) modtree.initblock;
     ignore (build_ret_void builder)
-    (* print_module "./dillout.ll" the_module *)
   );
-  (* generate code for procs - how to associate with syms? 
-   * probably easiest just to use llvm lookup_function after declare *)
   List.iter (gen_proc tenv) modtree.procs;
   the_module

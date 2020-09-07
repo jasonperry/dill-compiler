@@ -34,6 +34,7 @@
 
 %type <Ast.locinfo Ast.expr> expr
 %type <(Ast.locinfo, Ast.locinfo) Ast.stmt> stmt
+%type <Ast.locinfo Ast.procdecl> procHeader
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
 (* Thinking of eventually allowing multiple modules/file. *)
 %start <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> main
@@ -54,7 +55,7 @@ main:  (* TODO: let the init block come before or after. And imports. *)
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
-    { if pd.pdecl.name = en then
+    { if pd.name = en then
 	{ decor=$loc; decl=pd; body=sb }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11)
              * (or wait for a hand-rolled parser? *)
@@ -64,7 +65,7 @@ proc:
 procHeader:
   | PROC pn=procName LPAREN pl=paramList RPAREN COLON rt=typeExp
     (* construct declaration object! Good idea! *)
-    { { decor=$loc; pdecl={name=pn; params=pl; rettype=rt} } }
+    { { decor=$loc; name=pn; params=pl; rettype=rt } }
 
 procName:
   (* TODO: A method needs a dot or an arrow. *)

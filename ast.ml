@@ -75,29 +75,28 @@ type ('ed,'sd) raw_stmt =
 (** Decorated statement type ('a is for the decor of embedded exprs) *)
 and ('ed,'sd) stmt = { st: ('ed,'sd) raw_stmt; decor: 'sd }
 
-(* Note that this doesn't need a decoration type param, it's not recursive. *)
-type raw_procdecl = {
+(* I thought about removing the decoration from the decl, but it can
+ * stand on its own in an interface file, so I guess it needs it. *)
+type 'sd procdecl = {
     name: string;
     (* One could imagine removing the typeExprs after analysis. *)
     params: (string * typeExpr) list;
-    rettype: typeExpr
+    rettype: typeExpr;
+    decor: 'sd;
   }
-(* I thought about removing the decoration from the decl, but it can
- * stand on its own in an interface file, so I guess it needs it. *)
-and 'sd procdecl = { pdecl: raw_procdecl; decor: 'sd;  }
 
 type ('ed,'sd) proc = {
     decl: 'sd procdecl;
     body: ('ed,'sd) stmt list;
     decor: 'sd }
 
-type ('a,'b) dillmodule = {
+type ('ed,'sd) dillmodule = {
     name: string;
     (* No, AST should not have a symbol table in it! 
      * I can keep the top level symbol table with the control function. *)
-    globals: ('a, 'b) stmt list;
-    procs: ('a,'b) proc list;
-    initblock: ('a,'b) stmt list
+    globals: ('ed, 'sd) stmt list;
+    procs: ('ed,'sd) proc list;
+    initblock: ('ed,'sd) stmt list
   }
 
 (* printing functions start here *)
@@ -162,8 +161,7 @@ and if_to_string (e, tb, eifs, els) =
 
 let proc_to_string proc =
   (* a little ugly, but maybe I will use the pdecl later. *)
-  let pdecl = proc.decl.pdecl in
-  "proc " ^ pdecl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
+  "proc " ^ proc.decl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
   ^ block_to_string proc.body
   ^ "\nendproc\n"
 
