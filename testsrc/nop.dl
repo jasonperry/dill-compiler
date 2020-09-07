@@ -1,0 +1,11 @@
+begin
+
+var x = 44;
+
+if (x < 50) then
+  nop;
+else
+  printInt(x);
+endif
+
+end

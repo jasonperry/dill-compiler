@@ -1,0 +1,22 @@
+
+proc collatz(n: Int) : Int =
+  var i = n;
+  var count = 0;
+  printInt(i);
+  while (i != 1) loop
+    if ((i % 2) == 0) then  (* precedence still not working *)
+      i = i / 2;
+    else
+      i = 3*i + 1;
+    endif
+    count = count + 1;
+    printInt(i);
+  endloop
+  return count;  (* didn't detect failure to return *)
+end collatz
+
+begin
+
+printInt(collatz(12));
+
+end

@@ -61,8 +61,16 @@ let rec gen_expr syms tenv (ex: typetag expr) =
       | OpDiv -> build_sdiv e1val e2val "sdivtemp" builder
       | OpPlus -> build_add e1val e2val "iaddtemp" builder
       | OpMinus -> build_sub e1val e2val "isubtemp" builder
+      | OpMod -> build_srem e1val e2val "modtemp" builder
       | OpEq -> build_icmp Icmp.Eq e1val e2val "ieqtemp" builder
       | OpNe -> build_icmp Icmp.Ne e1val e2val "inetemp" builder
+      | OpLt -> build_icmp Icmp.Slt e1val e2val "ilttemp" builder
+      | OpGt -> build_icmp Icmp.Sgt e1val e2val "igttemp" builder
+      | OpLe -> build_icmp Icmp.Sle e1val e2val "iletemp" builder
+      | OpGe -> build_icmp Icmp.Sge e1val e2val "igetemp" builder
+      | OpBitAnd -> build_and e1val e2val "andtemp" builder
+      | OpBitOr -> build_or e1val e2val "ortemp" builder
+      | OpBitXor -> build_xor e1val e2val "xortemp" builder
       | _ -> failwith "int binop Not implemented yet"
     else if e1.decor = float_ttag then
       match op with
@@ -108,7 +116,6 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
       else if entry.symtype = bool_ttag then bool_type
       else failwith "Unknown type for allocation"
     in
-    (* print_string ("about to try allocating for " ^ varname ^ "\n"); *)
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
@@ -125,6 +132,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
        (* make a fake assignment statement to avoid duplication. *)
        gen_stmt tenv {st=StmtAssign (varname, initexp); decor=syms}
   )
+
   | StmtAssign (varname, ex) -> (
      let (entry, _) = Symtable.findvar varname syms in
      let expval = gen_expr syms tenv ex in
@@ -134,7 +142,9 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
         ignore (build_store expval alloca builder)
         (* print_string (string_of_llvalue store) *)
   )
+
   | StmtNop -> () (* will I need to generate so labels work? *)
+
   | StmtReturn eopt -> (
     match eopt with
     | None -> ignore (build_ret_void builder)
@@ -142,6 +152,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
        let expval = gen_expr syms tenv rexp in
        ignore (build_ret expval builder)
   )
+
   | StmtIf (cond, thenblock, elsifs, elsopt) -> (
     let condres = 
       match cond.e with
@@ -150,10 +161,6 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
          failwith "Null assignment not implemented yet"
       | _ -> gen_expr syms tenv cond
     in
-    (* Maybe I don't need this, could just use the i1 value in the branch. *)
-    (* let one = const_int bool_type 1 in
-     * let condval = build_icmp Icmp.Eq condres one "ifcond" builder in *)
-    (* wonder if it's easier to make the elsif blocks nested. *)
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
     let then_bb = append_block context "then" the_function in
@@ -217,6 +224,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
     ignore (build_br merge_bb builder);
     position_at_end merge_bb builder
   )
+
   | StmtWhile (cond, body) -> (
     (* test block, loop block, afterloop block. *)
     let the_function = block_parent (insertion_block builder) in 
@@ -307,18 +315,19 @@ let gen_fdecls fsyms =
  * be defined *)
 let gen_proc tenv proc =
   let fname = proc.decl.pdecl.name in  (* sheesh. *)
-  let fentry = match Symtable.findproc fname proc.decor with
+  (* procedure is now defined in its own scope, so "getproc" *)
+  let fentry = Symtable.getproc fname proc.decor in (* with
     (* Maybe it's okay that the function name is in a parent scope. *)
     | None -> failwith "BUG: function not defined"
-    | Some (procentry, _) -> procentry in
+    | Some (procentry, _) -> procentry in *)
   match lookup_function fname the_module with
   | None -> failwith "BUG: llvm function lookup failed"
-  | Some func -> (* do I need to prevent redecl here? Think not. *)
+  | Some func -> 
      (* should I define_function here, not add to the existing decl? *)
      let entry_bb = append_block context "entry" func in
      position_at_end entry_bb builder;
      (* create storage for all params (needed for uniformity in
-      * codegen for vars. *)
+      * codegen for vars.) *)
      List.iteri (fun i (varname, _) ->
          let entrybuilder =
            builder_at context (instr_begin (entry_block func)) in

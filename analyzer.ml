@@ -520,20 +520,29 @@ let check_pdecl syms tenv pd =
           {procname=pdecl.name; rettype=rttag; fparams=paramentries} in
         Symtable.addproc syms procentry;
         (* create new inner scope under the procedure, and add args *)
+        (* Should I add the proc to its own symbol table? *)
         let procscope = Symtable.new_proc_scope syms procentry in
+        Symtable.addproc procscope procentry;
         List.iter (Symtable.addvar procscope) paramentries;
         Ok {pdecl=pdecl; decor=procscope}
   ))
 
 (** Check the body of a procedure whose header has already been checked *)
-let check_proc tenv (pd: 'addr st_node procdecl) proc =  
-  let procscope = pd.decor in
+let check_proc tenv (pdecl: 'addr st_node procdecl) proc =  
+  let procscope = pdecl.decor in
   match check_stmt_seq procscope tenv proc.body with
   | Error errs -> Error errs
   | Ok newslist ->
      (* procedure's decoration is its inner symbol table *)
-     (* return check is done afterwards. *)
-     Ok {decl=pd; body=newslist; decor=procscope}
+     (* return check is done afterwards. No it's not, what's up? *)
+     let rettype = (Symtable.getproc pdecl.pdecl.name procscope).rettype in
+     if rettype <> void_ttag && not (block_returns proc.body) then 
+       Error [{loc=proc.decor;
+               value="Non-void procedure " ^ pdecl.pdecl.name
+                     ^ " may not return a value"}]
+     else
+       Ok {decl=pdecl; body=newslist; decor=procscope}
+
 
 let rec is_const_expr = function
     (* if true, I could eval and replace it in the AST. But...
@@ -579,7 +588,7 @@ let check_module syms tenv dmod =
       else (
         let newprocs = concat_ok procres in
         (* tricky to check that globals are initialized. For now, just
-         * make sure they're initted (direclty) in the init block. *)
+         * make sure they're initted (directly) in the init block. *)
         let blocksyms = Symtable.new_scope syms in
         (* Oh, I have to let it initialize globals upward, like with if-then *)
         match check_stmt_seq blocksyms tenv dmod.initblock with
