@@ -1,3 +1,5 @@
+module Codegen00 =
 
-var x: int = 14;
+var x: Int = 14;
 
+end Codegen00

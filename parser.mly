@@ -16,6 +16,7 @@
 %token IF THEN ELSIF ELSE ENDIF
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
+%token MODULE
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -38,21 +39,29 @@
 %type <Ast.locinfo Ast.procdecl> procHeader
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
 (* Thinking of eventually allowing multiple modules/file. *)
-%start <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> main
+%start <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
 (* %start <(Ast.locinfo, Ast.locinfo) Ast.proc list
         * (Ast.locinfo,Ast.locinfo) Ast.stmt list> main *)
 
 %%
 
-main:  (* TODO: let the init block come before or after. And imports. *)
-  | gl=list(declStmt) pr=list(proc) bl=option(blockStmt) EOF
+dillmodule:  (* TODO: imports. *)
+  | MODULE mn=moduleName ASSIGN
+    gl=list(declStmt) pr=list(proc) bl=option(blockStmt)
+    END mn2=moduleName EOF
     { let initstmts = match bl with
 	| Some (StmtBlock slist) -> slist
 	| _ -> [] in
-      {name="YourModuleNameHere";
-       globals=gl;
-       procs=pr;
-       initblock=initstmts} }
+      if mn = mn2 then 
+	{name=mn;
+	 globals=gl;
+	 procs=pr;
+	 initblock=initstmts}
+      else
+        $syntaxerror
+    }
+
+moduleName: mn=IDENT_UC { mn }
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=procName 

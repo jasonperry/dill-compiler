@@ -1,0 +1,7 @@
+proc square(x: Int) : Int =
+  return x * x;
+end square
+
+proc square(y: Int) : Bool =
+  return y < 5;
+end square

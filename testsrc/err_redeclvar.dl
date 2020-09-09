@@ -1,0 +1,11 @@
+var y: Int = 4;
+
+begin
+
+var y = 5;
+var x = 6;
+var x = 7;
+
+printInt(x);
+
+end

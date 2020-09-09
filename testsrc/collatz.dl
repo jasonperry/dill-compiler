@@ -1,22 +1,29 @@
+module Collatz =
 
 proc collatz(n: Int) : Int =
-  var i = n;
-  var count = 0;
-  printInt(i);
-  while (i != 1) loop
-    if (i % 2 == 0) then
-      i = i / 2;
-    else
-      i = 3*i + 1;
-    endif
-    count = count + 1;
-    printInt(i);
-  endloop
-  return count;  (* didn't detect failure to return *)
+   var i = n;
+   var count = 0;
+   printInt(i);
+   while (i != 1) loop
+      if (i % 2 == 0) then
+         i = i/2;
+      else
+         i = 3*i + 1;
+         if (i < 0) then
+	    return -1;  (* detect overflow *)
+	 endif
+      endif
+      count = count + 1;
+      printInt(i);
+   endloop
+   return count; 
 end collatz
 
 begin
 
-printInt(collatz(12));
+(* printInt(collatz(837799)); (* 524 steps, overflows *) *)
+printInt(collatz(6171)); (* 261 steps *)
 
 end
+
+end Collatz

@@ -33,7 +33,7 @@ let process_module channel =
   let parsedmod =
     let open Lexing in 
     try
-      Parser.main Lexer.token buf
+      Parser.dillmodule Lexer.token buf
     with
     | Lexer.Error msg ->
        let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in

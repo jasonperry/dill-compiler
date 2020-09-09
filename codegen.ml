@@ -265,27 +265,31 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
   | StmtBlock _ -> failwith "not implemented"
 
+let default_value ttag =
+  (* I'll need some kind of ttag->llvm type mapping eventually. *)
+  if ttag = int_ttag then const_int int_type 0
+  else if ttag = float_ttag then const_float float_type 0.0
+  else if ttag = bool_ttag then const_int bool_type 0
+  else failwith ("Cannot generate default value for "
+                 ^ typetag_to_string ttag)
+
 (** generate code for a global variable declaration *)
 let gen_global_decl tenv stmt =
   match stmt.st with 
   | StmtDecl (varname, _, eopt) -> (
     let syms = stmt.decor in
     let (entry, _) = Symtable.findvar varname syms in
-    let allocatype =
-      (* I'll need some kind of ttag->llvm type mapping eventually. *)
-      if entry.symtype = int_ttag then int_type
-      else if entry.symtype = float_ttag then float_type
-      else if entry.symtype = bool_ttag then bool_type
-      else failwith "Unknown type for allocation" in
-    (* I guess declare_global puts at the top automatically? *)
-    let alloca = declare_global allocatype varname the_module in
+    (* define_global doesn't use the builder, puts at the top *)
+    (* The default value will never be used, it's just to satisfy clang. *)
+    let gaddr =
+      define_global varname (default_value entry.symtype) the_module in
     (match eopt with
      | Some ex ->
         let gval = gen_expr syms tenv ex in
         (* This assumes builder is positioned correctly. *)
-        ignore (build_store gval alloca builder)
+        ignore (build_store gval gaddr builder)
      | None -> ());
-    Symtable.set_addr syms varname alloca
+    Symtable.set_addr syms varname gaddr
   )
   | _ -> failwith "BUG: Global statements should be checked to be decls"
 
@@ -316,9 +320,7 @@ let gen_fdecls fsyms =
 let gen_proc tenv proc =
   let fname = proc.decl.name in
   (* procedure is now defined in its own scope, so "getproc" *)
-  let fentry = Symtable.getproc fname proc.decor in (* with
-    | None -> failwith "BUG: function not defined"
-    | Some (procentry, _) -> procentry in *)
+  let fentry = Symtable.getproc fname proc.decor in 
   match lookup_function fname the_module with
   | None -> failwith "BUG: llvm function lookup failed"
   | Some func -> 
