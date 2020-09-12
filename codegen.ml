@@ -27,7 +27,7 @@ let rec gen_expr syms tenv (ex: typetag expr) =
      match entry.addr with
      | None ->
         (* find it in the params and use the llvalue directly *)
-        failwith ("BUG: alloca address not present for " ^ varname)
+        failwith ("BUG gen_expr: alloca address not present for " ^ varname)
      | Some alloca -> build_load alloca varname builder
   )
   | ExpUnop (op, e1) -> (
@@ -137,7 +137,8 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
      let (entry, _) = Symtable.findvar varname syms in
      let expval = gen_expr syms tenv ex in
      match entry.addr with
-     | None -> failwith ("BUG: alloca address not present for " ^ varname)
+     | None -> failwith ("BUG stmtAssign: alloca address not present for "
+                         ^ varname)
      | Some alloca ->
         ignore (build_store expval alloca builder)
         (* print_string (string_of_llvalue store) *)
@@ -265,6 +266,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
   | StmtBlock _ -> failwith "not implemented"
 
+(** Get a default value for a type. Used only for globals. *)
 let default_value ttag =
   (* I'll need some kind of ttag->llvm type mapping eventually. *)
   if ttag = int_ttag then const_int int_type 0
@@ -273,7 +275,7 @@ let default_value ttag =
   else failwith ("Cannot generate default value for "
                  ^ typetag_to_string ttag)
 
-(** generate code for a global variable declaration *)
+(** generate code for a global variable declaration (init code in main) *)
 let gen_global_decl tenv stmt =
   match stmt.st with 
   | StmtDecl (varname, _, eopt) -> (
@@ -281,15 +283,17 @@ let gen_global_decl tenv stmt =
     let (entry, _) = Symtable.findvar varname syms in
     (* define_global doesn't use the builder, puts at the top *)
     (* The default value will never be used, it's just to satisfy clang. *)
+    (* A more optimized approach would be to check if it's a constExpr 
+     * and use that if it's there. *)
     let gaddr =
       define_global varname (default_value entry.symtype) the_module in
-    (match eopt with
-     | Some ex ->
-        let gval = gen_expr syms tenv ex in
-        (* This assumes builder is positioned correctly. *)
-        ignore (build_store gval gaddr builder)
-     | None -> ());
-    Symtable.set_addr syms varname gaddr
+    Symtable.set_addr syms varname gaddr;
+    match eopt with
+    | Some ex ->
+       let gval = gen_expr syms tenv ex in
+       (* This assumes builder is positioned correctly. *)
+       ignore (build_store gval gaddr builder)
+    | None -> ();
   )
   | _ -> failwith "BUG: Global statements should be checked to be decls"
 
@@ -310,9 +314,7 @@ let gen_fdecls fsyms =
                    |> Array.of_list in
       ignore (declare_function procentry.procname
                 (function_type (rtype) params) the_module)
-    (* set names for arguments and store in symtable addr. 
-     * actually, don't need to store? *)
-    (* print_string ("Generated llvm decl for " ^ procentry.procname ^ "\n") *)
+    (* We could set names for arguments here. *)
     ) fsyms  (* returns () *)
 
 (** generate code for a procedure body (its declaration should already
@@ -349,7 +351,7 @@ let gen_proc tenv proc =
 
 
 (** Generate code for an entire module. *)
-let gen_module tenv topsyms modtree =
+let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   (* Procedures declared in this module should already be here. *)
   gen_fdecls topsyms.fsyms;
   (* if there are globals or an init block, create an init procedure *)

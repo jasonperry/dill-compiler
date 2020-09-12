@@ -1,9 +1,13 @@
+module Globals01 = 
 
 var x: Int;
-var y : Float (* = 4.0; *);
+var y = 4.0;
 
 begin
   x = 14;
-  y = 2.2;
+  (* y = 2.2; *)
+  printFloat(y);
   var pp = x + 33;
 end
+
+end Globals01

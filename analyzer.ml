@@ -569,7 +569,7 @@ let check_globdecl syms tenv st =
   | _ -> failwith "BUG: non-decl global should be caught at parsing."
                                         
 
-let check_module syms tenv dmod =
+let check_module syms tenv (dmod: ('ed, 'sd) dillmodule) =
   let globalres = List.map (check_globdecl syms tenv) dmod.globals in
   if List.exists Result.is_error globalres then
     concat_errors globalres
@@ -604,3 +604,26 @@ let check_module syms tenv dmod =
              Ok {name=dmod.name; globals=newglobals; procs=newprocs;
                  initblock=newblock}
   ))
+
+(** Auto-generate the interface object for a module *)
+let create_module_interface (the_mod: (typetag, 'a st_node) dillmodule) =
+  {
+    name = the_mod.name;
+    globals =
+      List.map (fun st ->
+          { decor = st.decor;
+            st = 
+              match st.st with
+              | StmtDecl (varname, _, _) ->
+                 (* regenerate typeExpr from type *)
+                 let vtype =
+                   (fst (Symtable.findvar varname st.decor)).symtype in
+                 StmtDecl (varname,
+                           Some (TypeName (typetag_to_string vtype)),
+                           None)
+              | _ -> failwith "BUG: should only see StmtDecl in globals"
+          }
+        ) the_mod.globals;
+    procdecls =
+      List.map (fun proc -> proc.decl) the_mod.procs
+  }

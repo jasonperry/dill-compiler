@@ -52,11 +52,12 @@ let process_module channel =
   let topsyms : Llvm.llvalue st_node = pervasive_syms () in
   let analyzedmod = Analyzer.check_module topsyms base_tenv parsedmod in
   match analyzedmod with
-  | Error errs -> print_string (format_errors errs)
+  | Error errs -> Error errs
   | Ok themod ->
      (* print_string (module_to_string themod); *)
-     let modcode = Codegen.gen_module base_tenv topsyms themod in 
-     Llvm.dump_module modcode  (* prints at top! *) 
+     let modcode = Codegen.gen_module base_tenv topsyms themod in
+     let header = Analyzer.create_module_interface themod in
+     Ok (modcode, header)
 
 let () =
   let infile =
@@ -64,5 +65,8 @@ let () =
       open_in Sys.argv.(1)
     else stdin
   in
-  process_module infile
-  
+  match process_module infile with
+  | Error errs -> print_string (format_errors errs)
+  | Ok (modcode, header) ->
+     print_string (interface_to_string header);
+     Llvm.dump_module modcode (* prints at top! *)

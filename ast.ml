@@ -88,7 +88,8 @@ type 'sd procdecl = {
 type ('ed,'sd) proc = {
     decl: 'sd procdecl;
     body: ('ed,'sd) stmt list;
-    decor: 'sd }
+    decor: 'sd
+  }
 
 type ('ed,'sd) dillmodule = {
     name: string;
@@ -97,6 +98,12 @@ type ('ed,'sd) dillmodule = {
     globals: ('ed, 'sd) stmt list;
     procs: ('ed,'sd) proc list;
     initblock: ('ed,'sd) stmt list
+  }
+
+type ('ed, 'sd) module_interface = {
+    name: string;
+    globals: ('ed, 'sd) stmt list; (* but remove initializers *)
+    procdecls: 'sd procdecl list
   }
 
 (* printing functions start here *)
@@ -124,9 +131,9 @@ let rec stmt_to_string st =
          ^ (match t with
             | Some (TypeName tn) -> " : " ^ tn
             | None -> "" )
-         ^ " = " ^ (match eopt with
-                    | Some e -> exp_to_string e
-                    | None -> "")
+         ^ (match eopt with
+            | Some e -> " = " ^ exp_to_string e
+            | None -> "")
          ^ ";\n"
       | StmtAssign (v, e) -> v ^ " = " ^ exp_to_string e ^ ";\n"
       | StmtNop -> "nop;\n"
@@ -137,7 +144,7 @@ let rec stmt_to_string st =
       | StmtWhile (cond, body) ->
          "while (" ^ exp_to_string cond ^ ") loop\n"
          ^ block_to_string body
-         ^ "endloop"
+         ^ "endloop\n"
       | StmtBlock sl -> "begin\n" ^ block_to_string sl ^ "end\n"
 
 and block_to_string sl = 
@@ -155,17 +162,34 @@ and if_to_string (e, tb, eifs, els) =
   ^ (match els with
      | Some sb -> "else " ^ block_to_string sb
      | None -> "")
-  ^ "end\n"
+  ^ "endif\n"
 
 (* let interpret_params plist =  *)
 
-let proc_to_string proc =
-  (* a little ugly, but maybe I will use the pdecl later. *)
-  "proc " ^ proc.decl.name ^ "(" ^ "yadda, yadda" ^ ") : yadda = \n"
-  ^ block_to_string proc.body
-  ^ "\nendproc\n"
+let procdecl_to_string (pdecl: 'sd procdecl) =
+  "proc " ^ pdecl.name ^ "("
+  ^ String.concat "," (
+        List.map (fun (varname, vartype) ->
+            varname ^ ": " ^ typeExpr_to_string vartype) pdecl.params)
+  ^ ") : " ^ typeExpr_to_string pdecl.rettype
 
-let module_to_string dmod =
-  block_to_string dmod.globals
+let proc_to_string (proc: ('ed, 'sd) proc) =
+  (* a little ugly, but maybe I will use the pdecl later. *)
+  procdecl_to_string proc.decl ^ "= \n"
+  ^ block_to_string proc.body
+  ^ "\nend " ^ proc.decl.name ^ "\n"
+
+let module_to_string (dmod: ('ed, 'sd) dillmodule) =
+  "module " ^ dmod.name ^ " = \n"
+  ^ block_to_string dmod.globals
   ^ List.fold_left (fun s p -> s ^ proc_to_string p) "" dmod.procs
   ^ block_to_string dmod.initblock
+  ^ "end " ^ dmod.name ^ "\n"
+
+let interface_to_string (modi: ('ed, 'sd) module_interface) =
+  "modspec " ^ modi.name ^ " = \n"
+  ^ block_to_string modi.globals
+  ^ List.fold_left
+      (fun s pd -> s ^ procdecl_to_string pd ^ ";\n") "" modi.procdecls
+  ^ "end " ^ modi.name ^ "\n"
+  
