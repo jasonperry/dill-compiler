@@ -12,6 +12,7 @@ let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context
 
+(* TODO: take module name from the AST. But then I have to pass it around! *)
 let the_module = create_module context "dillout.ll"
 (* builder keeps track of current insert place *)
 let builder = builder context

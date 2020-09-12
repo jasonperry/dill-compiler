@@ -1,3 +1,5 @@
+module EvenOdd =
+
 proc isEven(x: Int) : Bool =
   if (x == 0) then
     return True;
@@ -24,3 +26,5 @@ else
   printInt(033);
 endif
 end
+
+end EvenOdd

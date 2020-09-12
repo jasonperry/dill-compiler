@@ -1,9 +1,14 @@
-proc Square (x: int) : int =
+module UndefProc = 
+
+proc square (x: Int) : Int =
   var x2 = x * x;
   return x2;
-end Square
+end square
 
+begin
+var y = squarr(42);
+y = square(98);
+printInt(y);
+end
 
-var y = Square(42);
-y = Square(98);
-PrintInt(y);
+end UndefProc

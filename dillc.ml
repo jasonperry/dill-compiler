@@ -66,7 +66,16 @@ let () =
     else stdin
   in
   match process_module infile with
-  | Error errs -> print_string (format_errors errs)
+  | Error errs ->
+     prerr_string (format_errors errs);
+     exit 1
   | Ok (modcode, header) ->
-     print_string (interface_to_string header);
-     Llvm.dump_module modcode (* prints at top! *)
+     let srcdir =
+       if Array.length Sys.argv > 1 then Filename.dirname Sys.argv.(1)
+       else "." in
+     let headername = String.lowercase_ascii header.name in
+     let headerfile = open_out (srcdir ^ "/" ^ headername ^ ".dms") in
+     output_string headerfile (interface_to_string header);
+     close_out headerfile;
+     Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
+     Llvm.print_module "dillout.ll" modcode
