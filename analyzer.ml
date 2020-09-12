@@ -14,16 +14,16 @@ exception SemanticError of string
  * AST? Maybe, because if I just rely on following, the order matters,
  * Or else you'd need a unique identifier for each child. *)
 
-(** Mash list of error lists into a single error with list *)
+(** Mash list of error lists into a single list *)
 let concat_errors rlist =
   (* the list of errors are each themselves lists. *)
-  Error (List.concat (
-             List.concat_map (
-                 fun r -> match r with
-                          | Ok _ -> []
-                          | Error erec -> [erec]
-               ) rlist
-    ))
+  List.concat (
+      List.concat_map (
+          fun r -> match r with
+                   | Ok _ -> []
+                   | Error erec -> [erec]
+        ) rlist
+    )
 
 (** Combine all OKs into a single list *)
 let concat_ok rlist = List.concat_map Result.to_list rlist
@@ -366,7 +366,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                elsifs
            in
            if List.exists Result.is_error allres then
-             concat_errors allres
+             Error (concat_errors allres)
            else
              Ok (concat_ok allres)
          in
@@ -454,7 +454,7 @@ and check_stmt_seq syms tenv sseq =
   (* let results = List.map (check_stmt syms tenv) sseq in  *)
   if List.exists Result.is_error results then
     (* Make one error list out of all. Matches stmt_result. *)
-    concat_errors results
+    Error (concat_errors results)
   else
     (* Make one Ok out of the list of results. NOT a stmt_result. *)
     Ok (concat_ok results)
@@ -572,19 +572,19 @@ let check_globdecl syms tenv st =
 let check_module syms tenv (dmod: ('ed, 'sd) dillmodule) =
   let globalres = List.map (check_globdecl syms tenv) dmod.globals in
   if List.exists Result.is_error globalres then
-    concat_errors globalres
+    Error (concat_errors globalres)
   else
     let newglobals = concat_ok globalres in 
     let pdeclres = List.map (fun proc -> check_pdecl syms tenv proc.decl)
                      dmod.procs in
     if List.exists Result.is_error pdeclres then
       (* check_proc errors are a list of string locateds. *)
-      concat_errors pdeclres  (* already wraps in result type *)
+      Error (concat_errors pdeclres)
     else (
       let newdecls = concat_ok pdeclres in 
       let procres = List.map2 (check_proc tenv) newdecls dmod.procs in
       if List.exists Result.is_error procres then
-        concat_errors procres  (* already wraps in result type *)
+        Error (concat_errors procres)
       else (
         let newprocs = concat_ok procres in
         (* tricky to check that globals are initialized. For now, just

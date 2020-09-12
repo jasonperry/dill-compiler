@@ -1,0 +1,4 @@
+modspec EvenOdd = 
+proc isEven(x: Int) : Bool;
+proc isOdd(x: Int) : Bool;
+end EvenOdd

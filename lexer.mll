@@ -79,6 +79,7 @@ rule token = parse  (* funny that it's called parse *)
   | "return"  { RETURN }
   | "nop"     { NOP }
   | "module"  { MODULE }
+  | "modspec" { MODSPEC }
   | "True"    { TRUE }    (* Is this the place to put built-in names? *)
   | "False"   { FALSE }   (* Even if not, bools might be special. *)
   | ident_lc as v	{ IDENT_LC v }

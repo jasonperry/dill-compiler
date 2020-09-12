@@ -2,9 +2,9 @@
 
 if dune exec ./dillc.exe "$1"
 then
-    mv -f dillout.ll out/
     name=$(basename "$1" .dl)
-    clang -o out/$name out/dillout.ll pervasives.c
+    mv -f $name.ll out/
+    clang -o out/$name out/$name.ll pervasives.c
 else
     echo "Compile failed."
 fi

@@ -177,7 +177,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
       let condres = 
         match cond.e with
         | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
-           (* if it's a null-assignment, set the var's addr in thenblock's syms *)
+           (* if it's a null-assignment, set the var addr in thenblock's syms *)
            failwith "Null assignment not implemented yet"
         | _ -> gen_expr syms tenv cond in
       let then_bb = append_block context "elsifthen" the_function in

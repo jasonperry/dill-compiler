@@ -27,26 +27,27 @@ let format_errors elist =
   let errstrs = List.rev_map format1 elist in
   String.concat "\n" errstrs ^ "\n"
 
+
 (** Run as many phases as we have on one module. *)
-let process_module channel =
+let process_source channel =
   let buf = Lexing.from_channel channel in
-  let parsedmod =
-    let open Lexing in 
-    try
-      Parser.dillmodule Lexer.token buf
-    with
-    | Lexer.Error msg ->
-       let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
-       print_string
-         ("At line " ^ format_loc spos epos ^ ": lexical error:\n    "
+  let open Lexing in 
+  try
+    Parser.main Lexer.token buf
+  with
+  | Lexer.Error msg ->
+     let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
+     print_string
+       ("At line " ^ format_loc spos epos ^ ": lexical error:\n    "
           ^ msg ^ "\n");
-       failwith "Compilation terminated at lexing."
-    | Parser.Error ->
-       let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
-       print_string
-         ("At line " ^ format_loc spos epos ^ ": syntax error.\n");
-       failwith "Compilation terminated at parsing." 
-  in
+     failwith "Compilation terminated at lexing."
+  | Parser.Error ->
+     let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
+     print_string
+       ("At line " ^ format_loc spos epos ^ ": syntax error.\n");
+     failwith "Compilation terminated at parsing."
+
+let process_module parsedmod = 
   let open Symtable1 in
   (* populate top-level symbol table. *)
   let topsyms : Llvm.llvalue st_node = pervasive_syms () in
@@ -59,23 +60,29 @@ let process_module channel =
      let header = Analyzer.create_module_interface themod in
      Ok (modcode, header)
 
+let write_module dir (modcode, header) = 
+  let headername = String.lowercase_ascii header.name in
+  let headerfile = open_out (dir ^ "/" ^ headername ^ ".dms") in
+  output_string headerfile (interface_to_string header);
+  close_out headerfile;
+  Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
+  Llvm.print_module (headername ^ ".ll") modcode
+
 let () =
   let infile =
     if Array.length Sys.argv > 1 then
       open_in Sys.argv.(1)
     else stdin
   in
-  match process_module infile with
-  | Error errs ->
-     prerr_string (format_errors errs);
-     exit 1
-  | Ok (modcode, header) ->
-     let srcdir =
-       if Array.length Sys.argv > 1 then Filename.dirname Sys.argv.(1)
-       else "." in
-     let headername = String.lowercase_ascii header.name in
-     let headerfile = open_out (srcdir ^ "/" ^ headername ^ ".dms") in
-     output_string headerfile (interface_to_string header);
-     close_out headerfile;
-     Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
-     Llvm.print_module "dillout.ll" modcode
+  (* TODO: check if there are headers or mods *)
+  let (_, mods) = process_source infile in
+  let mod_results = List.map process_module mods in
+  if List.exists Result.is_error mod_results then (
+    prerr_string (format_errors
+                    (Analyzer.concat_errors mod_results));
+    exit 1)
+  else
+    let srcdir =
+      if Array.length Sys.argv > 1 then Filename.dirname Sys.argv.(1)
+      else "." in
+  List.iter (write_module srcdir) (Analyzer.concat_ok mod_results)

@@ -16,7 +16,7 @@
 %token IF THEN ELSIF ELSE ENDIF
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
-%token MODULE
+%token MODULE MODSPEC
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -39,29 +39,52 @@
 %type <Ast.locinfo Ast.procdecl> procHeader
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
 (* Thinking of eventually allowing multiple modules/file. *)
-%start <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
-(* %start <(Ast.locinfo, Ast.locinfo) Ast.proc list
-        * (Ast.locinfo,Ast.locinfo) Ast.stmt list> main *)
+%type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
+%type <(Ast.locinfo, Ast.locinfo) Ast.module_interface> modspec
+%start <(Ast.locinfo, Ast.locinfo) Ast.module_interface list
+        * (Ast.locinfo,Ast.locinfo) Ast.dillmodule list> main
 
 %%
+
+main: mss=list(modspec) mds=list(dillmodule) EOF
+    { (mss, mds) }
+
+(* My brilliant idea, but it never reduces. TODO: allow interspersing. *)
+(* main: ml=list(pair (option(modspec), option(dillmodule))) EOF
+    { (List.concat_map (fun (specopt, _) -> Option.to_list specopt) ml,
+       List.concat_map (fun (_, modopt) -> Option.to_list modopt) ml)
+    }
+*)
 
 dillmodule:  (* TODO: imports. *)
   | MODULE mn=moduleName ASSIGN
     gl=list(declStmt) pr=list(proc) bl=option(blockStmt)
-    END mn2=moduleName EOF
+    END mn2=moduleName
     { let initstmts = match bl with
 	| Some (StmtBlock slist) -> slist
 	| _ -> [] in
-      if mn = mn2 then 
-	{name=mn;
-	 globals=gl;
-	 procs=pr;
-	 initblock=initstmts}
-      else
-        $syntaxerror
+      if mn = mn2 then {
+	  name=mn;
+	  globals=gl;
+	  procs=pr;
+	  initblock=initstmts
+	}
+      else $syntaxerror
     }
 
 moduleName: mn=IDENT_UC { mn }
+
+modspec:
+  | MODSPEC mn=moduleName ASSIGN
+    gl=list(declOnlyStmt) pd=list(procDecl)
+    END mn2=moduleName
+    { if mn = mn2 then {
+	  name=mn;
+	  globals=gl;
+	  procdecls=pd;
+	}
+      else $syntaxerror
+    }
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
@@ -76,6 +99,8 @@ procHeader:
   | PROC pn=procName LPAREN pl=paramList RPAREN COLON rt=typeExp
     (* construct declaration object! Good idea! *)
     { { decor=$loc; name=pn; params=pl; rettype=rt } }
+
+procDecl: ph=procHeader SEMI { ph }
 
 procName:
   (* TODO: A method needs a dot or an arrow. *)
@@ -108,11 +133,16 @@ stmt:
   | st=blockStmt
     { {decor=$loc; st=st} }
 
-declStmt:
-  | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e=expr SEMI
-    { {decor=$loc; st=StmtDecl (v, t, Some e)} }
+(* I split these out for headers, which can't have init expressions. *)
+declStmt: ds=declOnlyStmt | ds=declAssignStmt { ds }
+
+declOnlyStmt:
   | VAR v=varName t=option(preceded(COLON, typeExp)) SEMI
     { {decor=$loc; st=StmtDecl (v, t, None)} }
+
+declAssignStmt:
+  | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e=expr SEMI
+    { {decor=$loc; st=StmtDecl (v, t, Some e)} }
 
 assignStmt:
   | v=varName ASSIGN e=expr SEMI
@@ -228,30 +258,13 @@ opExp:
     { ExpBinop (e1, OpAnd, e2) }
   | e1=expr OR e2=expr
     { ExpBinop (e1, OpOr, e2) }
-  | MINUS e=expr %prec UMINUS
-    { ExpUnop (OpNeg, e) } (* need to learn what this trick does *)
+  | MINUS e=expr %prec UMINUS  (* apply unary minus precedence *)
+    { ExpUnop (OpNeg, e) }
   | BITNOT e=expr
     { ExpUnop (OpBitNot, e) }
   | NOT e=expr
     { ExpUnop (OpNot, e) }
 
-(* binOp: 
-  | TIMES { OpTimes }
-  | DIV { OpDiv }
-  | PLUS { OpPlus }
-  | MINUS { OpMinus }
-  | BITAND { OpBitAnd }
-  | BITOR { OpBitOr }
-  | BITXOR { OpBitXor }
-  | EQ { OpEq }
-  | NE { OpNe }
-  | LT { OpLt }
-  | GT { OpGt }
-  | LE { OpLe }
-  | GE { OpGe }
-  | AND { OpAnd }
-  | OR { OpOr } *)
-	
 callExp:
   | pn=procName LPAREN al=argList RPAREN
     { ExpCall (pn, al) }
