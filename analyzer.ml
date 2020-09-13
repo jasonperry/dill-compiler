@@ -601,7 +601,8 @@ let check_module syms tenv (dmod: ('ed, 'sd) dillmodule) =
                          value="Uninitialized global variable " ^ v ^ "\n"}
                         :: strs) global_uninit [])
            else 
-             Ok {name=dmod.name; globals=newglobals; procs=newprocs;
+             Ok {name=dmod.name; imports=dmod.imports;
+                 globals=newglobals; procs=newprocs;
                  initblock=newblock}
   ))
 
@@ -609,6 +610,14 @@ let check_module syms tenv (dmod: ('ed, 'sd) dillmodule) =
 let create_module_interface (the_mod: (typetag, 'a st_node) dillmodule) =
   {
     name = the_mod.name;
+    imports = List.map (function
+                  | Using mn -> Using mn
+                  | Open mn -> Using mn) the_mod.imports;
+    (* I want to make all names fully qualified in the spec file. *)
+    (* Idea: keep a map of module name->symtable and "open" symbol->module *)
+    (* but anyway, do types need to remember which module they're defined in?
+     * then I can easily produce the unqual. name of any type. 
+     * Same for symtable entries for procs. *)
     globals =
       List.map (fun st ->
           { decor = st.decor;

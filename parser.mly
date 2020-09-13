@@ -17,6 +17,7 @@
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
 %token MODULE MODSPEC
+%token USING OPEN
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -41,6 +42,7 @@
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
 %type <(Ast.locinfo, Ast.locinfo) Ast.module_interface> modspec
+
 %start <(Ast.locinfo, Ast.locinfo) Ast.module_interface list
         * (Ast.locinfo,Ast.locinfo) Ast.dillmodule list> main
 
@@ -58,6 +60,7 @@ main: mss=list(modspec) mds=list(dillmodule) EOF
 
 dillmodule:  (* TODO: imports. *)
   | MODULE mn=moduleName ASSIGN
+    iss=list(importStmt)
     gl=list(declStmt) pr=list(proc) bl=option(blockStmt)
     END mn2=moduleName
     { let initstmts = match bl with
@@ -65,6 +68,7 @@ dillmodule:  (* TODO: imports. *)
 	| _ -> [] in
       if mn = mn2 then {
 	  name=mn;
+	  imports=iss;
 	  globals=gl;
 	  procs=pr;
 	  initblock=initstmts
@@ -76,15 +80,25 @@ moduleName: mn=IDENT_UC { mn }
 
 modspec:
   | MODSPEC mn=moduleName ASSIGN
+    iss=list(usingStmt)
     gl=list(declOnlyStmt) pd=list(procDecl)
     END mn2=moduleName
     { if mn = mn2 then {
 	  name=mn;
+	  imports=iss;
 	  globals=gl;
 	  procdecls=pd;
 	}
       else $syntaxerror
     }
+
+importStmt:
+  | is=usingStmt
+  | is=openStmt
+    { is }
+
+usingStmt: USING mn=moduleName SEMI { Using mn }
+openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=procName 

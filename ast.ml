@@ -30,15 +30,12 @@ type binary_op =
   | OpAnd
   | OpOr
 
-(** position info to decorate the AST with *)
+(** position info to decorate the AST with. TODO: don't put it here. *)
 type locinfo = Lexing.position * Lexing.position
 
 (** This is still used for error messages. *)
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
-
-(** Type info to decorate the second verion of the AST *)
-(* type typeinfo = { ty: typetag } *) (* just use typetag directly. *)
 
 (** Syntactic type expression. Needs to be expanded *)
 type typeExpr =
@@ -91,8 +88,13 @@ type ('ed,'sd) proc = {
     decor: 'sd
   }
 
+type importStmt =
+  | Using of string
+  | Open of string
+
 type ('ed,'sd) dillmodule = {
     name: string;
+    imports: importStmt list; (* should it be a module interface list? *)
     (* No, AST should not have a symbol table in it! 
      * I can keep the top level symbol table with the control function. *)
     globals: ('ed, 'sd) stmt list;
@@ -102,6 +104,7 @@ type ('ed,'sd) dillmodule = {
 
 type ('ed, 'sd) module_interface = {
     name: string;
+    imports: importStmt list;
     globals: ('ed, 'sd) stmt list; (* but remove initializers *)
     procdecls: 'sd procdecl list
   }
