@@ -17,7 +17,7 @@
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
 %token MODULE MODSPEC
-%token USING OPEN
+%token USING AS OPEN
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -41,15 +41,15 @@
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
-%type <(Ast.locinfo, Ast.locinfo) Ast.module_interface> modspec
+%type <(Ast.locinfo, Ast.locinfo) Ast.module_spec> modspec
 
-%start <(Ast.locinfo, Ast.locinfo) Ast.module_interface list
+%start <(Ast.locinfo, Ast.locinfo) Ast.module_spec option
         * (Ast.locinfo,Ast.locinfo) Ast.dillmodule list> main
 
 %%
 
-main: mss=list(modspec) mds=list(dillmodule) EOF
-    { (mss, mds) }
+main: ms=option(modspec) mods=list(dillmodule) EOF
+    { (ms, mods) }
 
 (* My brilliant idea, but it never reduces. TODO: allow interspersing. *)
 (* main: ml=list(pair (option(modspec), option(dillmodule))) EOF
@@ -97,7 +97,10 @@ importStmt:
   | is=openStmt
     { is }
 
-usingStmt: USING mn=moduleName SEMI { Using mn }
+usingStmt:
+  | USING mn=moduleName SEMI  { Using (mn, None) }
+  | USING mn=moduleName AS alias=moduleName  { Using (mn, Some alias) }
+
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 proc:

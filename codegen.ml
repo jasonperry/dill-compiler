@@ -1,3 +1,6 @@
+(** Code generation module *)
+
+open Common
 open Ast
 open Types
 open Symtable1

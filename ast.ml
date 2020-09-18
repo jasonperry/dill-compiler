@@ -82,14 +82,17 @@ type 'sd procdecl = {
     decor: 'sd;
   }
 
+(** AST procedure record. *)
 type ('ed,'sd) proc = {
     decl: 'sd procdecl;
     body: ('ed,'sd) stmt list;
     decor: 'sd
   }
 
+(** Import statements occur separately, so it seems no need to include in 
+ * the stmt type. *)
 type importStmt =
-  | Using of string
+  | Using of string * string option
   | Open of string
 
 type ('ed,'sd) dillmodule = {
@@ -102,10 +105,10 @@ type ('ed,'sd) dillmodule = {
     initblock: ('ed,'sd) stmt list
   }
 
-type ('ed, 'sd) module_interface = {
+type ('ed, 'sd) module_spec = {
     name: string;
     imports: importStmt list;
-    globals: ('ed, 'sd) stmt list; (* but remove initializers *)
+    globals: ('ed, 'sd) stmt list; (* initializers removed *)
     procdecls: 'sd procdecl list
   }
 
@@ -189,7 +192,7 @@ let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   ^ block_to_string dmod.initblock
   ^ "end " ^ dmod.name ^ "\n"
 
-let interface_to_string (modi: ('ed, 'sd) module_interface) =
+let interface_to_string (modi: ('ed, 'sd) module_spec) =
   "modspec " ^ modi.name ^ " = \n"
   ^ block_to_string modi.globals
   ^ List.fold_left

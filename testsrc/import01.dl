@@ -1,0 +1,11 @@
+module TryImport =
+
+using Collatz;
+
+begin
+
+printInt(43);
+
+end
+
+end TryImport

@@ -1,5 +1,6 @@
 (** Symbol table definitions (could have different for different phases) *)
 
+open Common
 open Types (* as T *)
 
 exception SymbolError of string
@@ -28,7 +29,7 @@ type 'addr st_entry = {
                  * mutating methods called? No, they're different *)
     (* may_mut: bool; *)
     addr: 'addr option
-                (* instead of an option, how about an "addr decorated" version *)
+    (* instead of an option, how about an "addr decorated" version *)
   }
 
 (** Symbol table entry type for a procedure. *)
@@ -98,12 +99,10 @@ module Symtable (* : SYMTABLE *) = struct
   let addproc nd entry =
     match StrMap.find_opt entry.procname nd.fsyms with
     | None ->
-       (* nd.fsyms <- StrMap.add entry.procname [entry] nd.fsyms *)
        nd.fsyms <- StrMap.add entry.procname entry nd.fsyms
     | Some _ ->
        raise (SymbolError ("redefinition of procedure \"" ^ entry.procname
                            ^ "\""))
-       (* nd.fsyms <- StrMap.add entry.procname (entry::plist) nd.fsyms *)
 
   (* Use this in typechecking. *)
   let rec findvar_opt name nd =

@@ -1,6 +1,7 @@
 (** Semantic analyzer: check for errors and build type- and scope- 
   * decorated AST *)
 
+open Common
 open Types
 open Ast
 open Symtable1
@@ -607,12 +608,12 @@ let check_module syms tenv (dmod: ('ed, 'sd) dillmodule) =
   ))
 
 (** Auto-generate the interface object for a module *)
-let create_module_interface (the_mod: (typetag, 'a st_node) dillmodule) =
+let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
   {
     name = the_mod.name;
     imports = List.map (function
-                  | Using mn -> Using mn
-                  | Open mn -> Using mn) the_mod.imports;
+                  | Using (mn, alias) -> Using (mn, alias)
+                  | Open mn -> Using (mn, None)) the_mod.imports;
     (* I want to make all names fully qualified in the spec file. *)
     (* Idea: keep a map of module name->symtable and "open" symbol->module *)
     (* but anyway, do types need to remember which module they're defined in?
