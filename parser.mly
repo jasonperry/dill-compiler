@@ -41,9 +41,9 @@
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
-%type <(Ast.locinfo, Ast.locinfo) Ast.module_spec> modspec
+%type <(Ast.locinfo) Ast.module_spec> modspec
 
-%start <(Ast.locinfo, Ast.locinfo) Ast.module_spec option
+%start <(Ast.locinfo) Ast.module_spec option
         * (Ast.locinfo,Ast.locinfo) Ast.dillmodule list> main
 
 %%
@@ -58,10 +58,10 @@ main: ms=option(modspec) mods=list(dillmodule) EOF
     }
 *)
 
-dillmodule:  (* TODO: imports. *)
+dillmodule:
   | MODULE mn=moduleName ASSIGN
     iss=list(importStmt)
-    gl=list(declStmt) pr=list(proc) bl=option(blockStmt)
+    gls=list(declStmt) pr=list(proc) bl=option(blockStmt)
     END mn2=moduleName
     { let initstmts = match bl with
 	| Some (StmtBlock slist) -> slist
@@ -69,7 +69,10 @@ dillmodule:  (* TODO: imports. *)
       if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
-	  globals=gl;
+	  globals=List.map (
+		      fun (v, topt, eopt) ->
+		      {varname=v; typeexp=topt; init=eopt; decor=$loc}
+		    ) gls;
 	  procs=pr;
 	  initblock=initstmts
 	}
@@ -81,12 +84,14 @@ moduleName: mn=IDENT_UC { mn }
 modspec:
   | MODSPEC mn=moduleName ASSIGN
     iss=list(usingStmt)
-    gl=list(declOnlyStmt) pd=list(procDecl)
+    gls=list(declOnlyStmt) pd=list(procDecl)
     END mn2=moduleName
     { if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
-	  globals=gl;
+	  globals=List.map (
+		      fun (v, t) -> {varname=v; typeexp=t; decor=$loc}
+		    ) gls;
 	  procdecls=pd;
 	}
       else $syntaxerror
@@ -139,8 +144,10 @@ stmtSeq:
     { sl }
 
 stmt:
-  | ds=declStmt  (* gets its decor early b/c used in other contexts. *)
-    { ds }
+  | ds=declStmt
+    { {decor=$loc;
+       st=match ds with (v, topt, eopt) -> StmtDecl (v, topt, eopt); }
+    }			       
   | st=assignStmt
   | st=ifStmt
   | st=whileStmt
@@ -150,16 +157,24 @@ stmt:
   | st=blockStmt
     { {decor=$loc; st=st} }
 
-(* I split these out for headers, which can't have init expressions. *)
-declStmt: ds=declOnlyStmt | ds=declAssignStmt { ds }
+declStmt:
+  | ds=declOnlyStmt
+    { match ds with
+      | (v, t) -> (v, Some t, None)
+    }
+  | ds=declInitStmt
+    { match ds with 
+      | (v, topt, eopt) -> (v, topt, eopt)
+    }
 
+(* These are split out for global decls in the AST. *)
 declOnlyStmt:
-  | VAR v=varName t=option(preceded(COLON, typeExp)) SEMI
-    { {decor=$loc; st=StmtDecl (v, t, None)} }
+  | VAR v=varName COLON t=typeExp SEMI
+    { (v, t) }
 
-declAssignStmt:
+declInitStmt:
   | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e=expr SEMI
-    { {decor=$loc; st=StmtDecl (v, t, Some e)} }
+    { (v, t, Some e) }
 
 assignStmt:
   | v=varName ASSIGN e=expr SEMI

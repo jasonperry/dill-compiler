@@ -276,30 +276,26 @@ let default_value ttag =
   if ttag = int_ttag then const_int int_type 0
   else if ttag = float_ttag then const_float float_type 0.0
   else if ttag = bool_ttag then const_int bool_type 0
-  else failwith ("Cannot generate default value for "
+  else failwith ("Cannot generate default value for type "
                  ^ typetag_to_string ttag)
 
 (** generate code for a global variable declaration (init code in main) *)
-let gen_global_decl tenv stmt =
-  match stmt.st with 
-  | StmtDecl (varname, _, eopt) -> (
-    let syms = stmt.decor in
-    let (entry, _) = Symtable.findvar varname syms in
+let gen_global_decl tenv (gdecl: ('ed, 'sd) globalstmt) =
+  let syms = gdecl.decor in
+  let (entry, _) = Symtable.findvar gdecl.varname syms in
     (* define_global doesn't use the builder, puts at the top *)
     (* The default value will never be used, it's just to satisfy clang. *)
     (* A more optimized approach would be to check if it's a constExpr 
      * and use that if it's there. *)
-    let gaddr =
-      define_global varname (default_value entry.symtype) the_module in
-    Symtable.set_addr syms varname gaddr;
-    match eopt with
-    | Some ex ->
-       let gval = gen_expr syms tenv ex in
-       (* This assumes builder is positioned correctly. *)
-       ignore (build_store gval gaddr builder)
-    | None -> ();
-  )
-  | _ -> failwith "BUG: Global statements should be checked to be decls"
+  let gaddr =
+    define_global gdecl.varname (default_value entry.symtype) the_module in
+  Symtable.set_addr syms gdecl.varname gaddr;
+  match gdecl.init with
+  | Some ex ->
+     let gval = gen_expr syms tenv ex in
+     (* This assumes builder is positioned correctly. *)
+     ignore (build_store gval gaddr builder)
+  | None -> ()
 
 (** Convert a type tag from the AST into a suitable LLVM type. *)
 let ttag_to_llvmtype ttag =
@@ -361,7 +357,7 @@ let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   (* if there are globals or an init block, create an init procedure *)
   if modtree.globals <> [] || modtree.initblock <> [] then (
     let initproc =
-      (* TODO: figure out how to pick a main. *)
+      (* TODO: figure out how to pick a main. Will need to link all init blocks together? *)
       define_function "main" (* "Module.__init" *)
         (function_type (void_type) [||])
         the_module in

@@ -228,7 +228,7 @@ type 'a stmt_result = ((typetag, 'a st_node) stmt, string located list)
                      Stdlib.result
 
 let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
-  match stm.st with    
+  match stm.st with 
     (* Declaration: check for redeclaration, check the exp, make sure
      * types match if declared. *)
   | StmtDecl (v, tyopt, initopt) -> (
@@ -555,20 +555,60 @@ let rec is_const_expr = function
   | _ -> false
 
 (** Check a global declaration statement (extra constraints) *)
-let check_globdecl syms tenv st =
-  match st.st with
-  | StmtDecl (_, _, initopt) -> (
-    match initopt with
+let check_globdecl syms tenv gdecl =
+  match gdecl.init with
     | Some initexp when not (is_const_expr initexp.e) -> 
        Error [{loc=initexp.decor;
                value="Global initializer must be constant expression"}]
     | _ -> (
-      match check_stmt syms tenv st with (* catch redecl, type mismatch *)
+      (* Cheat a little: reconstruct a stmt so I can use check_stmt.
+       * It should catch redeclaration and type mismatch errors. 
+       * Seems nicer than having the check logic in two places. *)
+      match check_stmt syms tenv
+        {st=StmtDecl (gdecl.varname, gdecl.typeexp, gdecl.init);
+         decor=gdecl.decor} with
       | Error errs -> Error errs
-      | Ok newstmt -> Ok newstmt
-  ))
-  | _ -> failwith "BUG: non-decl global should be caught at parsing."
-                                        
+      | Ok {st=dst; decor=dc} -> (
+         match dst with
+         | StmtDecl (v, topt, eopt) ->
+            Ok {varname=v; typeexp=topt; init=eopt; decor=dc}
+         | _ -> failwith "BUG: checking StmtDecl didn't return StmtDecl"
+    ))
+
+
+(** Add all symbols from imported module specs. *)
+let add_imports syms tenv specs istmts = 
+  (* Should I make types global? No, let them be parameterized also *)
+  (* Even if you open a module, you should remember which module the 
+   * function came from, for error messages *)
+  (* In other words, as vars have in_proc, funcs should have in_module. 
+   * But wouldn't (global) variables need it too? *)
+  (* Maybe vars can have a 'parent_struct' that could either be a 
+     proc or a type or a module. *) 
+  let add_import istmt = 
+    let (modname, prefix) = match istmt with
+      | Using (modname, aliasopt) -> (
+        match aliasopt with
+        | Some alias -> (modname, alias ^ ".")
+        | None -> (modname, modname ^ "." ) )
+      | Open modname -> (modname, "") in
+    let the_spec = StrMap.find modname specs in
+    List.iter (
+        fun (gdecl: 'st globaldecl) ->
+        let sty =  match check_typeExpr tenv gdecl.typeexp with
+          | Ok ttag -> ttag
+          | Error msg ->
+             failwith msg in (* IS this where I check typeExps in header files? *)
+        Symtable.addvar syms {
+            symname = prefix ^ gdecl.varname;
+            symtype = sty; 
+            var = true;
+            addr = None
+          }
+      ) the_spec.globals
+  in
+  List.iter add_import istmts
+
 
 let check_module syms tenv (dmod: ('ed, 'sd) dillmodule) =
   let globalres = List.map (check_globdecl syms tenv) dmod.globals in
@@ -620,18 +660,14 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
      * then I can easily produce the unqual. name of any type. 
      * Same for symtable entries for procs. *)
     globals =
-      List.map (fun st ->
-          { decor = st.decor;
-            st = 
-              match st.st with
-              | StmtDecl (varname, _, _) ->
-                 (* regenerate typeExpr from type *)
-                 let vtype =
-                   (fst (Symtable.findvar varname st.decor)).symtype in
-                 StmtDecl (varname,
-                           Some (TypeName (typetag_to_string vtype)),
-                           None)
-              | _ -> failwith "BUG: should only see StmtDecl in globals"
+      List.map (fun gdecl ->
+          { decor = gdecl.decor;
+            varname = gdecl.varname;
+            typeexp = 
+              (* regenerate typeExpr (string) from type *)
+              let vtype =
+                (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
+              TypeName (typetag_to_string vtype)
           }
         ) the_mod.globals;
     procdecls =

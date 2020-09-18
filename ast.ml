@@ -72,6 +72,20 @@ type ('ed,'sd) raw_stmt =
 (** Decorated statement type ('a is for the decor of embedded exprs) *)
 and ('ed,'sd) stmt = { st: ('ed,'sd) raw_stmt; decor: 'sd }
 
+type 'sd globaldecl = {
+    varname: string;
+    typeexp: typeExpr;
+    decor: 'sd
+  }
+
+(* Make record types for all the things! *)
+type ('ed, 'sd) globalstmt = {
+    varname: string;
+    typeexp: typeExpr option;
+    init: 'ed expr option;
+    decor: 'sd
+  }
+
 (* I thought about removing the decoration from the decl, but it can
  * stand on its own in an interface file, so I guess it needs it. *)
 type 'sd procdecl = {
@@ -79,7 +93,7 @@ type 'sd procdecl = {
     (* One could imagine removing the typeExprs after analysis. *)
     params: (string * typeExpr) list;
     rettype: typeExpr;
-    decor: 'sd;
+    decor: 'sd
   }
 
 (** AST procedure record. *)
@@ -90,25 +104,24 @@ type ('ed,'sd) proc = {
   }
 
 (** Import statements occur separately, so it seems no need to include in 
- * the stmt type. *)
+ * the stmt type. Also, no type & symbol information? *)
 type importStmt =
   | Using of string * string option
   | Open of string
 
 type ('ed,'sd) dillmodule = {
     name: string;
-    imports: importStmt list; (* should it be a module interface list? *)
-    (* No, AST should not have a symbol table in it! 
-     * I can keep the top level symbol table with the control function. *)
-    globals: ('ed, 'sd) stmt list;
+    imports: importStmt list;
+    globals: ('ed, 'sd) globalstmt list;
     procs: ('ed,'sd) proc list;
     initblock: ('ed,'sd) stmt list
   }
 
-type ('ed, 'sd) module_spec = {
+(* No expressions in a module spec. *)
+type 'sd module_spec = {
     name: string;
-    imports: importStmt list;
-    globals: ('ed, 'sd) stmt list; (* initializers removed *)
+    imports: importStmt list; 
+    globals: 'sd globaldecl list;
     procdecls: 'sd procdecl list
   }
 
@@ -187,14 +200,22 @@ let proc_to_string (proc: ('ed, 'sd) proc) =
 
 let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   "module " ^ dmod.name ^ " = \n"
-  ^ block_to_string dmod.globals
+  ^ List.fold_left (
+        fun s gstmt ->
+        s ^ "var " ^ gstmt.varname
+        ^ Option.fold ~none:"" ~some:(fun te -> ": " ^ typeExpr_to_string te) gstmt.typeexp
+        ^ Option.fold ~none:"" ~some:(fun e -> " = " ^ exp_to_string e) gstmt.init ^ "\n"
+      ) "" dmod.globals
   ^ List.fold_left (fun s p -> s ^ proc_to_string p) "" dmod.procs
   ^ block_to_string dmod.initblock
   ^ "end " ^ dmod.name ^ "\n"
 
-let interface_to_string (modi: ('ed, 'sd) module_spec) =
+let interface_to_string (modi: 'sd module_spec) =
   "modspec " ^ modi.name ^ " = \n"
-  ^ block_to_string modi.globals
+  ^ List.fold_left (
+        fun s (gdecl: 'sd globaldecl) ->
+        s ^ "var " ^ gdecl.varname ^ typeExpr_to_string gdecl.typeexp ^ "\n")
+      "" modi.globals
   ^ List.fold_left
       (fun s pd -> s ^ procdecl_to_string pd ^ ";\n") "" modi.procdecls
   ^ "end " ^ modi.name ^ "\n"

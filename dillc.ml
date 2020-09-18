@@ -101,7 +101,7 @@ let rec open_from_paths plist filename =
 (** Scan all  and populate the table of known ones. *)
 (* An analyzer function will add them to symbol tables based on "using" or 
   * "open". *)
-let load_imports cconfig (modmap: ('ed, 'sd) module_spec StrMap.t) istmts =
+let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
   let rec load_import mmap istmt =
     let modname = match istmt with
       | Using (mn, _) -> mn
