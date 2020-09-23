@@ -1,11 +1,11 @@
-module TryImport =
+module Import01 =
 
 using Collatz;
 
 begin
 
-printInt(43);
+printInt(Collatz.collatz(6171)); (* 261 steps *)
 
 end
 
-end TryImport
+end Import01

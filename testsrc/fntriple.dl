@@ -1,3 +1,5 @@
+module Fntriple = 
+
 proc triple(x: Int) : Int =
   var y = 3;
   return x * y;
@@ -6,3 +8,5 @@ end triple
 begin
   printInt(triple(14));
 end
+
+end Fntriple

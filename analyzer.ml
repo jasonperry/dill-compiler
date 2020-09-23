@@ -15,22 +15,6 @@ exception SemanticError of string
  * AST? Maybe, because if I just rely on following, the order matters,
  * Or else you'd need a unique identifier for each child. *)
 
-(** Mash list of error lists into a single list *)
-let concat_errors rlist =
-  (* the list of errors are each themselves lists. *)
-  List.concat (
-      List.concat_map (
-          fun r -> match r with
-                   | Ok _ -> []
-                   | Error erec -> [erec]
-        ) rlist
-    )
-
-(** Combine all OKs into a single list *)
-let concat_ok rlist = List.concat_map Result.to_list rlist
-
-(* TODO: a check_list that does the map and concat error/Ok *)
-
 (** Helper to match a formal with actual parameter list, for
    typechecking procedure calls. *)
 let rec match_params (formal: 'a st_entry list) (actual: typetag list) =
@@ -437,6 +421,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
      | Error errs -> Error errs
      | Ok newstmts -> Ok {st=StmtBlock newstmts; decor=blockscope}
 
+
 (** Check a list of statements. Adds test for unreachable code. *)
 and check_stmt_seq syms tenv sseq =
   let rec check' acc stmts = match stmts with
@@ -459,6 +444,7 @@ and check_stmt_seq syms tenv sseq =
   else
     (* Make one Ok out of the list of results. NOT a stmt_result. *)
     Ok (concat_ok results)
+
 
 (** Determine if a block of statements returns on every path.
   * Return types and unreachable code are checked elsewhere. *)
@@ -485,6 +471,7 @@ let rec block_returns stlist =
        (* While body may never be entered, so can't guarantee *)
        block_returns rest
   )
+
 
 (** Check a procedure declaration and add it to the given symbol node. *)
 let check_pdecl syms tenv (pdecl: 'loc procdecl) =
@@ -576,7 +563,7 @@ let check_globdecl syms tenv gdecl =
     ))
 
 
-(** Add all symbols from imported module specs. *)
+(** Check imported module specs and add global var & proc symbols. *)
 let add_imports syms tenv specs istmts = 
   (* Should I make types global? No, let them be parameterized also *)
   (* Even if you open a module, you should remember which module the 
@@ -593,59 +580,83 @@ let add_imports syms tenv specs istmts =
         | None -> (modname, modname ^ "." ) )
       | Open modname -> (modname, "") in
     let the_spec = StrMap.find modname specs in
-    List.iter (
+    (* Iterate over global variable declarations and add those *)
+    List.map (
         fun (gdecl: 'st globaldecl) ->
-        let sty =  match check_typeExpr tenv gdecl.typeexp with
-          | Ok ttag -> ttag
+        let fullname = prefix ^ gdecl.varname in
+        match check_typeExpr tenv gdecl.typeexp with
           | Error msg ->
-             failwith msg in (* IS this where I check typeExps in header files? *)
-        Symtable.addvar syms {
-            symname = prefix ^ gdecl.varname;
-            symtype = sty; 
-            var = true;
-            addr = None
-          }
-      ) the_spec.globals
+             (* Yes, this is the semantic checking of modspecs. *)
+             Error [{value=msg; loc=gdecl.decor}] 
+          | Ok ttag -> (
+            match Symtable.findvar_opt fullname syms with
+            | Some (_, _) ->
+               Error [{value=("Duplicated extern variable " ^ fullname);
+                       loc=gdecl.decor}]
+            | None -> 
+               Symtable.addvar syms {
+                   symname = fullname;
+                   symtype = ttag; 
+                   var = true;
+                   addr = None
+                 };
+               Ok syms
+      )) the_spec.globals
+    @ (List.map (
+           fun (pdecl: 'sd procdecl) ->
+           match check_pdecl syms tenv
+                   { pdecl with name=(prefix ^ pdecl.name) } with
+           | Ok pd -> Ok pd.decor  (* Throw away the decl (and syms too! *)
+           | Error errs -> Error errs
+         ) the_spec.procdecls
+      ) (* end add_import *)
   in
-  List.iter add_import istmts
+  concat_errors (List.concat_map add_import istmts)
 
 
-let check_module syms tenv (dmod: ('ed, 'sd) dillmodule) =
-  let globalres = List.map (check_globdecl syms tenv) dmod.globals in
-  if List.exists Result.is_error globalres then
-    Error (concat_errors globalres)
+let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
+  (* Don't need the symtable result, it's the same one I passed in *)
+  let importerrs = add_imports syms tenv ispecs dmod.imports in
+  if importerrs <> [] then
+    Error importerrs
   else
-    let newglobals = concat_ok globalres in 
-    let pdeclres = List.map (fun proc -> check_pdecl syms tenv proc.decl)
-                     dmod.procs in
-    if List.exists Result.is_error pdeclres then
-      (* check_proc errors are a list of string locateds. *)
-      Error (concat_errors pdeclres)
-    else (
-      let newdecls = concat_ok pdeclres in 
-      let procres = List.map2 (check_proc tenv) newdecls dmod.procs in
-      if List.exists Result.is_error procres then
-        Error (concat_errors procres)
-      else (
-        let newprocs = concat_ok procres in
-        (* tricky to check that globals are initialized. For now, just
-         * make sure they're initted (directly) in the init block. *)
-        let blocksyms = Symtable.new_scope syms in
-        (* Oh, I have to let it initialize globals upward, like with if-then *)
-        match check_stmt_seq blocksyms tenv dmod.initblock with
-        | Error errs -> Error errs
-        | Ok newblock ->
-           let global_uninit = StrSet.diff syms.uninit blocksyms.parent_init in
-           if not (StrSet.is_empty global_uninit) then
-             Error (StrSet.fold (fun v strs ->
-                        {loc=(List.hd (dmod.globals)).decor; (* fudge the loc *)
-                         value="Uninitialized global variable " ^ v ^ "\n"}
-                        :: strs) global_uninit [])
-           else 
-             Ok {name=dmod.name; imports=dmod.imports;
-                 globals=newglobals; procs=newprocs;
-                 initblock=newblock}
-  ))
+    (* TODO: add new scope so externs will be at the top. *)
+    let syms = Symtable.new_scope syms in
+    let globalres = List.map (check_globdecl syms tenv) dmod.globals in
+    if List.exists Result.is_error globalres then
+      Error (concat_errors globalres)
+    else
+      let newglobals = concat_ok globalres in 
+      let pdeclres = List.map (fun proc -> check_pdecl syms tenv proc.decl)
+                       dmod.procs in
+      if List.exists Result.is_error pdeclres then
+        (* check_proc errors are a list of string locateds. *)
+        Error (concat_errors pdeclres)
+      else
+        let newdecls = concat_ok pdeclres in 
+        let procres = List.map2 (check_proc tenv) newdecls dmod.procs in
+        if List.exists Result.is_error procres then
+          Error (concat_errors procres)
+        else
+          let newprocs = concat_ok procres in
+          (* tricky to check that globals are initialized. For now, just
+           * make sure they're initted (directly) in the init block. *)
+          let blocksyms = Symtable.new_scope syms in
+          (* Oh, I have to let it initialize globals upward, like with if-then *)
+          match check_stmt_seq blocksyms tenv dmod.initblock with
+          | Error errs -> Error errs
+          | Ok newblock ->
+             let global_uninit = StrSet.diff syms.uninit blocksyms.parent_init in
+             if not (StrSet.is_empty global_uninit) then
+               Error (StrSet.fold (fun v strs ->
+                          {loc=(List.hd (dmod.globals)).decor; (* fudge the loc *)
+                           value="Uninitialized global variable " ^ v ^ "\n"}
+                          :: strs) global_uninit [])
+             else 
+               Ok {name=dmod.name; imports=dmod.imports;
+                   globals=newglobals; procs=newprocs;
+                   initblock=newblock}
+
 
 (** Auto-generate the interface object for a module *)
 let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
@@ -664,7 +675,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
           { decor = gdecl.decor;
             varname = gdecl.varname;
             typeexp = 
-              (* regenerate typeExpr (string) from type *)
+              (* regenerate typeExpr (string) from symtable type *)
               let vtype =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
               TypeName (typetag_to_string vtype)

@@ -83,6 +83,8 @@ rule token = parse  (* funny that it's called parse *)
   | "using"   { USING }
   | "as"      { AS }
   | "open"    { OPEN }
+  | "private" { PRIVATE }
+  | '.'       { DOT }
   | "True"    { TRUE }    (* Is this the place to put built-in names? *)
   | "False"   { FALSE }   (* Even if not, bools might be special. *)
   | ident_lc as v	{ IDENT_LC v }

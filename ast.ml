@@ -92,6 +92,7 @@ type 'sd procdecl = {
     name: string;
     (* One could imagine removing the typeExprs after analysis. *)
     params: (string * typeExpr) list;
+    (* Also need "private" signifier. *)
     rettype: typeExpr;
     decor: 'sd
   }
@@ -104,7 +105,8 @@ type ('ed,'sd) proc = {
   }
 
 (** Import statements occur separately, so it seems no need to include in 
- * the stmt type. Also, no type & symbol information? *)
+ * the stmt type. Also, no decoration needed?
+ * Any possible errors are in the imported header itself, so it seems not. *)
 type importStmt =
   | Using of string * string option
   | Open of string
@@ -203,20 +205,23 @@ let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   ^ List.fold_left (
         fun s gstmt ->
         s ^ "var " ^ gstmt.varname
-        ^ Option.fold ~none:"" ~some:(fun te -> ": " ^ typeExpr_to_string te) gstmt.typeexp
-        ^ Option.fold ~none:"" ~some:(fun e -> " = " ^ exp_to_string e) gstmt.init ^ "\n"
+        ^ Option.fold ~none:"" ~some:(fun te -> ": " ^ typeExpr_to_string te)
+            gstmt.typeexp
+        ^ Option.fold ~none:"" ~some:(fun e -> " = " ^ exp_to_string e)
+            gstmt.init
+        ^ "\n"
       ) "" dmod.globals
   ^ List.fold_left (fun s p -> s ^ proc_to_string p) "" dmod.procs
   ^ block_to_string dmod.initblock
   ^ "end " ^ dmod.name ^ "\n"
 
-let interface_to_string (modi: 'sd module_spec) =
-  "modspec " ^ modi.name ^ " = \n"
+let modspec_to_string (mspec: 'sd module_spec) =
+  "modspec " ^ mspec.name ^ " = \n"
   ^ List.fold_left (
         fun s (gdecl: 'sd globaldecl) ->
         s ^ "var " ^ gdecl.varname ^ typeExpr_to_string gdecl.typeexp ^ "\n")
-      "" modi.globals
+      "" mspec.globals
   ^ List.fold_left
-      (fun s pd -> s ^ procdecl_to_string pd ^ ";\n") "" modi.procdecls
-  ^ "end " ^ modi.name ^ "\n"
+      (fun s pd -> s ^ procdecl_to_string pd ^ ";\n") "" mspec.procdecls
+  ^ "end " ^ mspec.name ^ "\n"
   

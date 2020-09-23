@@ -18,6 +18,7 @@
 %token PROC RETURN NOP
 %token MODULE MODSPEC
 %token USING AS OPEN
+%token PRIVATE DOT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -126,7 +127,11 @@ procDecl: ph=procHeader SEMI { ph }
 
 procName:
   (* TODO: A method needs a dot or an arrow. *)
-  | pn=IDENT_LC { pn }
+  | mn=option(terminated(moduleName, DOT)) pn=IDENT_LC
+    { match mn with
+      | Some mname -> mname ^ "." ^ pn
+      | None -> pn
+    }
 
 paramList:
   | pl=separated_list(COMMA, nameAndType)
@@ -249,9 +254,12 @@ varExp:
     { ExpVar v }
 
 varName:
-  (* later, to add the dot in it *)
-  | vn = IDENT_LC
-    { vn }
+  (* later, to add type or object prefix *)
+  | mn=option(terminated(moduleName, DOT)) vn=IDENT_LC
+    { match mn with
+      | Some mname -> mname ^ "." ^ vn
+      | None -> vn
+    }
 
 opExp:
 (* TODO: check type of subexps and apply promotion rules *)

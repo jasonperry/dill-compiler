@@ -1,5 +1,4 @@
-
-(* "Lexing" is the runtime for ocamllex-generated lexers. *)
+(** Top-level module of the Dill compiler. *)
 open Common
 open Ast
 open Pervasives
@@ -61,13 +60,13 @@ let process_source channel =
 
 
 (** Do analysis and codegen phases, return module code and header object *)
-let process_module _ parsedmod = 
+let process_module ispecs parsedmod = 
   let open Symtable1 in
   (* populate top-level symbol table. *)
   let topsyms : Llvm.llvalue st_node = pervasive_syms () in
   (* Maybe get headers from the AST here,
    ( so the analyzer doesn't have to call back out. *)
-  let analyzedmod = Analyzer.check_module topsyms base_tenv parsedmod in
+  let analyzedmod = Analyzer.check_module topsyms base_tenv ispecs parsedmod in
   match analyzedmod with
   | Error errs -> Error errs
   | Ok themod ->
@@ -81,7 +80,7 @@ let process_module _ parsedmod =
 let write_module dir (modcode, header) = 
   let headername = String.lowercase_ascii header.name in
   let headerfile = open_out (dir ^ "/" ^ headername ^ ".dms") in
-  output_string headerfile (interface_to_string header);
+  output_string headerfile (modspec_to_string header);
   close_out headerfile;
   Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
   Llvm.print_module (headername ^ ".ll") modcode
@@ -98,9 +97,7 @@ let rec open_from_paths plist filename =
        open_from_paths rest filename
 
 
-(** Scan all  and populate the table of known ones. *)
-(* An analyzer function will add them to symbol tables based on "using" or 
-  * "open". *)
+(** Recursively scan all modspec files and populate the map of known ones. *)
 let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
   let rec load_import mmap istmt =
     let modname = match istmt with
@@ -145,7 +142,7 @@ let () =
   let mod_results = List.map (process_module ispecs) mods in
   if List.exists Result.is_error mod_results then (
     prerr_string (format_errors
-                    (Analyzer.concat_errors mod_results));
+                    (concat_errors mod_results));
     exit 1)
   else
-  List.iter (write_module srcdir) (Analyzer.concat_ok mod_results)
+  List.iter (write_module srcdir) (concat_ok mod_results)
