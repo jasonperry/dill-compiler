@@ -7,14 +7,15 @@ open Symtable1
 (* TODO: make just fsyms to add to some other symtable. *)
 
 (* generic over address type *)
-let pervasive_syms () = 
-  let syms = Symtable.make_empty() in
-  Symtable.addproc syms {
-      procname="printInt";
+let pervasive_syms () =
+  (* Actually, I kind of want pervasives to have "no module". *)
+  let syms = Symtable.make_empty () in
+  Symtable.addproc syms "printInt" {
+      procname="printInt";  (* leaving module off will work? *)
       rettype=void_ttag;
       fparams=[{symname="n"; symtype=int_ttag; var=false; addr=None}];
     };
-  Symtable.addproc syms {
+  Symtable.addproc syms "printFloat" {
       procname="printFloat";
       rettype=void_ttag;
       fparams=[{symname="x"; symtype=float_ttag; var=false; addr=None}];

@@ -46,11 +46,11 @@ type 'addr st_node = {
     scopedepth: int; (* Just keeping the depth should be enough *)
     mutable syms: 'addr st_entry StrMap.t;
     mutable fsyms: 'addr st_procentry StrMap.t;  (* No overloading! *)
-    parent: 'addr st_node option; (* root has no parent *)
+    mutable uninit: StrSet.t; (* vars declared but not initted in this scope *)
     mutable parent_init: StrSet.t; (* vars from higher scope that are initted *)
-    in_proc: 'addr st_procentry option;
+    parent: 'addr st_node option; (* root has no parent *)
     mutable children: 'addr st_node list;
-    mutable uninit: StrSet.t
+    in_proc: 'addr st_procentry option;
   }
 
 (** Values and functions for the st_node type. *)
@@ -76,14 +76,15 @@ module Symtable (* : SYMTABLE *) = struct
       parent = None;
       parent_init = StrSet.empty;
       in_proc = None;
+      (* in_module = modname; *) (* just insert fully qualified name. *)
       children = [];
       uninit = StrSet.empty
     }
 
   (** Add (variable) symbol to current scope of a node. *)
-  let addvar nd entry = 
+  let addvar nd symname entry = 
     (* NOTE! This eliminates any previous binding, caller must check first. *)
-    nd.syms <- StrMap.add entry.symname entry nd.syms
+    nd.syms <- StrMap.add symname entry nd.syms
 
   (** Set address of existing symbol. *)
   let set_addr nd varname addr =
@@ -96,11 +97,11 @@ module Symtable (* : SYMTABLE *) = struct
         nd.syms     
   
   (** Add procedure to current scope of a node. *)
-  let addproc nd entry =
-    match StrMap.find_opt entry.procname nd.fsyms with
+  let addproc nd pname entry =
+    match StrMap.find_opt pname nd.fsyms with
     | None ->
-       nd.fsyms <- StrMap.add entry.procname entry nd.fsyms
-    | Some _ ->
+       nd.fsyms <- StrMap.add pname entry nd.fsyms
+    | Some _ -> (* should be caught by analyzer *)
        raise (SymbolError ("redefinition of procedure \"" ^ entry.procname
                            ^ "\""))
 
@@ -161,6 +162,22 @@ module Symtable (* : SYMTABLE *) = struct
     nd.children <- newnode :: nd.children;
     newnode
 
+  (** Create  scope for a new module (sets module name) *)
+  (* let new_module_scope nd modname = 
+    let newnode = {
+        scopedepth = nd.scopedepth + 1;
+        syms = StrMap.empty;
+        fsyms = StrMap.empty;
+        parent = Some nd;
+        parent_init = StrSet.empty;
+        in_proc = nd.in_proc;
+        children = [];
+        (* No copy constructor so... *)
+        uninit = StrSet.union StrSet.empty nd.uninit
+      } in
+    nd.children <- newnode :: nd.children;
+    newnode *)
+  
   (** Create a scope for a new procedure (sets "in_proc") *)
   let new_proc_scope nd procentry =
     let newnode = {

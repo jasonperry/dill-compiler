@@ -34,6 +34,7 @@
 
 %{
     open Ast
+    let mod_name = ref "" (* ONE inherited attribute, okay? *)
 %}
 
 %type <Ast.locinfo Ast.expr> expr
@@ -64,7 +65,8 @@ dillmodule:
     iss=list(importStmt)
     gls=list(declStmt) pr=list(proc) bl=option(blockStmt)
     END mn2=moduleName
-    { let initstmts = match bl with
+    { mod_name := mn;
+      let initstmts = match bl with
 	| Some (StmtBlock slist) -> slist
 	| _ -> [] in
       if mn = mn2 then {
@@ -72,7 +74,8 @@ dillmodule:
 	  imports=iss;
 	  globals=List.map (
 		      fun (v, topt, eopt) ->
-		      {varname=v; typeexp=topt; init=eopt; decor=$loc}
+		      {varname=v;
+		       typeexp=topt; init=eopt; decor=$loc}
 		    ) gls;
 	  procs=pr;
 	  initblock=initstmts
@@ -90,9 +93,10 @@ modspec:
     { if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
-	  globals=List.map (
-		      fun (v, t) -> {varname=v; typeexp=t; decor=$loc}
-		    ) gls;
+	  globals= List.map (
+		       fun (v, t) -> {varname=v; 
+				      typeexp=t; decor=$loc}
+		     ) gls;
 	  procdecls=pd;
 	}
       else $syntaxerror
@@ -119,9 +123,9 @@ proc:
     }
 
 procHeader:
-  | PROC pn=procName LPAREN pl=paramList RPAREN COLON rt=typeExp
+  | PROC pn=IDENT_LC LPAREN pl=paramList RPAREN COLON rt=typeExp
     (* construct declaration object! Good idea! *)
-    { { decor=$loc; name=pn; params=pl; rettype=rt } }
+    { { decor=$loc; name=pn; in_module=(!mod_name); params=pl; rettype=rt } }
 
 procDecl: ph=procHeader SEMI { ph }
 
@@ -174,11 +178,11 @@ declStmt:
 
 (* These are split out for global decls in the AST. *)
 declOnlyStmt:
-  | VAR v=varName COLON t=typeExp SEMI
+  | VAR v=IDENT_LC COLON t=typeExp SEMI
     { (v, t) }
 
 declInitStmt:
-  | VAR v=varName t=option(preceded(COLON, typeExp)) ASSIGN e=expr SEMI
+  | VAR v=IDENT_LC t=option(preceded(COLON, typeExp)) ASSIGN e=expr SEMI
     { (v, t, Some e) }
 
 assignStmt:

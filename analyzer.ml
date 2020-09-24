@@ -144,7 +144,7 @@ and check_call syms tenv (fname, args) =
         (* TODO: make it print out the arg list *)
         Error ("Argument match failure for " ^ fname)
     )
-    | None -> Error ("Unknown procedure " ^ fname)
+    | None -> Error ("Unknown procedure name: " ^ fname)
 
 
 (** Check for a redeclaration (name exists at same scope) *)
@@ -168,7 +168,7 @@ let check_condexp condsyms tenv condexp =
         match tyopt with
         | None -> 
            (* Caller will hold the modified 'condsyms' node *) 
-           Symtable.addvar condsyms
+           Symtable.addvar condsyms varname
              {symname=varname; symtype=ety; var=true; addr=None};
            goodex
         | Some tyexp -> (
@@ -181,7 +181,7 @@ let check_condexp condsyms tenv condexp =
                           ^ " does not match initializer type: "
                           ^ typetag_to_string ety}
           | Ok _ ->
-             Symtable.addvar condsyms
+             Symtable.addvar condsyms varname
                {symname=varname; symtype=ety; var=true; addr=None};
              goodex
         )
@@ -231,7 +231,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             match check_typeExpr tenv dty with
             | Error msg -> Error [{loc=stm.decor; value=msg}] 
             | Ok ttag ->
-               Symtable.addvar syms
+               Symtable.addvar syms v
                  {symname=v; symtype=ttag; var=true; addr=None};
                (* Add to uninitialized variable set *)
                syms.uninit <- StrSet.add v syms.uninit;
@@ -259,7 +259,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
           match tycheck_res with
           | Ok ety -> 
              (* syms is mutated, so don't need to return it *)
-             Symtable.addvar syms
+             Symtable.addvar syms v
                {symname=v; symtype=ety; var=true; addr=None};
              Ok {st=StmtDecl (v, tyopt, Some e2); decor=syms}
           | Error errs -> Error errs
@@ -502,20 +502,26 @@ let check_pdecl syms tenv (pdecl: 'loc procdecl) =
       match check_typeExpr tenv pdecl.rettype with
       | Error msg -> Error [{loc=pdecl.decor; value=msg}]
       | Ok rttag -> (
-        (* Create procedure symtable entry and add to OUTER (module) scope. *)
+        (* Create procedure symtable entry.
+         * NO LONGER ADD TO OUTER (module) scope; caller does it. *)
         let procentry =
-          {procname=pdecl.name; rettype=rttag; fparams=paramentries} in
-        Symtable.addproc syms procentry;
+          {procname=pdecl.in_module ^ "." ^ pdecl.name;
+           rettype=rttag; fparams=paramentries} in
         (* create new inner scope under the procedure, and add args *)
-        (* Should I add the proc to its own symbol table? *)
         let procscope = Symtable.new_proc_scope syms procentry in
-        Symtable.addproc procscope procentry;
-        List.iter (Symtable.addvar procscope) paramentries;
-        Ok {name=pdecl.name; params=pdecl.params;
-            rettype=pdecl.rettype; decor=procscope}
+        (* Should I add the proc to its own symbol table? Don't see why. *)
+        (* Did I do this so codegen for recursive calls "just works"? *)
+        Symtable.addproc procscope pdecl.name procentry;
+        List.iter (fun pe -> Symtable.addvar procscope pe.symname pe)
+          paramentries;
+        Ok ({name=pdecl.name; in_module=pdecl.in_module; params=pdecl.params;
+             rettype=pdecl.rettype; decor=procscope},
+            procentry)
   ))
 
-(** Check the body of a procedure whose header has already been checked *)
+
+(** Check the body of a procedure whose header has already been checked 
+  * (and added to the symbol table) *)
 let check_proc tenv (pdecl: 'addr st_node procdecl) proc =  
   let procscope = pdecl.decor in
   match check_stmt_seq procscope tenv proc.body with
@@ -583,45 +589,57 @@ let add_imports syms tenv specs istmts =
     (* Iterate over global variable declarations and add those *)
     List.map (
         fun (gdecl: 'st globaldecl) ->
-        let fullname = prefix ^ gdecl.varname in
+        let refname = prefix ^ gdecl.varname in
+        let fullname = modname ^ "." ^ gdecl.varname in
         match check_typeExpr tenv gdecl.typeexp with
           | Error msg ->
-             (* Yes, this is the semantic checking of modspecs. *)
+             (* Yes, this is where modspecs get semantically checked. *)
              Error [{value=msg; loc=gdecl.decor}] 
           | Ok ttag -> (
-            match Symtable.findvar_opt fullname syms with
+            match Symtable.findvar_opt refname syms with
             | Some (_, _) ->
-               Error [{value=("Duplicated extern variable " ^ fullname);
+               Error [{value=("Duplicated extern variable " ^ refname);
                        loc=gdecl.decor}]
-            | None -> 
-               Symtable.addvar syms {
-                   symname = fullname;
-                   symtype = ttag; 
-                   var = true;
-                   addr = None
-                 };
-               Ok syms
+            | None ->
+               let entry = {
+                   symname = fullname; symtype = ttag; 
+                   var = true; addr = None
+                 } in
+               Symtable.addvar syms refname entry;
+               if refname <> fullname then
+                 Symtable.addvar syms fullname entry;
+               Ok syms (* doesn't get used *)
       )) the_spec.globals
+    (* iterate over procedure declarations and add those. *)
     @ (List.map (
            fun (pdecl: 'sd procdecl) ->
-           match check_pdecl syms tenv
-                   { pdecl with name=(prefix ^ pdecl.name) } with
-           | Ok pd -> Ok pd.decor  (* Throw away the decl (and syms too! *)
+           let refname = prefix ^ pdecl.name in
+           let fullname = modname ^ "." ^ pdecl.name in
+           (* check_pdecl now gets module name prefix from AST. *)
+           match check_pdecl syms tenv pdecl 
+           (* { pdecl with name=(prefix ^ pdecl.name) } *) with
+           | Ok (_, entry) ->
+              print_string ("Adding imported proc symbol: " ^ refname ^ "\n");
+              Symtable.addproc syms refname entry;
+              if refname <> fullname then 
+                Symtable.addproc syms fullname entry;
+              Ok syms
            | Error errs -> Error errs
          ) the_spec.procdecls
       ) (* end add_import *)
   in
-  concat_errors (List.concat_map add_import istmts)
+  match concat_errors (List.concat_map add_import istmts) with
+  | [] -> Ok syms
+  | errs -> Error errs
 
 
 let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
   (* Don't need the symtable result, it's the same one I passed in *)
-  let importerrs = add_imports syms tenv ispecs dmod.imports in
-  if importerrs <> [] then
-    Error importerrs
-  else
+  match add_imports syms tenv ispecs dmod.imports with
+  | Error errs -> Error errs 
+  | Ok syms -> (  (* this won't fix it. *)
     (* TODO: add new scope so externs will be at the top. *)
-    let syms = Symtable.new_scope syms in
+    (* let syms = Symtable.new_scope syms in *)
     let globalres = List.map (check_globdecl syms tenv) dmod.globals in
     if List.exists Result.is_error globalres then
       Error (concat_errors globalres)
@@ -633,8 +651,12 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
         (* check_proc errors are a list of string locateds. *)
         Error (concat_errors pdeclres)
       else
-        let newdecls = concat_ok pdeclres in 
-        let procres = List.map2 (check_proc tenv) newdecls dmod.procs in
+        let newpdecls = 
+          List.map (fun ((pd: 'a st_node procdecl), pentry) ->
+              Symtable.addproc syms pd.name pentry;
+              pd) 
+            (concat_ok pdeclres) in
+        let procres = List.map2 (check_proc tenv) newpdecls dmod.procs in
         if List.exists Result.is_error procres then
           Error (concat_errors procres)
         else
@@ -656,7 +678,7 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
                Ok {name=dmod.name; imports=dmod.imports;
                    globals=newglobals; procs=newprocs;
                    initblock=newblock}
-
+  )
 
 (** Auto-generate the interface object for a module *)
 let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
