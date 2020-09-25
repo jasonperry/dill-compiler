@@ -34,7 +34,7 @@
 
 %{
     open Ast
-    let mod_name = ref "" (* ONE inherited attribute, okay? *)
+    (* let mod_name = ref "" (* ONE inherited attribute, okay? *) *)
 %}
 
 %type <Ast.locinfo Ast.expr> expr
@@ -65,8 +65,7 @@ dillmodule:
     iss=list(importStmt)
     gls=list(declStmt) pr=list(proc) bl=option(blockStmt)
     END mn2=moduleName
-    { mod_name := mn;
-      let initstmts = match bl with
+    { let initstmts = match bl with
 	| Some (StmtBlock slist) -> slist
 	| _ -> [] in
       if mn = mn2 then {
@@ -124,8 +123,7 @@ proc:
 
 procHeader:
   | PROC pn=IDENT_LC LPAREN pl=paramList RPAREN COLON rt=typeExp
-    (* construct declaration object! Good idea! *)
-    { { decor=$loc; name=pn; in_module=(!mod_name); params=pl; rettype=rt } }
+    { {decor=$loc; name=pn; params=pl; rettype=rt} (* procdecl *) }
 
 procDecl: ph=procHeader SEMI { ph }
 

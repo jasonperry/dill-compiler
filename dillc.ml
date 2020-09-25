@@ -64,15 +64,17 @@ let process_module ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
   let open Symtable1 in
   (* populate top-level symbol table. *)
   let topsyms : Llvm.llvalue st_node = pervasive_syms () in
-  let modsyms = Symtable.new_scope topsyms in
-  (* Maybe get headers from the AST here,
+  (* don't need to create sub-module, analyzer does, we just start the ball *)
+  (* let modsyms = Symtable.new_scope topsyms in *)
+  (* We pass in the headers from the AST here,
    ( so the analyzer doesn't have to call back out. *)
-  let analyzedmod = Analyzer.check_module modsyms base_tenv ispecs parsedmod in
+  let analyzedmod = Analyzer.check_module topsyms base_tenv ispecs parsedmod in
   match analyzedmod with
   | Error errs -> Error errs
   | Ok themod ->
      (* print_string (module_to_string themod); *)
-     let modcode = Codegen.gen_module base_tenv modsyms themod in
+     print_string (st_node_to_string topsyms);
+     let modcode = Codegen.gen_module base_tenv topsyms themod in
      let header = Analyzer.create_module_spec themod in
      Ok (modcode, header)
 

@@ -94,7 +94,8 @@ let rec gen_expr syms tenv (ex: typetag expr) =
       failwith "unknown type for binary operation"
   )
   | ExpCall (fname, params) -> (
-    match lookup_function fname the_module with
+    let (entry, _) = Symtable.findproc fname syms in
+    match lookup_function entry.procname the_module with
     (* assumes function names are unique. this may mean that
      * procedure entries will need to store a "canonicalized" proc name
      * (or at least the class name, so it can be generated.) *)
@@ -256,7 +257,8 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
     position_at_end merge_bb builder    
   )
   | StmtCall {decor=_; e=ExpCall (fname, params)} -> (
-    match lookup_function fname the_module with
+    let (entry, _) = Symtable.findproc fname syms in
+    match lookup_function entry.procname the_module with
     (* assumes function names are unique. this may mean that
      * procedure entries will need to store a "canonicalized" proc name
      * (or at least the class name, so it can be generated.) *)
@@ -279,6 +281,7 @@ let default_value ttag =
   else failwith ("Cannot generate default value for type "
                  ^ typetag_to_string ttag)
 
+
 (** generate code for a global variable declaration (init code in main) *)
 let gen_global_decl tenv (gdecl: ('ed, 'sd) globalstmt) =
   let syms = gdecl.decor in
@@ -297,6 +300,7 @@ let gen_global_decl tenv (gdecl: ('ed, 'sd) globalstmt) =
      ignore (build_store gval gaddr builder)
   | None -> ()
 
+
 (** Convert a type tag from the AST into a suitable LLVM type. *)
 let ttag_to_llvmtype ttag =
   if ttag = void_ttag then void_type
@@ -305,17 +309,21 @@ let ttag_to_llvmtype ttag =
   else if ttag = bool_ttag then bool_type
   else failwith "Unsupported type for procedure"   
 
+
 (** Generate llvm function decls for a set of procs from the AST. *)
+(* Could this work for both local and imported functions? *)
 let gen_fdecls fsyms =
   StrMap.iter (fun _ procentry ->
       let rtype = ttag_to_llvmtype procentry.rettype in
       let params = List.map (fun entry -> ttag_to_llvmtype entry.symtype)
                      procentry.fparams
                    |> Array.of_list in
+      print_string ("Declaring function " ^ procentry.procname ^ "\n");
       ignore (declare_function procentry.procname
                 (function_type (rtype) params) the_module)
     (* We could set names for arguments here. *)
     ) fsyms  (* returns () *)
+
 
 (** generate code for a procedure body (its declaration should already
  * be defined *)
@@ -323,7 +331,7 @@ let gen_proc tenv proc =
   let fname = proc.decl.name in
   (* procedure is now defined in its own scope, so "getproc" *)
   let fentry = Symtable.getproc fname proc.decor in 
-  match lookup_function fname the_module with
+  match lookup_function fentry.procname the_module with
   | None -> failwith "BUG: llvm function lookup failed"
   | Some func -> 
      (* should I define_function here, not add to the existing decl? *)
@@ -352,8 +360,13 @@ let gen_proc tenv proc =
 
 (** Generate code for an entire module. *)
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
-  (* Procedures declared in this module should already be here. *)
+  (* Now the a highest-level table has the imports. *)
   gen_fdecls topsyms.fsyms;
+  (* if List.length (topsyms.children) <> 1 then
+    failwith "BUG: didn't find unique module-level symtable"; *)
+  let modsyms = List.hd (topsyms.children) in
+  gen_fdecls modsyms.fsyms;
+  (* Procedures declared in this module should already be here. *)
   (* if there are globals or an init block, create an init procedure *)
   if modtree.globals <> [] || modtree.initblock <> [] then (
     let initproc =

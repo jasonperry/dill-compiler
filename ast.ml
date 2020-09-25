@@ -91,8 +91,6 @@ type ('ed, 'sd) globalstmt = {
  * stand on its own in an interface file, so I guess it needs it. *)
 type 'sd procdecl = {
     name: string;
-    (* needed by check_pdecl - could remove by having caller construct entry *)
-    in_module: string;  
     (* One could imagine removing the typeExprs after analysis. *)
     params: (string * typeExpr) list;
     (* Also need "private" signifier. *)

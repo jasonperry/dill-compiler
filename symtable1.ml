@@ -53,6 +53,17 @@ type 'addr st_node = {
     in_proc: 'addr st_procentry option;
   }
 
+let st_node_to_string node =
+  let rec ts' pad nd = 
+    pad ^ "{ (" 
+    ^ StrMap.fold (fun _ ent s -> ent.symname ^ ", " ^ s) nd.syms ""
+    ^ ")\n" ^ pad ^ "  ("
+    ^ StrMap.fold (fun _ ent s -> ent.procname ^ ", " ^ s) nd.fsyms ""
+    ^ ")\n"
+    ^ String.concat "" (List.map (ts' (pad ^ "    ")) nd.children)
+    ^ pad ^ "}\n" in
+  ts' "" node
+
 (** Values and functions for the st_node type. *)
 (* module type SYMTABLE = sig
   val make_empty : unit -> 'a st_node
@@ -121,26 +132,20 @@ module Symtable (* : SYMTABLE *) = struct
     | Some ent -> ent
     | None -> raise Not_found
 
-  (* 
-  (** Find procs matching a name (at a single scope depth only) *)
-  let rec findprocs name nd =
-    match StrMap.find_opt name nd.fsyms with
-    | Some proclist -> (proclist, nd.scopedepth)
-    | None -> (
-      match nd.parent with
-      | Some parent -> findprocs name parent
-      | None -> ([], 0)
-    ) *)
-
-  (** Find a procedure by name. Should it raise instead? *)
-  let rec findproc name nd =
+  (** Find a procedure by name. Option version for analyzer. *)
+  let rec findproc_opt name nd =
     match StrMap.find_opt name nd.fsyms with
     | Some proc -> Some (proc, nd.scopedepth)
     | None -> (
       match nd.parent with
-      | Some parent -> findproc name parent
+      | Some parent -> findproc_opt name parent
       | None -> None
     )
+
+  let findproc name nd =
+    match findproc_opt name nd with
+    | Some (entry, depth) -> (entry, depth)
+    | None -> raise Not_found
 
   (** For codegen. Get a proc's symtable entry when it must exist. *)
   let getproc name nd =
@@ -162,8 +167,9 @@ module Symtable (* : SYMTABLE *) = struct
     nd.children <- newnode :: nd.children;
     newnode
 
+  (*
   (** Create  scope for a new module (sets module name) *)
-  (* let new_module_scope nd modname = 
+  let new_module_scope nd modname = 
     let newnode = {
         scopedepth = nd.scopedepth + 1;
         syms = StrMap.empty;
@@ -192,8 +198,6 @@ module Symtable (* : SYMTABLE *) = struct
       } in
     nd.children <- newnode :: nd.children;
     newnode    
-
-  (* Need new_proc_scope to create a procedure scope. *)
 
 end (* module Symtable *)
 

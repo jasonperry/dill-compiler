@@ -136,7 +136,7 @@ and check_call syms tenv (fname, args) =
     let argtypes = List.map (fun (ae: typetag expr) -> ae.decor)
                      args_typed in 
     (* find and match procedure *)
-    match Symtable.findproc fname syms with
+    match Symtable.findproc_opt fname syms with
     | Some (proc, _) -> (
       if match_params proc.fparams argtypes then
         Ok {e=ExpCall (fname, args_typed); decor=proc.rettype}
@@ -405,7 +405,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
         | Error msg -> Error [{loc=stm.decor; value=msg}]
         | Ok newcallexp -> (
           (* non-void call can't be a standalone statement. *)
-          match Symtable.findproc fname syms with
+          match Symtable.findproc_opt fname syms with
           | None -> failwith "BUG: proc name was previously found OK."
           | Some (entry, _) when entry.rettype <> Types.void_ttag ->
              Error [{loc=stm.decor;
@@ -474,9 +474,9 @@ let rec block_returns stlist =
 
 
 (** Check a procedure declaration and add it to the given symbol node. *)
-let check_pdecl syms tenv (pdecl: 'loc procdecl) =
+let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
   (* check name for redeclaration *)
-  match Symtable.findproc pdecl.name syms with
+  match Symtable.findproc_opt pdecl.name syms with
   | Some (_, scope) when syms.scopedepth = scope ->
      Error [{loc=pdecl.decor; value="Redeclaration of procedure " ^ pdecl.name}]
   | _ -> (
@@ -505,16 +505,17 @@ let check_pdecl syms tenv (pdecl: 'loc procdecl) =
         (* Create procedure symtable entry.
          * NO LONGER ADD TO OUTER (module) scope; caller does it. *)
         let procentry =
-          {procname=pdecl.in_module ^ "." ^ pdecl.name;
+          {procname=modname ^ "." ^ pdecl.name;
            rettype=rttag; fparams=paramentries} in
         (* create new inner scope under the procedure, and add args *)
+        (* Woops, it creates a "dangling" scope if proc isn't defined *)
         let procscope = Symtable.new_proc_scope syms procentry in
         (* Should I add the proc to its own symbol table? Don't see why. *)
         (* Did I do this so codegen for recursive calls "just works"? *)
         Symtable.addproc procscope pdecl.name procentry;
         List.iter (fun pe -> Symtable.addvar procscope pe.symname pe)
           paramentries;
-        Ok ({name=pdecl.name; in_module=pdecl.in_module; params=pdecl.params;
+        Ok ({name=pdecl.name; params=pdecl.params;
              rettype=pdecl.rettype; decor=procscope},
             procentry)
   ))
@@ -616,7 +617,7 @@ let add_imports syms tenv specs istmts =
            let refname = prefix ^ pdecl.name in
            let fullname = modname ^ "." ^ pdecl.name in
            (* check_pdecl now gets module name prefix from AST. *)
-           match check_pdecl syms tenv pdecl 
+           match check_pdecl syms tenv modname pdecl 
            (* { pdecl with name=(prefix ^ pdecl.name) } *) with
            | Ok (_, entry) ->
               print_string ("Adding imported proc symbol: " ^ refname ^ "\n");
@@ -637,15 +638,17 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
   (* Don't need the symtable result, it's the same one I passed in *)
   match add_imports syms tenv ispecs dmod.imports with
   | Error errs -> Error errs 
-  | Ok syms -> (  (* this won't fix it. *)
-    (* TODO: add new scope so externs will be at the top. *)
-    (* let syms = Symtable.new_scope syms in *)
+  | Ok syms -> (  (* It's the same symtable passed in, for now. *)
+    (* Scope added so externs will be above the module scope. *)
+    (* Why wouldn't everything be added below this??? how could I get two? *)
+    let syms = Symtable.new_scope syms in
     let globalres = List.map (check_globdecl syms tenv) dmod.globals in
     if List.exists Result.is_error globalres then
       Error (concat_errors globalres)
     else
       let newglobals = concat_ok globalres in 
-      let pdeclres = List.map (fun proc -> check_pdecl syms tenv proc.decl)
+      let pdeclres = List.map (fun proc ->
+                         check_pdecl syms tenv dmod.name proc.decl)
                        dmod.procs in
       if List.exists Result.is_error pdeclres then
         (* check_proc errors are a list of string locateds. *)
