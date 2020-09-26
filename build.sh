@@ -1,13 +1,26 @@
 #!/bin/bash
 
-if dune exec ./dillc.exe "$1"
-then
-    name=$(basename "$1" .dl)
-    mv -f $name.ll out/
-    if clang -o out/$name out/$name.ll pervasives.c
-    then
-	echo "Successfully built executable out/$name"
+for sf in $@; do
+    if dune exec ./dillc.exe "$sf"; then
+	name=$(basename "$sf" .dl)
+	mv -f "$name.ll" out/
+	irfiles="$irfiles out/$name.ll"
+    else
+	echo "Compile failed."
+	exit
     fi
-else
-    echo "Compile failed."
+done
+
+# oh, last one on command line is automatically name!
+if clang -o out/$name $irfiles pervasives.c
+then
+    echo "Successfully built executable out/$name"
 fi
+
+#if dune exec ./dillc.exe "$1"
+#then
+#    name=$(basename "$1" .dl)
+#    mv -f $name.ll out/
+#else
+#    echo "Compile failed."
+#fi

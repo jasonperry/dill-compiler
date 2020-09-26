@@ -152,11 +152,18 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
   | StmtNop -> () (* will I need to generate so labels work? *)
 
   | StmtReturn eopt -> (
-    match eopt with
-    | None -> ignore (build_ret_void builder)
-    | Some rexp -> 
-       let expval = gen_expr syms tenv rexp in
-       ignore (build_ret expval builder)
+    (match eopt with
+     | None -> ignore (build_ret_void builder)
+     | Some rexp -> 
+        let expval = gen_expr syms tenv rexp in
+        ignore (build_ret expval builder)
+    );
+    (* Add a basic block after in case a break is added afterwards. *)
+    let this_function =
+      Option.get (lookup_function
+                    (Option.get syms.in_proc).procname the_module) in
+    let retcont_bb = append_block context "retcont" this_function in
+    position_at_end retcont_bb builder;
   )
 
   | StmtIf (cond, thenblock, elsifs, elsopt) -> (
@@ -273,6 +280,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
   | StmtBlock _ -> failwith "not implemented"
 
 (** Get a default value for a type. Used only for globals. *)
+(* and maybe for unreachable returns *)
 let default_value ttag =
   (* I'll need some kind of ttag->llvm type mapping eventually. *)
   if ttag = int_ttag then const_int int_type 0
@@ -352,10 +360,15 @@ let gen_proc tenv proc =
       * dummy branch. *)
      if Option.is_none (block_terminator (insertion_block builder)) then
        (* if return_type (type_of func) = void_type then *)
-       if fentry.rettype = void_ttag then
-         ignore (build_ret_void builder)
-       else 
-         ignore (build_br entry_bb builder)
+       if fentry.rettype = void_ttag then (
+         ignore (build_ret_void builder);
+         Llvm_analysis.assert_valid_function func
+       )
+       else (
+         (* dummy return, should be unreachable *)
+         ignore (build_ret (default_value fentry.rettype) builder);
+         Llvm_analysis.assert_valid_function func
+       )
 
 
 (** Generate code for an entire module. *)
@@ -381,4 +394,5 @@ let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
     ignore (build_ret_void builder)
   );
   List.iter (gen_proc tenv) modtree.procs;
+  (* Llvm_analysis.assert_valid_module the_module; *)
   the_module

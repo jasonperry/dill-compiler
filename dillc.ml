@@ -80,9 +80,9 @@ let process_module ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
 
 
 (** Write a module and its header out to disk *)
-let write_module dir (modcode, header) = 
+let write_module srcdir (modcode, header) = 
   let headername = String.lowercase_ascii header.name in
-  let headerfile = open_out (dir ^ "/" ^ headername ^ ".dms") in
+  let headerfile = open_out (srcdir ^ "/" ^ headername ^ ".dms") in
   output_string headerfile (modspec_to_string header);
   close_out headerfile;
   Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;

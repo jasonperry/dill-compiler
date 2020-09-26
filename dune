@@ -9,10 +9,22 @@
 
 (executable
   (name dillc)
-  (libraries llvm)
+  (libraries
+    llvm
+    llvm.analysis
+  )
   (modules :standard) ;\ codegen)
 )
 
+;; possible other libraries (from dune version of Kaleidoscope)
+;   ctypes.foreign
+;   llvm
+;   llvm.analysis
+;   llvm.executionengine
+;   llvm.target
+;   llvm.scalar_opts
+;   menhirLib)
+   
 ;; test setups from calc demo
 ; (rule
 ;   (with-stdout-to calc.out

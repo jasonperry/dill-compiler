@@ -19,11 +19,12 @@ proc collatz(n: Int) : Int =
    return count; 
 end collatz
 
+(* (* It's a "library" now. *)
 begin
 
 (* printInt(collatz(837799)); (* 524 steps, overflows *) *)
 printInt(collatz(6171)); (* 261 steps *)
 
 end
-
+*)
 end Collatz
