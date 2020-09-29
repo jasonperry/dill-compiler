@@ -44,14 +44,14 @@
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
 %type <(Ast.locinfo) Ast.module_spec> modspec
-
+(* Switched back to a single module per file until I get object codegen working. *)
 %start <(Ast.locinfo) Ast.module_spec option
-        * (Ast.locinfo,Ast.locinfo) Ast.dillmodule list> main
+        * (Ast.locinfo,Ast.locinfo) Ast.dillmodule option> main
 
 %%
 
-main: ms=option(modspec) mods=list(dillmodule) EOF
-    { (ms, mods) }
+main: specopt=option(modspec) modopt=option(dillmodule) EOF
+    { (specopt, modopt) }
 
 (* My brilliant idea, but it never reduces. TODO: allow interspersing. *)
 (* main: ml=list(pair (option(modspec), option(dillmodule))) EOF
