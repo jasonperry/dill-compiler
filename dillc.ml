@@ -93,6 +93,21 @@ let process_module ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
      let header = Analyzer.create_module_spec themod in
      Ok (modcode, header)
 
+let gen_objcode modcode =
+  Llvm_X86.initialize ();
+  Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
+  let ttriple = Llvm.target_triple modcode in
+  let target = Llvm_target.Target.by_triple ttriple in
+  let machine = Llvm_target.TargetMachine.create ~triple:ttriple target in
+  let dlstring =Llvm_target.DataLayout.as_string
+                  (Llvm_target.TargetMachine.data_layout machine) in
+  Llvm.set_data_layout dlstring modcode;
+  print_endline ("data layout string: " ^ dlstring)
+(* open output file *)
+(* create pass manager *)
+(* add emit pass to it *)
+(* run the pass *)
+(* close the file *) 
 
 (** Write a module and its header out to disk *)
 let write_module srcdir fname (modcode, header) = 
@@ -103,6 +118,7 @@ let write_module srcdir fname (modcode, header) =
   output_string headerfile (modspec_to_string header);
   close_out headerfile;
   Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
+  gen_objcode modcode;
   Llvm.print_module
     (Filename.chop_extension (Filename.basename fname) ^ ".ll") modcode
 
@@ -154,7 +170,7 @@ let parse_cmdline args =
       | "--parse-only" ->
          ploop (i+1) srcfiles { config with parse_only = true }
       | "--typecheck-only" ->
-         ploop (i+1) srcfiles { config with typecheck_only = true}
+         ploop (i+1) srcfiles { config with typecheck_only = true }
       | fname when (String.get fname 0) <> '-' ->
          (* really shouldn't set include path in a hacky way like this. *)
          let (ipaths, srcdir) = match Filename.dirname fname with

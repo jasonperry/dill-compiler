@@ -10,8 +10,13 @@
 (executable
   (name dillc)
   (libraries
+    ctypes.foreign
     llvm
     llvm.analysis
+    llvm.scalar_opts
+    llvm.target
+;    llvm.executionengine
+    llvm_X86
   )
   (modules :standard) ;\ codegen)
 )
