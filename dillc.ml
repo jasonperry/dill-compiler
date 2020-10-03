@@ -10,6 +10,7 @@ type dillc_config = {
     source_dir : string;
     parse_only : bool;
     typecheck_only : bool;
+    emit_llvm : bool;
     link : bool;
     print_ast : bool;
     print_symtable : bool;
@@ -20,6 +21,7 @@ let default_config = {
     source_dir = ".";
     parse_only = false;
     typecheck_only = false;
+    emit_llvm = false;
     link = false; (* later to be true by default *)
     print_ast = false;
     print_symtable = false;
@@ -87,24 +89,48 @@ let process_module ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
   match analyzedmod with
   | Error errs -> Error errs
   | Ok themod ->
-     (* print_string (module_to_string themod); *)
-     print_string (st_node_to_string topsyms);
+     print_string (module_to_string themod);
      let modcode = Codegen.gen_module base_tenv topsyms themod in
      let header = Analyzer.create_module_spec themod in
      Ok (modcode, header)
 
-
-(** Write a module and its header out to disk *)
-let write_module srcdir fname (modcode, header) = 
+let write_header srcdir header = 
   let headerfilename =
     String.lowercase_ascii (String.sub header.name 0 1)
     ^ String.sub header.name 1 (String.length header.name - 1) in
   let headerfile = open_out (srcdir ^ "/" ^ headerfilename ^ ".dms") in
   output_string headerfile (modspec_to_string header);
-  close_out headerfile;
+  close_out headerfile
+
+(** Write a module to disk as native code. *)
+let write_module_native filename modcode =
+  Llvm_all_backends.initialize (); (* was _X86 *)
+  let open Llvm_target in
+  let ttriple = "x86_64-pc-linux-gnu" in
+  Llvm.set_target_triple ttriple modcode;
+  let ttriple = Llvm.target_triple modcode in
+  let target = Target.by_triple ttriple in
+  let machine = Llvm_target.TargetMachine.create
+                  ~triple:ttriple
+                  ~cpu:"generic"
+                  ~features:"" target in
+  let dlstring =DataLayout.as_string
+                  (TargetMachine.data_layout machine) in
+  Llvm.set_data_layout dlstring modcode; 
+  (* let passmgr = Llvm.PassManager.create () in (* for optim only? *) *)
+  let outfilename =
+    Filename.chop_extension (Filename.basename filename) ^ ".o" in
+  TargetMachine.emit_to_file
+    modcode
+    CodeGenFileType.ObjectFile
+    outfilename
+    machine
+
+(** Write a module to disk as LLVM IR text. *)
+let write_module_llvm filename modcode = 
   Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
   Llvm.print_module
-    (Filename.chop_extension (Filename.basename fname) ^ ".ll") modcode
+    (Filename.chop_extension (Filename.basename filename) ^ ".ll") modcode
 
 
 (** Try to open a given filename, searching paths *)
@@ -154,7 +180,9 @@ let parse_cmdline args =
       | "--parse-only" ->
          ploop (i+1) srcfiles { config with parse_only = true }
       | "--typecheck-only" ->
-         ploop (i+1) srcfiles { config with typecheck_only = true}
+         ploop (i+1) srcfiles { config with typecheck_only = true }
+      | "--emit-llvm" ->
+         ploop (i+1) srcfiles { config with emit_llvm = true }
       | fname when (String.get fname 0) <> '-' ->
          (* really shouldn't set include path in a hacky way like this. *)
          let (ipaths, srcdir) = match Filename.dirname fname with
@@ -190,9 +218,17 @@ let () =
          | Error errs -> 
             prerr_string (format_errors errs);
             exit 1
-         | Ok mod_code -> 
-            write_module cconfig.source_dir srcfilename mod_code;
+         | Ok (modcode, header) ->
+            (* print_string (st_node_to_string topsyms); *)
+            write_header cconfig.source_dir header;
+            if cconfig.emit_llvm then (
+              print_endline ("Writing module : " ^ srcfilename);
+              write_module_llvm srcfilename modcode )
+            else 
+              write_module_native srcfilename modcode
+            ;
             ispecs
        )
   in
+  List.iter print_endline srcfiles;
   ignore (List.fold_left process_sourcefile StrMap.empty srcfiles)

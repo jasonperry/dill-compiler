@@ -108,6 +108,7 @@ let rec gen_expr syms tenv (ex: typetag expr) =
   | ExpNullAssn (_, _, _, _) ->
      failwith "BUG: null assign found outside condition"
 
+
 let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
   let syms = stmt.decor in
   (* later: look up types in tenv *)
@@ -373,7 +374,7 @@ let gen_proc tenv proc =
 
 (** Generate code for an entire module. *)
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
-  (* Now the a highest-level table has the imports. *)
+  (* Now the highest-level table has the imports. *)
   gen_fdecls topsyms.fsyms;
   (* if List.length (topsyms.children) <> 1 then
     failwith "BUG: didn't find unique module-level symtable"; *)
