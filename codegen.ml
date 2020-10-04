@@ -8,19 +8,18 @@ open Llvm
 
 exception CodegenError of string
 
-(* code to set up IR builder. Later can be per-module *)
-let context = global_context()
+
+(* Trying not to make a new context per module. OK so far. *)
+let context = global_context() 
 let float_type = double_type context
 let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context
 
 (* TODO: take module name from the AST. But then I have to pass it around! *)
-let the_module = create_module context "dillout.ll"
 (* builder keeps track of current insert place *)
-let builder = builder context
 
-let rec gen_expr syms tenv (ex: typetag expr) = 
+let rec gen_expr the_module builder syms tenv (ex: typetag expr) = 
   match ex.e with
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
@@ -37,7 +36,7 @@ let rec gen_expr syms tenv (ex: typetag expr) =
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
-    let e1val = gen_expr syms tenv e1 in
+    let e1val = gen_expr the_module builder syms tenv e1 in
     if e1.decor = int_ttag then 
       match op with
       (* type checker should catch negating an unsigned. *)
@@ -56,8 +55,8 @@ let rec gen_expr syms tenv (ex: typetag expr) =
       failwith "BUG: Unknown type in unary op"
   )
   | ExpBinop (e1, op, e2) -> (
-    let e1val = gen_expr syms tenv e1 in
-    let e2val = gen_expr syms tenv e2 in
+    let e1val = gen_expr the_module builder syms tenv e1 in
+    let e2val = gen_expr the_module builder syms tenv e2 in
     (* for other tags, we'll emit the appropriate procedure call. *)
     if e1.decor = int_ttag then
       match op with
@@ -101,7 +100,7 @@ let rec gen_expr syms tenv (ex: typetag expr) =
      * (or at least the class name, so it can be generated.) *)
     | None -> failwith "BUG: unknown function name in codegen"
     | Some callee ->
-       let args = List.map (gen_expr syms tenv) params
+       let args = List.map (gen_expr the_module builder syms tenv) params
                   |> Array.of_list in
        build_call callee args "calltmp" builder
   )
@@ -109,7 +108,7 @@ let rec gen_expr syms tenv (ex: typetag expr) =
      failwith "BUG: null assign found outside condition"
 
 
-let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
+let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
   let syms = stmt.decor in
   (* later: look up types in tenv *)
   match stmt.st with
@@ -136,12 +135,13 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
     | None -> ()
     | Some initexp ->
        (* make a fake assignment statement to avoid duplication. *)
-       gen_stmt tenv {st=StmtAssign (varname, initexp); decor=syms}
+       gen_stmt the_module builder tenv
+         {st=StmtAssign (varname, initexp); decor=syms}
   )
 
   | StmtAssign (varname, ex) -> (
      let (entry, _) = Symtable.findvar varname syms in
-     let expval = gen_expr syms tenv ex in
+     let expval = gen_expr the_module builder syms tenv ex in
      match entry.addr with
      | None -> failwith ("BUG stmtAssign: alloca address not present for "
                          ^ varname)
@@ -156,7 +156,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
     (match eopt with
      | None -> ignore (build_ret_void builder)
      | Some rexp -> 
-        let expval = gen_expr syms tenv rexp in
+        let expval = gen_expr the_module builder syms tenv rexp in
         ignore (build_ret expval builder)
     );
     (* Add a basic block after in case a break is added afterwards. *)
@@ -173,13 +173,13 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
       | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
          (* if it's a null-assignment, set the var's addr in thenblock's syms *)
          failwith "Null assignment not implemented yet"
-      | _ -> gen_expr syms tenv cond
+      | _ -> gen_expr the_module builder syms tenv cond
     in
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
     let then_bb = append_block context "then" the_function in
     position_at_end then_bb builder;
-    List.iter (gen_stmt tenv) thenblock;
+    List.iter (gen_stmt the_module builder tenv) thenblock;
     let new_then_bb = insertion_block builder in
     (* elsif generating code *)
     let gen_elsif (cond, block) =
@@ -191,10 +191,10 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
         | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
            (* if it's a null-assignment, set the var addr in thenblock's syms *)
            failwith "Null assignment not implemented yet"
-        | _ -> gen_expr syms tenv cond in
+        | _ -> gen_expr the_module builder syms tenv cond in
       let then_bb = append_block context "elsifthen" the_function in
       position_at_end then_bb builder;
-      List.iter (gen_stmt tenv) block;
+      List.iter (gen_stmt the_module builder tenv) block;
       (condres, cond_bb, then_bb, insertion_block builder) (* for jumps *)
     in
     let elsif_blocks = List.map gen_elsif elsifs in
@@ -203,7 +203,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
     position_at_end else_bb builder;
     (match elsopt with
      | Some elseblock ->
-        List.iter (gen_stmt tenv) elseblock
+        List.iter (gen_stmt the_module builder tenv) elseblock
      | None -> ());
     let new_else_bb = insertion_block builder in
     let merge_bb = append_block context "ifcont" the_function in
@@ -249,11 +249,11 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
     position_at_end test_bb builder;
     let condres = match cond.e with
       | ExpNullAssn (_,_,_,_) -> failwith "null assign not yet implemented"
-      | _ -> gen_expr syms tenv cond in
+      | _ -> gen_expr the_module builder syms tenv cond in
     (* Create loop block and fill it in *)
     let loop_bb = append_block context "loop" the_function in
     position_at_end loop_bb builder;
-    List.iter (gen_stmt tenv) body;
+    List.iter (gen_stmt the_module builder tenv) body;
     (* add unconditional jump back to test *)
     let new_loop_bb = insertion_block builder in (* don't need? *)
     position_at_end new_loop_bb builder;         (* is it there already? *)
@@ -272,7 +272,7 @@ let rec gen_stmt tenv (stmt: (typetag, 'a st_node) stmt) =
      * (or at least the class name, so it can be generated.) *)
     | None -> failwith "BUG: unknown function name in codegen"
     | Some callee ->
-       let args = List.map (gen_expr syms tenv) params
+       let args = List.map (gen_expr the_module builder syms tenv) params
                   |> Array.of_list in
        (* instructions returning void cannot have a name *)
        ignore (build_call callee args "" builder)
@@ -292,7 +292,7 @@ let default_value ttag =
 
 
 (** generate code for a global variable declaration (init code in main) *)
-let gen_global_decl tenv (gdecl: ('ed, 'sd) globalstmt) =
+let gen_global_decl the_module builder tenv (gdecl: ('ed, 'sd) globalstmt) =
   let syms = gdecl.decor in
   let (entry, _) = Symtable.findvar gdecl.varname syms in
     (* define_global doesn't use the builder, puts at the top *)
@@ -304,7 +304,7 @@ let gen_global_decl tenv (gdecl: ('ed, 'sd) globalstmt) =
   Symtable.set_addr syms gdecl.varname gaddr;
   match gdecl.init with
   | Some ex ->
-     let gval = gen_expr syms tenv ex in
+     let gval = gen_expr the_module builder syms tenv ex in
      (* This assumes builder is positioned correctly. *)
      ignore (build_store gval gaddr builder)
   | None -> ()
@@ -321,7 +321,7 @@ let ttag_to_llvmtype ttag =
 
 (** Generate llvm function decls for a set of procs from the AST. *)
 (* Could this work for both local and imported functions? *)
-let gen_fdecls fsyms =
+let gen_fdecls the_module fsyms =
   StrMap.iter (fun _ procentry ->
       let rtype = ttag_to_llvmtype procentry.rettype in
       let params = List.map (fun entry -> ttag_to_llvmtype entry.symtype)
@@ -336,7 +336,7 @@ let gen_fdecls fsyms =
 
 (** generate code for a procedure body (its declaration should already
  * be defined *)
-let gen_proc tenv proc =
+let gen_proc the_module builder tenv proc =
   let fname = proc.decl.name in
   (* procedure is now defined in its own scope, so "getproc" *)
   let fentry = Symtable.getproc fname proc.decor in 
@@ -356,7 +356,7 @@ let gen_proc tenv proc =
          ignore (build_store (param func i) alloca builder);
          Symtable.set_addr proc.decor varname alloca
        ) proc.decl.params;
-     List.iter (gen_stmt tenv) (proc.body);
+     List.iter (gen_stmt the_module builder tenv) (proc.body);
      (* If it doesn't end in a terminator, add either a void return or a 
       * dummy branch. *)
      if Option.is_none (block_terminator (insertion_block builder)) then
@@ -374,12 +374,14 @@ let gen_proc tenv proc =
 
 (** Generate code for an entire module. *)
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
-  (* Now the highest-level table has the imports. *)
-  gen_fdecls topsyms.fsyms;
+  let the_module = create_module context (modtree.name ^ ".ll") in
+  let builder = builder context in
+  (* Generate decls for imports (the top symbol table node.) *)
+  gen_fdecls the_module topsyms.fsyms;
   (* if List.length (topsyms.children) <> 1 then
     failwith "BUG: didn't find unique module-level symtable"; *)
   let modsyms = List.hd (topsyms.children) in
-  gen_fdecls modsyms.fsyms;
+  gen_fdecls the_module modsyms.fsyms;
   (* Procedures declared in this module should already be here. *)
   (* if there are globals or an init block, create an init procedure *)
   if modtree.globals <> [] || modtree.initblock <> [] then (
@@ -390,10 +392,10 @@ let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
         the_module in
     (* let entry_bb = append_block context "entry" initproc in *)
     position_at_end (entry_block initproc) builder; (* global inits go there *)
-    List.iter (gen_global_decl tenv) modtree.globals;
-    List.iter (gen_stmt tenv) modtree.initblock;
+    List.iter (gen_global_decl the_module builder tenv) modtree.globals;
+    List.iter (gen_stmt the_module builder tenv) modtree.initblock;
     ignore (build_ret_void builder)
   );
-  List.iter (gen_proc tenv) modtree.procs;
+  List.iter (gen_proc the_module builder tenv) modtree.procs;
   (* Llvm_analysis.assert_valid_module the_module; *)
   the_module
