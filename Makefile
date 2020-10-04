@@ -35,3 +35,6 @@ types.cmo types.cmi: types.ml
 
 clean:
 	rm -f lexer.ml parser.ml parser.mli *.cmo *.cmx *.cmi
+
+cleanobj:
+	rm -f *.o

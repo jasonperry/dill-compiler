@@ -114,8 +114,8 @@ let write_module_native filename modcode =
                   ~triple:ttriple
                   ~cpu:"generic"
                   ~features:"" target in
-  let dlstring =DataLayout.as_string
-                  (TargetMachine.data_layout machine) in
+  let dlstring = DataLayout.as_string
+                   (TargetMachine.data_layout machine) in
   Llvm.set_data_layout dlstring modcode; 
   (* let passmgr = Llvm.PassManager.create () in (* for optim only? *) *)
   let outfilename =
@@ -125,6 +125,7 @@ let write_module_native filename modcode =
     CodeGenFileType.ObjectFile
     outfilename
     machine
+
 
 (** Write a module to disk as LLVM IR text. *)
 let write_module_llvm filename modcode = 
@@ -167,6 +168,7 @@ let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
       )
   in 
   List.fold_left load_import modmap istmts
+
 
 let parse_cmdline args =
   let rec ploop i srcfiles config =

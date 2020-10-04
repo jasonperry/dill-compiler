@@ -108,7 +108,7 @@ importStmt:
 
 usingStmt:
   | USING mn=moduleName SEMI  { Using (mn, None) }
-  | USING mn=moduleName AS alias=moduleName  { Using (mn, Some alias) }
+  | USING mn=moduleName AS alias=moduleName SEMI { Using (mn, Some alias) }
 
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 

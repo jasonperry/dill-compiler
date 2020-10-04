@@ -1,3 +1,4 @@
+module While01 = 
 
 begin 
 
@@ -15,3 +16,5 @@ printInt(i);
 printInt(j);
 
 end
+
+end While01

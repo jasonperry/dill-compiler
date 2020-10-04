@@ -1,0 +1,11 @@
+module Alias01 =
+
+using Collatz as Ctz;
+
+begin
+
+printInt(Ctz.collatz(99));
+
+end
+
+end Alias01
