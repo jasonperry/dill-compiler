@@ -8,7 +8,6 @@ open Llvm
 
 exception CodegenError of string
 
-
 (* Trying not to make a new context per module. OK so far. *)
 let context = global_context() 
 let float_type = double_type context
@@ -16,8 +15,6 @@ let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context
 
-(* TODO: take module name from the AST. But then I have to pass it around! *)
-(* builder keeps track of current insert place *)
 
 let rec gen_expr the_module builder syms tenv (ex: typetag expr) = 
   match ex.e with
