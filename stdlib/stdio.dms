@@ -1,0 +1,6 @@
+modspec Stdio =
+
+proc printInt(n: Int): Void;
+proc printFloat(n: Float): Void;
+
+end Stdio

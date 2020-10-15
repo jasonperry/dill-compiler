@@ -1,0 +1,10 @@
+module Stdio01 =
+
+open Stdio;
+
+begin
+   printInt(42);
+   printFloat(39.0);
+end
+
+end Stdio01

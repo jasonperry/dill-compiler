@@ -1,5 +1,7 @@
 module Collatz =
 
+open Stdio;
+
 proc collatz(n: Int) : Int =
    var i = n;
    var count = 0;

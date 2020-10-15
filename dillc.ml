@@ -191,6 +191,10 @@ let parse_cmdline args =
          ploop (i+1) srcfiles { config with typecheck_only = true }
       | "--emit-llvm" ->
          ploop (i+1) srcfiles { config with emit_llvm = true }
+      | "-I" ->
+         ploop (i+2) srcfiles {
+             config with include_paths = args.(i+1) :: config.include_paths
+           }
       | fname when (String.get fname 0) <> '-' ->
          (* really shouldn't set include path in a hacky way like this. *)
          let (ipaths, srcdir) = match Filename.dirname fname with

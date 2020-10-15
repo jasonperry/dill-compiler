@@ -1,6 +1,7 @@
 module Import01 =
 
 using Collatz;
+open Stdio;
 
 begin
 
