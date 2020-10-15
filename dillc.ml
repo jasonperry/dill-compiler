@@ -89,7 +89,7 @@ let process_module ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
   match analyzedmod with
   | Error errs -> Error errs
   | Ok themod ->
-     print_string (module_to_string themod);
+     (* print_string (module_to_string themod); *)
      let modcode = Codegen.gen_module base_tenv topsyms themod in
      let header = Analyzer.create_module_spec themod in
      Ok (modcode, header)

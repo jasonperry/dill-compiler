@@ -1,6 +1,6 @@
-module Binop =
+module Binop01 =
 
-begin
+begin (* maybe "main = begin" *)
 
 var x: Int = 100;
 var y: Bool = False;
@@ -22,4 +22,4 @@ printInt(x);
 end
  (* should I combine these two ends? Or have syntax so that a named
   * terminator ends everything inside of it? nah. *)
-end Binop
+end Binop01

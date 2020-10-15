@@ -4,3 +4,4 @@ out/
 *.cmo
 *.cmi
 parser.ml
+testsrc/*.o

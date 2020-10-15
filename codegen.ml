@@ -324,7 +324,7 @@ let gen_fdecls the_module fsyms =
       let params = List.map (fun entry -> ttag_to_llvmtype entry.symtype)
                      procentry.fparams
                    |> Array.of_list in
-      print_string ("Declaring function " ^ procentry.procname ^ "\n");
+      (* print_string ("Declaring function " ^ procentry.procname ^ "\n"); *)
       ignore (declare_function procentry.procname
                 (function_type (rtype) params) the_module)
     (* We could set names for arguments here. *)

@@ -484,7 +484,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
                       pdecl.params in
     if List.exists Result.is_error argchecks then
       let errs =
-        List.concat_map (
+        concat_map (
             fun r -> match r with
                      | Ok _ -> []
                      | Error msg -> [{loc=pdecl.decor; value=msg}]
@@ -629,7 +629,7 @@ let add_imports syms tenv specs istmts =
          ) the_spec.procdecls
       ) (* end add_import *)
   in
-  match concat_errors (List.concat_map add_import istmts) with
+  match concat_errors (concat_map add_import istmts) with
   | [] -> Ok syms
   | errs -> Error errs
 
