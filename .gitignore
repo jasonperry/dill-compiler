@@ -5,3 +5,4 @@ out/
 *.cmi
 parser.ml
 testsrc/*.o
+testsrc/*.ll

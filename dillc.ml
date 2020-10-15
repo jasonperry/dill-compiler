@@ -94,13 +94,16 @@ let process_module ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
      let header = Analyzer.create_module_spec themod in
      Ok (modcode, header)
 
+
 let write_header srcdir header = 
   let headerfilename =
     String.lowercase_ascii (String.sub header.name 0 1)
-    ^ String.sub header.name 1 (String.length header.name - 1) in
-  let headerfile = open_out (srcdir ^ "/" ^ headerfilename ^ ".dms") in
+    ^ String.sub header.name 1 (String.length header.name - 1) ^ ".dms" in
+  let headerfile = open_out (srcdir ^ "/" ^ headerfilename) in
   output_string headerfile (modspec_to_string header);
-  close_out headerfile
+  close_out headerfile;
+  print_endline ("Wrote module spec file " ^ headerfilename)
+
 
 (** Write a module to disk as native code. *)
 let write_module_native filename modcode =
@@ -124,14 +127,17 @@ let write_module_native filename modcode =
     modcode
     CodeGenFileType.ObjectFile
     outfilename
-    machine
+    machine;
+  print_endline ("Wrote object code file " ^ outfilename)
 
 
 (** Write a module to disk as LLVM IR text. *)
 let write_module_llvm filename modcode = 
   Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
-  Llvm.print_module
-    (Filename.chop_extension (Filename.basename filename) ^ ".ll") modcode
+  let irfilename =
+    Filename.chop_extension (Filename.basename filename) ^ ".ll" in
+  Llvm.print_module irfilename modcode;
+  print_endline ("Wrote LLVM IR code file " ^ irfilename)
 
 
 (** Try to open a given filename, searching paths *)
@@ -224,7 +230,6 @@ let () =
             (* print_string (st_node_to_string topsyms); *)
             write_header cconfig.source_dir header;
             if cconfig.emit_llvm then (
-              print_endline ("Writing module : " ^ srcfilename);
               write_module_llvm srcfilename modcode )
             else 
               write_module_native srcfilename modcode
@@ -232,5 +237,5 @@ let () =
             ispecs
        )
   in
-  List.iter print_endline srcfiles;
+  (* List.iter print_endline srcfiles; *)
   ignore (List.fold_left process_sourcefile StrMap.empty srcfiles)
