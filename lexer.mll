@@ -85,6 +85,8 @@ rule token = parse  (* funny that it's called parse *)
   | "open"    { OPEN }
   | "private" { PRIVATE }
   | '.'       { DOT }
+  | "type"    { TYPE }
+  | "struct"  { STRUCT }
   | "True"    { TRUE }    (* Is this the place to put built-in names? *)
   | "False"   { FALSE }   (* Even if not, bools might be special. *)
   | ident_lc as v	{ IDENT_LC v }

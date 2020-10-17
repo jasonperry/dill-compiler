@@ -105,6 +105,18 @@ type ('ed,'sd) proc = {
     decor: 'sd
   }
 
+(** A new type definition. *)
+type structTypedef = {
+    typename: string;
+    fields: (string * typeExpr) list (* should also be decorated with loc *)
+  }
+
+(* It needs the symbol table decoration for the methods, I think. *)
+(* It really needs a type environment...maybe later down. *)
+type typedef =
+  | Struct of structTypedef
+
+
 (** Import statements occur separately, so it seems no need to include in 
  * the stmt type. Also, no decoration needed?
  * Any possible errors are in the imported header itself, so it seems not. *)
@@ -115,6 +127,7 @@ type importStmt =
 type ('ed,'sd) dillmodule = {
     name: string;
     imports: importStmt list;
+    typedefs: typedef list;
     globals: ('ed, 'sd) globalstmt list;
     procs: ('ed,'sd) proc list;
     initblock: ('ed,'sd) stmt list
@@ -123,7 +136,8 @@ type ('ed,'sd) dillmodule = {
 (* No expressions in a module spec. *)
 type 'sd module_spec = {
     name: string;
-    imports: importStmt list; 
+    imports: importStmt list;
+    typedefs: typedef list;
     globals: 'sd globaldecl list;
     procdecls: 'sd procdecl list
   }

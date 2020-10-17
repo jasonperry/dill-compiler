@@ -679,6 +679,7 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
                           :: strs) global_uninit [])
              else 
                Ok {name=dmod.name; imports=dmod.imports;
+                   typedefs=dmod.typedefs;
                    globals=newglobals; procs=newprocs;
                    initblock=newblock}
   )
@@ -695,6 +696,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
     (* but anyway, do types need to remember which module they're defined in?
      * then I can easily produce the unqual. name of any type. 
      * Same for symtable entries for procs. *)
+    typedefs = the_mod.typedefs;
     globals =
       List.map (fun gdecl ->
           { decor = gdecl.decor;

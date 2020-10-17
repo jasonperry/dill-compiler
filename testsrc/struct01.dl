@@ -1,0 +1,21 @@
+(* First struct example...still lots to make work *)
+module Struct01 =
+
+open Stdio;
+
+type Complex = struct
+  i: Float,
+  j: Float;
+end Complex
+
+(*
+begin
+
+var cpx: Complex = {i=4.0, j=-1.53};
+printFloat(cpx.i);
+printFloat(cpx.j);
+
+end
+*)
+
+end Struct01

@@ -18,7 +18,7 @@
 %token PROC RETURN NOP
 %token MODULE MODSPEC
 %token USING AS OPEN
-%token PRIVATE DOT
+%token PRIVATE DOT TYPE STRUCT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -63,7 +63,10 @@ main: specopt=option(modspec) modopt=option(dillmodule) EOF
 dillmodule:
   | MODULE mn=moduleName ASSIGN
     iss=list(importStmt)
-    gls=list(declStmt) pr=list(proc) bl=option(blockStmt)
+    tys=list(typedef)    (* TODO: let types come anywhere? Or be strict? *)
+    gls=list(declStmt)
+    pr=list(proc)
+    bl=option(blockStmt)
     END mn2=moduleName
     { let initstmts = match bl with
 	| Some (StmtBlock slist) -> slist
@@ -71,6 +74,7 @@ dillmodule:
       if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
+	  typedefs=tys;
 	  globals=List.map (
 		      fun (v, topt, eopt) ->
 		      {varname=v;
@@ -92,6 +96,7 @@ modspec:
     { if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
+	  typedefs=[];
 	  globals= List.map (
 		       fun (v, t) -> {varname=v; 
 				      typeexp=t; decor=$loc}
@@ -111,6 +116,24 @@ usingStmt:
   | USING mn=moduleName AS alias=moduleName SEMI { Using (mn, Some alias) }
 
 openStmt: OPEN mn=moduleName SEMI { Open mn }
+
+typedef:
+  | sd=structTypedef { Struct sd }
+
+structTypedef:
+  | TYPE tn=IDENT_UC ASSIGN STRUCT fl=fieldList SEMI END tn2=IDENT_UC
+    { if tn2 = tn then
+	{typename=tn; fields=fl}
+      else
+	$syntaxerror
+    }
+
+fieldList:
+  | fl=separated_list(COMMA, fieldDecl) { fl }
+
+fieldDecl:
+  | vn=IDENT_LC COLON te=IDENT_UC (* not varName, can't have dots *)
+    { (vn, TypeName te) }
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=procName 

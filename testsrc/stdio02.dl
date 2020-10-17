@@ -1,0 +1,10 @@
+module Stdio02 =
+
+using Stdio;
+
+begin
+  Stdio.printInt(43);
+  Stdio.printFloat(40.1);
+end
+
+end Stdio02
