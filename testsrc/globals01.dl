@@ -1,5 +1,7 @@
 module Globals01 = 
 
+open Stdio;
+
 var x: Int;
 var y = 4.0;
 

@@ -218,6 +218,12 @@ let proc_to_string (proc: ('ed, 'sd) proc) =
 let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   "module " ^ dmod.name ^ " = \n"
   ^ List.fold_left (
+        fun s -> function
+              | Struct tdef -> 
+                 s ^ "type " ^ tdef.typename ^ " = struct\n"
+                 ^ "(some fields)\n end " ^ tdef.typename ^ "\n"
+      ) "" dmod.typedefs
+  ^ List.fold_left (
         fun s gstmt ->
         s ^ "var " ^ gstmt.varname
         ^ Option.fold ~none:"" ~some:(fun te -> ": " ^ typeExpr_to_string te)
@@ -234,7 +240,8 @@ let modspec_to_string (mspec: 'sd module_spec) =
   "modspec " ^ mspec.name ^ " = \n"
   ^ List.fold_left (
         fun s (gdecl: 'sd globaldecl) ->
-        s ^ "var " ^ gdecl.varname ^ typeExpr_to_string gdecl.typeexp ^ "\n")
+        s ^ "var " ^ gdecl.varname ^ ": "
+        ^ typeExpr_to_string gdecl.typeexp ^ ";\n")
       "" mspec.globals
   ^ List.fold_left
       (fun s pd -> s ^ procdecl_to_string pd ^ ";\n") "" mspec.procdecls

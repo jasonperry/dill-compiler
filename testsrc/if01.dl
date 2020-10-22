@@ -1,4 +1,7 @@
 (* if/else test, else block exists, no elsifs *)
+module If01 =
+
+open Stdio;
 
 begin
 
@@ -12,3 +15,5 @@ endif
 printInt(x);  (* 9 *)
 
 end
+
+end If01

@@ -1,0 +1,27 @@
+(** Module that exports a function and two globals. *)
+module Globlib01 = 
+
+var x: Int = getAnInit();
+var y = 4.0;
+
+proc isItFour(n: Int) : Bool =
+  return (n == 4);
+end isItFour
+
+proc getAnInit() : Int =
+   return 43;
+end getAnInit
+
+(* Importing a module should not make code run, so we can't have
+ * globals initted in the main block. *)
+
+(* 
+begin
+  x = 14;
+  (* y = 2.2; *)
+  printFloat(y);
+  var pp = x + 33;
+end
+*)
+
+end Globlib01
