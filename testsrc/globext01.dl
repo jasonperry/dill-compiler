@@ -1,0 +1,12 @@
+module Globext01 =
+
+using Globlib01;
+open Stdio;
+
+begin
+
+printInt(Globlib01.x);
+
+end
+
+end Globext01

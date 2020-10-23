@@ -44,7 +44,7 @@
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
 %type <(Ast.locinfo) Ast.module_spec> modspec
-(* Switched back to a single module per file until I get object codegen working. *)
+(* Switched to a single module per file until I get object codegen working. *)
 %start <(Ast.locinfo) Ast.module_spec option
         * (Ast.locinfo,Ast.locinfo) Ast.dillmodule option> main
 
@@ -152,6 +152,7 @@ procDecl: ph=procHeader SEMI { ph }
 
 procName:
   (* TODO: A method needs a dot or an arrow. *)
+  (* If it's a method, it won't have a modulename, so this will be OK here? *)
   | mn=option(terminated(moduleName, DOT)) pn=IDENT_LC
     { match mn with
       | Some mname -> mname ^ "." ^ pn
@@ -274,17 +275,19 @@ constExp:
 (* | STRCONST | *)
 
 varExp:
-  (* later, objExp will have other productions *)
-  | v = varName
-    { ExpVar v }
+  (* a method call could be preceded by this. *)
+  | v=varName fns=list(preceded(DOT, varName))
+    { ExpVar (v, fns) }
 
 varName:
-  (* later, to add type or object prefix *)
-  | mn=option(terminated(moduleName, DOT)) vn=IDENT_LC
+  (* variables are all "local", so no module name prefix *)
+  vn=IDENT_LC { vn }
+  (* | mn=option(terminated(moduleName, DOT)) vn=IDENT_LC
     { match mn with
       | Some mname -> mname ^ "." ^ vn
       | None -> vn
     }
+   *) 
 
 opExp:
 (* TODO: check type of subexps and apply promotion rules *)
@@ -331,6 +334,7 @@ opExp:
     { ExpUnop (OpNot, e) }
 
 callExp:
+  (* Todo: for methods, will be preceded by varExp and dot *)
   | pn=procName LPAREN al=argList RPAREN
     { ExpCall (pn, al) }
 

@@ -1,7 +1,7 @@
 (** Module that exports a function and two globals. *)
 module Globlib01 = 
 
-var x: Int = getAnInit();
+var x: Int = 13; (* getAnInit(); *)
 var y = 4.0;
 
 proc isItFour(n: Int) : Bool =

@@ -674,7 +674,7 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
              let global_uninit = StrSet.diff syms.uninit blocksyms.parent_init in
              if not (StrSet.is_empty global_uninit) then
                Error (StrSet.fold (fun v strs ->
-                          {loc=(List.hd (dmod.globals)).decor; (* fudge the loc *)
+                          {loc=(List.hd (dmod.globals)).decor; (* fake the loc *)
                            value="Uninitialized global variable " ^ v ^ "\n"}
                           :: strs) global_uninit [])
              else 

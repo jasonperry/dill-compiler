@@ -43,7 +43,7 @@ type typeExpr =
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
-  | ExpVar of string  (* later a type for pieces of an object expr *)
+  | ExpVar of string * string list (* field specifiers *)
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * 'ed expr list
@@ -148,10 +148,11 @@ let typeExpr_to_string te =
   match te with
   | TypeName s -> s
 
+(** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
   match e.e with
   | ExpConst _ -> "CONSTEXP "
-  | ExpVar v -> "(VAREXP " ^ v ^ ") "
+  | ExpVar (v, _) -> "(VAREXP " ^ v ^ "POSSIBLE DOT FIELDS) "
   | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
   | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"
