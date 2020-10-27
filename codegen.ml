@@ -22,7 +22,7 @@ let rec gen_expr the_module builder syms tenv (ex: typetag expr) =
   | ExpConst (FloatVal f) -> const_float float_type f
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
   (* stmtDecl will create new symtable entry ,this will get it. *)
-  | ExpVar varname -> (
+  | ExpVar (varname, _) -> (
      let (entry, _) = Symtable.findvar varname syms in
      match entry.addr with
      | None ->
@@ -373,8 +373,9 @@ let gen_proc the_module builder tenv proc =
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   let builder = builder context in
-  (* Generate decls for imports (the top symbol table node.) *)
+  (* Generate decls for imports (already in the top symbol table node.) *)
   gen_fdecls the_module topsyms.fsyms;
+  (* The next symtable node underneath has this module's proc declarations *)
   (* if List.length (topsyms.children) <> 1 then
     failwith "BUG: didn't find unique module-level symtable"; *)
   let modsyms = List.hd (topsyms.children) in

@@ -1,7 +1,7 @@
 (** Top-level module of the Dill compiler. *)
 open Common
 open Ast
-open Pervasives
+(* open Pervasives *)
 
 
 (** Record for compiler configuration settings. *)
@@ -75,24 +75,59 @@ let parse_sourcefile channel =
        ("At line " ^ format_loc spos epos ^ ": syntax error.\n");
      failwith "Compilation terminated at parsing."
 
+(** Try to open a given filename, searching paths *)
+let rec open_from_paths plist filename =
+  match plist with
+  | [] -> None
+  | path :: rest -> 
+     try
+       Some (open_in (path ^ "/" ^ filename))
+     with Sys_error _ ->
+       open_from_paths rest filename
+
+
+(** Recursively scan all modspec files and populate the map of known ones. *)
+let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
+  let rec load_import mmap istmt =
+    let modname = match istmt with
+      | Using (mn, _) -> mn
+      | Open mn -> mn in
+    if StrMap.mem modname mmap then mmap (* already there *)
+    else
+      let specfilename = String.lowercase_ascii modname ^ ".dms" in
+      match open_from_paths cconfig.include_paths specfilename with
+      | None -> failwith ("Could not find spec file " ^ specfilename)
+      | Some specfile -> (
+        (* what kind of ('ed, 'sd) are they? Location, at first... *)
+        match parse_sourcefile specfile with
+        | (Some spec, None) ->
+           let newmap = StrMap.add modname spec mmap in
+           List.fold_left load_import newmap spec.imports
+        | (None, _) -> failwith ("No modspec found in " ^ specfilename)
+        | (Some _, _) ->
+           failwith ("Spec file " ^ specfilename ^ " cannot contain a module")
+      )
+  in 
+  List.fold_left load_import modmap istmts
 
 (** Do analysis and codegen phases, return module code and header object *)
-let process_module ispecs (parsedmod: (locinfo, locinfo) dillmodule) = 
+let analysis_codegen cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) = 
   let open Symtable1 in
-  (* populate top-level symbol table. *)
-  let topsyms : Llvm.llvalue st_node = pervasive_syms () in
-  (* don't need to create sub-module, analyzer does, we just start the ball *)
-  (* let modsyms = Symtable.new_scope topsyms in *)
+  (* populate top-level symbol table. Formerly with pervasive_syms *)
+  let topsyms : Llvm.llvalue st_node = Symtable.make_empty () in 
+  (* don't need to create import or module syms, analyzer does *)
   (* We pass in the headers from the AST here,
    ( so the analyzer doesn't have to call back out. *)
-  let analyzedmod = Analyzer.check_module topsyms base_tenv ispecs parsedmod in
-  match analyzedmod with
+  (* Imports are folded together. *)
+  let ispecs = load_imports cconfig ispecs parsedmod.imports in
+  match Analyzer.check_module topsyms base_tenv ispecs parsedmod with
   | Error errs -> Error errs
-  | Ok themod ->
-     (* print_string (module_to_string themod); *)
-     let modcode = Codegen.gen_module base_tenv topsyms themod in
-     let header = Analyzer.create_module_spec themod in
-     Ok (modcode, header)
+  | Ok typed_mod ->
+     if cconfig.print_symtable then
+       print_string (Symtable1.st_node_to_string topsyms); 
+     let modcode = Codegen.gen_module base_tenv topsyms typed_mod in
+     let header = Analyzer.create_module_spec typed_mod in
+     Ok (modcode, header) (* Hope codegen never gives errors! *)
 
 
 let write_header srcdir header = 
@@ -139,41 +174,6 @@ let write_module_llvm filename modcode =
   Llvm.print_module irfilename modcode;
   print_endline ("Wrote LLVM IR code file " ^ irfilename)
 
-
-(** Try to open a given filename, searching paths *)
-let rec open_from_paths plist filename =
-  match plist with
-  | [] -> None
-  | path :: rest -> 
-     try
-       Some (open_in (path ^ "/" ^ filename))
-     with Sys_error _ ->
-       open_from_paths rest filename
-
-
-(** Recursively scan all modspec files and populate the map of known ones. *)
-let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
-  let rec load_import mmap istmt =
-    let modname = match istmt with
-      | Using (mn, _) -> mn
-      | Open mn -> mn in
-    if StrMap.mem modname mmap then mmap (* already there *)
-    else
-      let specfilename = String.lowercase_ascii modname ^ ".dms" in
-      match open_from_paths cconfig.include_paths specfilename with
-      | None -> failwith ("Could not find spec file " ^ specfilename)
-      | Some specfile -> (
-        (* what kind of ('ed, 'sd) are they? Location, at first... *)
-        match parse_sourcefile specfile with
-        | (Some spec, None) ->
-           let newmap = StrMap.add modname spec mmap in
-           List.fold_left load_import newmap spec.imports
-        | (None, _) -> failwith ("No modspec found in " ^ specfilename)
-        | (Some _, _) ->
-           failwith ("Spec file " ^ specfilename ^ " cannot contain a module")
-      )
-  in 
-  List.fold_left load_import modmap istmts
 
 
 let parse_cmdline args =
@@ -225,8 +225,9 @@ let () =
          ispecs
        )
        else (
-         let ispecs = load_imports cconfig ispecs parsedmod.imports in
-         match process_module ispecs parsedmod with
+         (* Load imports into a symbol table before calling the analyzer *)
+         (* For now, process_module does analysis and codegen. *)
+         match analysis_codegen cconfig ispecs parsedmod with
          | Error errs -> 
             prerr_string (format_errors errs);
             exit 1
@@ -238,7 +239,7 @@ let () =
             else 
               write_module_native srcfilename modcode
             ;
-            ispecs
+              ispecs
        )
   in
   (* List.iter print_endline srcfiles; *)

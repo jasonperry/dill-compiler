@@ -51,14 +51,14 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
      Ok {e=ExpConst (FloatVal f); decor=float_ttag}
   | ExpConst (BoolVal b) ->
      Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
-  | ExpVar varname -> (
+  | ExpVar (varname, fields) -> (
     match Symtable.findvar_opt varname syms with
     | Some (ent, _) ->
        if StrSet.mem varname syms.uninit then
          Error {loc=ex.decor;
                 value="Variable " ^ varname ^ " may not be initialized"}
        else 
-         Ok { e=ExpVar varname; decor=ent.symtype }
+         Ok { e=ExpVar (varname, fields); decor=ent.symtype }
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ varname}
   )
   | ExpBinop (e1, oper, e2) -> (
@@ -543,18 +543,18 @@ let rec is_const_expr = function
     (* if true, I could eval and replace it in the AST. But...
      * what if numerics don't match the target? Let LLVM do it. *)
   | ExpConst _ -> true
-  | ExpVar _ -> false (* TODO: check in syms if it's a const *)
+  | ExpVar (_,_) -> false (* TODO: check in syms if it's a const *)
   | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
   | ExpUnop (_, e1) -> is_const_expr e1.e
   | _ -> false
 
-(** Check a global declaration statement (extra constraints) *)
+(** Check a global declaration statement (needs const initializer) *)
 let check_globdecl syms tenv gdecl =
   match gdecl.init with
     | Some initexp when not (is_const_expr initexp.e) -> 
        Error [{loc=initexp.decor;
                value="Global initializer must be constant expression"}]
-    | _ -> (
+    | _ -> (  (* CHANGING: global must have initializer *)
       (* Cheat a little: reconstruct a stmt so I can use check_stmt.
        * It should catch redeclaration and type mismatch errors. 
        * Seems nicer than having the check logic in two places. *)
