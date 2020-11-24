@@ -1,6 +1,6 @@
 module While01 = 
 
-open Stdio;
+import Stdio;
 
 begin 
 
@@ -10,12 +10,12 @@ var j: Int = 0;
 while (i >= 0) loop
   j = 2*i+1;  (* declaring j each time through eats memory. Not good. *)
               (* could the LLVM optimizer fix it? *)
-  printInt(i);
+  Stdio.printInt(i);
   i = i - 1;
 endloop
 
-printInt(i);
-printInt(j);
+Stdio.printInt(i);
+Stdio.printInt(j);
 
 end
 

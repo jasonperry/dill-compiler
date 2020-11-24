@@ -80,7 +80,7 @@ rule token = parse  (* funny that it's called parse *)
   | "nop"     { NOP }
   | "module"  { MODULE }
   | "modspec" { MODSPEC }
-  | "using"   { USING }
+  | "import"   { IMPORT }
   | "as"      { AS }
   | "open"    { OPEN }
   | "private" { PRIVATE }

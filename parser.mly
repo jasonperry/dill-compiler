@@ -17,7 +17,7 @@
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
 %token MODULE MODSPEC
-%token USING AS OPEN
+%token IMPORT AS OPEN
 %token PRIVATE DOT TYPE STRUCT
 %token EOF
 
@@ -90,7 +90,7 @@ moduleName: mn=IDENT_UC { mn }
 
 modspec:
   | MODSPEC mn=moduleName ASSIGN
-    iss=list(usingStmt)
+    iss=list(includeStmt)
     gls=list(declOnlyStmt) pd=list(procDecl)
     END mn2=moduleName
     { if mn = mn2 then {
@@ -106,14 +106,14 @@ modspec:
       else $syntaxerror
     }
 
-importStmt:
-  | is=usingStmt
+includeStmt:
+  | is=importStmt
   | is=openStmt
     { is }
 
-usingStmt:
-  | USING mn=moduleName SEMI  { Using (mn, None) }
-  | USING mn=moduleName AS alias=moduleName SEMI { Using (mn, Some alias) }
+importStmt:
+  | IMPORT mn=moduleName SEMI  { Using (mn, None) }
+  | IMPORT mn=moduleName AS alias=moduleName SEMI { Using (mn, Some alias) }
 
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
