@@ -86,6 +86,8 @@ let rec open_from_paths plist filename =
        open_from_paths rest filename
 
 
+(* import handling might be good to move into its own module 
+ * (except the file handling) *)
 (** Recursively scan all modspec files and populate the map of known ones. *)
 let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
   let rec load_import mmap istmt =
@@ -226,7 +228,6 @@ let () =
        )
        else (
          (* Load imports into a symbol table before calling the analyzer *)
-         (* For now, process_module does analysis and codegen. *)
          match analysis_codegen cconfig ispecs parsedmod with
          | Error errs -> 
             prerr_string (format_errors errs);

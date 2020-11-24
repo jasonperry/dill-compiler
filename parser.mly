@@ -220,8 +220,9 @@ returnStmt:
     { StmtReturn eopt }
 
 callStmt:
-  | e=expr SEMI
-    { StmtCall e }
+(* | e=expr SEMI (* formerly *) *)
+  | ce = callExp SEMI
+    { StmtCall {decor=$loc; e=ce} }
 
 blockStmt:
   | BEGIN sb=stmtSeq END
@@ -334,9 +335,14 @@ opExp:
     { ExpUnop (OpNot, e) }
 
 callExp:
-  (* Todo: for methods, will be preceded by varExp and dot *)
-  | pn=procName LPAREN al=argList RPAREN
+(* Todo: for methods, will be preceded by varExp and dot *)
+(* Resolved conflicts by putting procName options here. *)
+  | mn=moduleName DOT pn=IDENT_LC LPAREN al=argList RPAREN
+    { ExpCall (mn ^ "." ^ pn, al) }
+  | pn=IDENT_LC LPAREN al=argList RPAREN
     { ExpCall (pn, al) }
+(*  | pn=procName LPAREN al=argList RPAREN
+    { ExpCall (pn, al) } *)
 
 argList:
   | al=separated_list(COMMA, expr)

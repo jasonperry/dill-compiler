@@ -28,6 +28,7 @@ type 'addr st_entry = {
     var: bool;  (* "var" semantics means it can be reassigned. OR
                  * mutating methods called? No, they're different *)
     (* may_mut: bool; *)
+    (* store an address (stack or heap) for code generation. *)
     addr: 'addr option
     (* instead of an option, how about an "addr decorated" version *)
   }
@@ -43,13 +44,18 @@ type 'addr st_procentry = {
 
 (** Symbol table tree node for a single scope *)
 type 'addr st_node = {
-    scopedepth: int; (* Just keeping the depth should be enough *)
+    (* The scope depth is compared to check for redeclaration. *)
+    scopedepth: int; 
     mutable syms: 'addr st_entry StrMap.t;
     mutable fsyms: 'addr st_procentry StrMap.t;  (* No overloading! *)
-    mutable uninit: StrSet.t; (* vars declared but not initted in this scope *)
-    mutable parent_init: StrSet.t; (* vars from higher scope that are initted *)
-    parent: 'addr st_node option; (* root has no parent *)
+    (* vars declared but not initted in this scope *)
+    mutable uninit: StrSet.t;
+    (* vars from higher scope that are initted *)
+    mutable parent_init: StrSet.t;
+    (* The root node has no parent *)
+    parent: 'addr st_node option; 
     mutable children: 'addr st_node list;
+    (* containing proc needed to check return statements and for codegen. *)
     in_proc: 'addr st_procentry option;
   }
 

@@ -1,6 +1,8 @@
 (** Module that exports a function and two globals. *)
 module Globlib01 = 
 
+using Stdio;
+
 var x: Int = 13; (* getAnInit(); *)
 var y = 4.0;
 
