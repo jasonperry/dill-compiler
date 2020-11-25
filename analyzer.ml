@@ -480,6 +480,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
   | Some (_, scope) when syms.scopedepth = scope ->
      Error [{loc=pdecl.decor; value="Redeclaration of procedure " ^ pdecl.name}]
   | _ -> (
+    (* Typecheck arguments *)
     let argchecks = List.map (fun (_, texp) -> check_typeExpr tenv texp)
                       pdecl.params in
     if List.exists Result.is_error argchecks then
@@ -491,6 +492,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
           ) argchecks
       in Error errs
     else
+      (* Create symbol table entries for params *)
       let paramentries =
         List.map2 (
             fun (paramname, _) arg ->
@@ -499,13 +501,15 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
             | Ok ttag ->
                {symname = paramname; symtype=ttag; var=false; addr=None}
           ) pdecl.params argchecks in
+      (* Typecheck return type. *)
       match check_typeExpr tenv pdecl.rettype with
       | Error msg -> Error [{loc=pdecl.decor; value=msg}]
       | Ok rttag -> (
         (* Create procedure symtable entry.
-         * NO LONGER ADD TO OUTER (module) scope; caller does it. *)
+         * Don't add it to module symbtable node here; caller does it. *)
         let procentry =
-          {procname=modname ^ "." ^ pdecl.name;
+          {procname=(if not pdecl.export then modname ^ "." else "")
+                    ^ pdecl.name;
            rettype=rttag; fparams=paramentries} in
         (* create new inner scope under the procedure, and add args *)
         (* Woops, it creates a "dangling" scope if proc isn't defined *)
@@ -513,10 +517,10 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
         (* Should I add the proc to its own symbol table? Don't see why. *)
         (* Did I do this so codegen for recursive calls "just works"? *)
         Symtable.addproc procscope pdecl.name procentry;
-        List.iter (fun pe -> Symtable.addvar procscope pe.symname pe)
+        List.iter (fun param -> Symtable.addvar procscope param.symname param)
           paramentries;
         Ok ({name=pdecl.name; params=pdecl.params;
-             rettype=pdecl.rettype; decor=procscope},
+             rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
             procentry)
   ))
 
@@ -548,26 +552,30 @@ let rec is_const_expr = function
   | ExpUnop (_, e1) -> is_const_expr e1.e
   | _ -> false
 
+
 (** Check a global declaration statement (needs const initializer) *)
-let check_globdecl syms tenv gdecl =
-  match gdecl.init with
-    | Some initexp when not (is_const_expr initexp.e) -> 
-       Error [{loc=initexp.decor;
-               value="Global initializer must be constant expression"}]
-    | _ -> (  (* CHANGING: global must have initializer *)
-      (* Cheat a little: reconstruct a stmt so I can use check_stmt.
-       * It should catch redeclaration and type mismatch errors. 
-       * Seems nicer than having the check logic in two places. *)
-      match check_stmt syms tenv
-        {st=StmtDecl (gdecl.varname, gdecl.typeexp, gdecl.init);
-         decor=gdecl.decor} with
-      | Error errs -> Error errs
-      | Ok {st=dst; decor=dc} -> (
-         match dst with
-         | StmtDecl (v, topt, eopt) ->
-            Ok {varname=v; typeexp=topt; init=eopt; decor=dc}
-         | _ -> failwith "BUG: checking StmtDecl didn't return StmtDecl"
-    ))
+let check_globdecl syms tenv gstmt =
+  match gstmt.init with
+  | Some initexp when not (is_const_expr initexp.e) ->
+     (* TODO: allow non-constant initializer (and generate code for it.) *)
+     Error [{loc=initexp.decor;
+             value="Global initializer must be constant expression"}]
+  | Some _ -> (  
+    (* Cheat a little: reconstruct a stmt so I can use check_stmt.
+     * It should catch redeclaration and type mismatch errors. 
+     * Seems nicer than having the check logic in two places. *)
+    match check_stmt syms tenv
+            {st=StmtDecl (gstmt.varname, gstmt.typeexp, gstmt.init);
+             decor=gstmt.decor} with
+    | Error errs -> Error errs
+    | Ok {st=dst; decor=dc} -> (
+      match dst with
+      | StmtDecl (v, topt, eopt) ->
+         Ok {varname=v; typeexp=topt; init=eopt; decor=dc}
+      | _ -> failwith "BUG: checking StmtDecl didn't return StmtDecl"
+  ))
+  | None -> Error [{loc=gstmt.decor;
+                    value="Globals must be initialized when declared"}]
 
 
 (** Check imported module specs and add global var & proc symbols. *)
@@ -634,54 +642,43 @@ let add_imports syms tenv specs istmts =
   | errs -> Error errs
 
 
+(** Check one entire module, generating new versions of each component. *)
 let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
-  (* Don't need the symtable result, it's the same one I passed in *)
+  (* Check import statements and load modspecs *)
   match add_imports syms tenv ispecs dmod.imports with
   | Error errs -> Error errs 
-  | Ok syms -> (  (* It's the same symtable passed in, for now. *)
-    (* Scope added so externs will be above the module scope. *)
-    (* Why wouldn't everything be added below this??? how could I get two? *)
+  | Ok syms -> (  (* It's the same symtable node that's passed in... *)
+    (* Scope added so imports will be above the module scope. *)
     let syms = Symtable.new_scope syms in
-    let globalres = List.map (check_globdecl syms tenv) dmod.globals in
-    if List.exists Result.is_error globalres then
-      Error (concat_errors globalres)
+    (* Check global declarations *)
+    let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in
+    if List.exists Result.is_error globalsrlist then
+      Error (concat_errors globalsrlist)
     else
-      let newglobals = concat_ok globalres in 
-      let pdeclres = List.map (fun proc ->
+      let newglobals = concat_ok globalsrlist in
+      (* Check procedures (decls first to add to symbol table *)
+      let pdeclsrlist = List.map (fun proc ->
                          check_pdecl syms tenv dmod.name proc.decl)
                        dmod.procs in
-      if List.exists Result.is_error pdeclres then
-        (* check_proc errors are a list of string locateds. *)
-        Error (concat_errors pdeclres)
+      if List.exists Result.is_error pdeclsrlist then
+        Error (concat_errors pdeclsrlist)
       else
         let newpdecls = 
           List.map (fun ((pd: 'a st_node procdecl), pentry) ->
               Symtable.addproc syms pd.name pentry;
               pd) 
-            (concat_ok pdeclres) in
-        let procres = List.map2 (check_proc tenv) newpdecls dmod.procs in
-        if List.exists Result.is_error procres then
-          Error (concat_errors procres)
+            (concat_ok pdeclsrlist) in
+        (* Check procedure bodies *)
+        let procsrlist = List.map2 (check_proc tenv) newpdecls dmod.procs in
+        if List.exists Result.is_error procsrlist then
+          Error (concat_errors procsrlist)
         else
-          let newprocs = concat_ok procres in
-          (* tricky to check that globals are initialized. For now, just
-           * make sure they're initted (directly) in the init block. *)
-          let blocksyms = Symtable.new_scope syms in
-          (* Oh, I have to let it initialize globals upward, like with if-then *)
-          match check_stmt_seq blocksyms tenv dmod.initblock with
-          | Error errs -> Error errs
-          | Ok newblock ->
-             let global_uninit = StrSet.diff syms.uninit blocksyms.parent_init in
-             if not (StrSet.is_empty global_uninit) then
-               Error (StrSet.fold (fun v strs ->
-                          {loc=(List.hd (dmod.globals)).decor; (* fake the loc *)
-                           value="Uninitialized global variable " ^ v ^ "\n"}
-                          :: strs) global_uninit [])
-             else 
-               Ok {name=dmod.name; imports=dmod.imports;
-                   typedefs=dmod.typedefs;
-                   globals=newglobals; procs=newprocs;
-                   initblock=newblock}
+          let newprocs = concat_ok procsrlist in
+          (* Made it this far, assemble the newly-decorated module. *)
+          Ok {name=dmod.name; imports=dmod.imports;
+              typedefs=dmod.typedefs;
+              globals=newglobals; procs=newprocs
+            }
   )
 
 (** Auto-generate the interface object for a module *)

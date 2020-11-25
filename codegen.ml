@@ -277,7 +277,8 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
   | StmtBlock _ -> failwith "not implemented"
 
-(** Get a default value for a type. Used only for globals. *)
+
+(** Get a default value for a type. Hopefully not to be used anymore. *)
 (* and maybe for unreachable returns *)
 let default_value ttag =
   (* I'll need some kind of ttag->llvm type mapping eventually. *)
@@ -288,23 +289,34 @@ let default_value ttag =
                  ^ typetag_to_string ttag)
 
 
-(** generate code for a global variable declaration (init code in main) *)
-let gen_global_decl the_module builder tenv (gdecl: ('ed, 'sd) globalstmt) =
+(** Generate value of a constant expression for a global var initializer. *)
+let gen_constexpr_value (ex: typetag expr) =
+  (* How many types will this support? Might need a tenv later *)
+  if ex.decor = int_ttag then
+    match ex.e with
+    | ExpConst (IntVal n) -> const_int int_type n
+    | _ -> failwith "Unsupported constant initializer, please add it"
+  else if ex.decor = float_ttag then
+    match ex.e with
+    | ExpConst (FloatVal x) -> const_float float_type x
+    | _ -> failwith "Unsupported constant initializer, please add it"
+  else if ex.decor = bool_ttag then
+    match ex.e with
+    | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
+    | _ -> failwith "Unsupported constant initializer, please add it"
+  else failwith "Unknown constexpr type"   
+    
+
+(** Generate code for a global variable declaration (and constant initializer,
+    for now) *)
+let gen_global_decl the_module (gdecl: ('ed, 'sd) globalstmt) =
   let syms = gdecl.decor in
-  let (entry, _) = Symtable.findvar gdecl.varname syms in
-    (* define_global doesn't use the builder, puts at the top *)
-    (* The default value will never be used, it's just to satisfy clang. *)
-    (* A more optimized approach would be to check if it's a constExpr 
-     * and use that if it's there. *)
-  let gaddr =
-    define_global gdecl.varname (default_value entry.symtype) the_module in
-  Symtable.set_addr syms gdecl.varname gaddr;
   match gdecl.init with
   | Some ex ->
-     let gval = gen_expr the_module builder syms tenv ex in
-     (* This assumes builder is positioned correctly. *)
-     ignore (build_store gval gaddr builder)
-  | None -> ()
+     let gaddr =
+       define_global gdecl.varname (gen_constexpr_value ex) the_module in
+     Symtable.set_addr syms gdecl.varname gaddr;
+  | None -> failwith "Shouldn't happen, global checked for initializer"
 
 
 (** Convert a type tag from the AST into a suitable LLVM type. *)
@@ -325,6 +337,7 @@ let gen_fdecls the_module fsyms =
                      procentry.fparams
                    |> Array.of_list in
       (* print_string ("Declaring function " ^ procentry.procname ^ "\n"); *)
+      (* This is the qualified version (or not, if exported) *)
       ignore (declare_function procentry.procname
                 (function_type (rtype) params) the_module)
     (* We could set names for arguments here. *)
@@ -379,21 +392,9 @@ let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   (* if List.length (topsyms.children) <> 1 then
     failwith "BUG: didn't find unique module-level symtable"; *)
   let modsyms = List.hd (topsyms.children) in
+  List.iter (gen_global_decl the_module) modtree.globals;
+  (* Generate proc declarations first, so they can mutually refer *)
   gen_fdecls the_module modsyms.fsyms;
-  (* Procedures declared in this module should already be here. *)
-  (* if there are globals or an init block, create an init procedure *)
-  if modtree.globals <> [] || modtree.initblock <> [] then (
-    let initproc =
-      (* TODO: figure out how to pick a main. Will need to link all init blocks together? *)
-      define_function "main" (* "Module.__init" *)
-        (function_type (void_type) [||])
-        the_module in
-    (* let entry_bb = append_block context "entry" initproc in *)
-    position_at_end (entry_block initproc) builder; (* global inits go there *)
-    List.iter (gen_global_decl the_module builder tenv) modtree.globals;
-    List.iter (gen_stmt the_module builder tenv) modtree.initblock;
-    ignore (build_ret_void builder)
-  );
   List.iter (gen_proc the_module builder tenv) modtree.procs;
-  (* Llvm_analysis.assert_valid_module the_module; *)
+  Llvm_analysis.assert_valid_module the_module;
   the_module

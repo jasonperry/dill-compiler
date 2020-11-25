@@ -1,0 +1,10 @@
+module Hello =
+
+open Stdio;
+
+export proc main(): Int =
+   printInt(43);
+   return 0;
+end main
+
+end Hello

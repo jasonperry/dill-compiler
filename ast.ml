@@ -72,6 +72,8 @@ type ('ed,'sd) raw_stmt =
 (** Decorated statement type ('a is for the decor of embedded exprs) *)
 and ('ed,'sd) stmt = { st: ('ed,'sd) raw_stmt; decor: 'sd }
 
+
+(** Global variable declaration only; only used in modspecs. *)
 type 'sd globaldecl = {
     varname: string;
     (* in_module: string; *)
@@ -79,11 +81,11 @@ type 'sd globaldecl = {
     decor: 'sd
   }
 
-(* Make record types for all the things! *)
+(** Global var declaration with required initializer. *)
 type ('ed, 'sd) globalstmt = {
     varname: string;
     typeexp: typeExpr option;
-    init: 'ed expr option;
+    init: 'ed expr option; (* required by semantics, check in analyzer *)
     decor: 'sd
   }
 
@@ -94,6 +96,7 @@ type 'sd procdecl = {
     (* One could imagine removing the typeExprs after analysis. *)
     params: (string * typeExpr) list;
     (* Also need "private" signifier. *)
+    export: bool;
     rettype: typeExpr;
     decor: 'sd
   }
@@ -130,7 +133,7 @@ type ('ed,'sd) dillmodule = {
     typedefs: typedef list;
     globals: ('ed, 'sd) globalstmt list;
     procs: ('ed,'sd) proc list;
-    initblock: ('ed,'sd) stmt list
+    (* initblock: ('ed,'sd) stmt list *)
   }
 
 (* No expressions in a module spec. *)
@@ -204,7 +207,8 @@ and if_to_string (e, tb, eifs, els) =
 (* let interpret_params plist =  *)
 
 let procdecl_to_string (pdecl: 'sd procdecl) =
-  "proc " ^ pdecl.name ^ "("
+  if pdecl.export then "export " else ""
+  ^ "proc " ^ pdecl.name ^ "("
   ^ String.concat "," (
         List.map (fun (varname, vartype) ->
             varname ^ ": " ^ typeExpr_to_string vartype) pdecl.params)
@@ -234,7 +238,7 @@ let module_to_string (dmod: ('ed, 'sd) dillmodule) =
         ^ "\n"
       ) "" dmod.globals
   ^ List.fold_left (fun s p -> s ^ proc_to_string p) "" dmod.procs
-  ^ block_to_string dmod.initblock
+  (* ^ block_to_string dmod.initblock *)
   ^ "end " ^ dmod.name ^ "\n"
 
 let modspec_to_string (mspec: 'sd module_spec) =

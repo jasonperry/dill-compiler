@@ -1,0 +1,6 @@
+modspec Globlib01 = 
+var x: Int;
+var y: Float;
+proc isItFour(n: Int) : Bool;
+proc getAnInit() : Int;
+end Globlib01

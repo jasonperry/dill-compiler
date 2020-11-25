@@ -17,7 +17,7 @@
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
 %token MODULE MODSPEC
-%token IMPORT AS OPEN
+%token IMPORT AS OPEN EXPORT
 %token PRIVATE DOT TYPE STRUCT
 %token EOF
 
@@ -62,28 +62,28 @@ main: specopt=option(modspec) modopt=option(dillmodule) EOF
 
 dillmodule:
   | MODULE mn=moduleName ASSIGN
-    iss=list(importStmt)
+    iss=list(includeStmt)
     tys=list(typedef)    (* TODO: let types come anywhere? Or be strict? *)
     gls=list(declStmt)
     pr=list(proc)
-    bl=option(blockStmt)
+    (* bl=option(blockStmt) *)
     END mn2=moduleName
-    { let initstmts = match bl with
+    (* { let initstmts = match bl with
 	| Some (StmtBlock slist) -> slist
-	| _ -> [] in
-      if mn = mn2 then {
-	  name=mn;
-	  imports=iss;
-	  typedefs=tys;
-	  globals=List.map (
-		      fun (v, topt, eopt) ->
-		      {varname=v;
-		       typeexp=topt; init=eopt; decor=$loc}
-		    ) gls;
-	  procs=pr;
-	  initblock=initstmts
-	}
-      else $syntaxerror
+	| _ -> [] in *)
+    { if mn = mn2 then {
+        name=mn;
+        imports=iss;
+        typedefs=tys;
+        globals=List.map (
+            fun (v, topt, eopt) ->
+	      {varname=v;
+	       typeexp=topt; init=eopt; decor=$loc}
+          ) gls;
+        procs=pr;
+        (* initblock=initstmts *)
+        }
+        else $syntaxerror
     }
 
 moduleName: mn=IDENT_UC { mn }
@@ -136,7 +136,7 @@ fieldDecl:
     { (vn, TypeName te) }
 
 proc:
-  | pd=procHeader ASSIGN sb=stmtSeq END en=procName 
+  | pd=procHeader ASSIGN sb=stmtSeq END en=IDENT_LC 
     { if pd.name = en then
 	{ decor=$loc; decl=pd; body=sb }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11)
@@ -145,19 +145,15 @@ proc:
     }
 
 procHeader:
-  | PROC pn=IDENT_LC LPAREN pl=paramList RPAREN COLON rt=typeExp
-    { {decor=$loc; name=pn; params=pl; rettype=rt} (* procdecl *) }
+  | ex = option(EXPORT) PROC pn=IDENT_LC
+    LPAREN pl=paramList RPAREN COLON rt=typeExp
+    { {decor=$loc;
+       name=pn;
+       params=pl;
+       export=Option.is_some ex;
+       rettype=rt} (* procdecl *) }
 
 procDecl: ph=procHeader SEMI { ph }
-
-procName:
-  (* TODO: A method needs a dot or an arrow. *)
-  (* If it's a method, it won't have a modulename, so this will be OK here? *)
-  | mn=option(terminated(moduleName, DOT)) pn=IDENT_LC
-    { match mn with
-      | Some mname -> mname ^ "." ^ pn
-      | None -> pn
-    }
 
 paramList:
   | pl=separated_list(COMMA, nameAndType)
@@ -341,8 +337,6 @@ callExp:
     { ExpCall (mn ^ "." ^ pn, al) }
   | pn=IDENT_LC LPAREN al=argList RPAREN
     { ExpCall (pn, al) }
-(*  | pn=procName LPAREN al=argList RPAREN
-    { ExpCall (pn, al) } *)
 
 argList:
   | al=separated_list(COMMA, expr)
