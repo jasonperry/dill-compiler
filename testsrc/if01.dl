@@ -3,17 +3,17 @@ module If01 =
 
 open Stdio;
 
-begin
+export proc main(): Void = 
 
-var x = 10;
-if (x == 11) then
-  x = x + 1;
-else
-  x = x - 1;
-endif
+   var x = 10;
+   if (x == 11) then
+      x = x + 1;
+   else
+     x = x - 1;
+   endif
 
-printInt(x);  (* 9 *)
+   printInt(x);  (* 9 *)
 
-end
+end main
 
 end If01

@@ -2,7 +2,7 @@
 %token <float> FCONST
 %token <string> IDENT_LC
 %token <string> IDENT_UC
-%token LPAREN RPAREN
+%token LPAREN RPAREN LBRACE RBRACE
 %token PLUS MINUS TIMES DIV MOD
 %token UMINUS (* not lexed *)
 %token BITAND BITOR BITXOR BITNOT
@@ -216,7 +216,7 @@ returnStmt:
     { StmtReturn eopt }
 
 callStmt:
-(* | e=expr SEMI (* formerly *) *)
+(* Now specifies the subtype of expressions *)
   | ce = callExp SEMI
     { StmtCall {decor=$loc; e=ce} }
 
@@ -253,6 +253,7 @@ expr:
     { ex }
   | ex=constExp
   | ex=varExp
+  | ex=recordExp
   | ex=opExp
   | ex=callExp
   | ex=nullAssnExp
@@ -277,14 +278,15 @@ varExp:
     { ExpVar (v, fns) }
 
 varName:
-  (* variables are all "local", so no module name prefix *)
   vn=IDENT_LC { vn }
-  (* | mn=option(terminated(moduleName, DOT)) vn=IDENT_LC
-    { match mn with
-      | Some mname -> mname ^ "." ^ vn
-      | None -> vn
-    }
-   *) 
+
+recordExp:
+  | LBRACE fl=separated_list(COMMA, fieldAssign) RBRACE
+    { ExpRecord fl }
+
+fieldAssign:
+  | vn=varName ASSIGN e=expr
+    { (vn, e) }
 
 opExp:
 (* TODO: check type of subexps and apply promotion rules *)

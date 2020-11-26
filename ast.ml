@@ -44,6 +44,7 @@ type typeExpr =
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
   | ExpVar of string * string list (* field specifiers *)
+  | ExpRecord of (string * 'ed expr) list
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * 'ed expr list
@@ -156,6 +157,11 @@ let rec exp_to_string (e: 'a expr) =
   match e.e with
   | ExpConst _ -> "CONSTEXP "
   | ExpVar (v, _) -> "(VAREXP " ^ v ^ "POSSIBLE DOT FIELDS) "
+  | ExpRecord fl ->
+      "{" ^ String.concat ", "
+              (List.map (fun (fname, ex) ->
+                   fname ^ "=" ^ exp_to_string ex) fl)
+      ^ "}"
   | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
   | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"

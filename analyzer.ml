@@ -61,6 +61,7 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
          Ok { e=ExpVar (varname, fields); decor=ent.symtype }
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ varname}
   )
+  | ExpRecord _ -> failwith "Record exp typechecking no implemented"
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
     | Ok ({e=_; decor=ty1} as e1) -> (  (* without () e1 is the whole thing *)

@@ -8,14 +8,14 @@ type Complex = struct
   j: Float;
 end Complex
 
-(*
-begin
 
-var cpx: Complex = {i=4.0, j=-1.53};
-printFloat(cpx.i);
-printFloat(cpx.j);
+export proc main() : Void = 
 
-end
-*)
+  var cpx: Complex = {i=4.0, j=-1.53};
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+
+end main
+
 
 end Struct01

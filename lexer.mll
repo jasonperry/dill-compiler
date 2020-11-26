@@ -40,6 +40,8 @@ rule token = parse  (* funny that it's called parse *)
     { FCONST (float_of_string f) }
   | '('     { LPAREN }
   | ')'     { RPAREN }
+  | '{'     { LBRACE }
+  | '}'     { RBRACE }
   | '*'     { TIMES }
   | '/'     { DIV }
   | '%'     { MOD }

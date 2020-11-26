@@ -8,8 +8,8 @@ var j: Int = 0;
 export proc main() : Int = 
 
   while (i >= 0) loop
-    j = 2*i+1;  (* declaring j each time through eats memory. Not good. *)
-                (* could the LLVM optimizer fix it? *)
+    j = 2*i+1;  (* declaring j each time through eats memory. Not good. 
+                 * could the LLVM optimizer fix it? *)
     Stdio.printInt(i);
     i = i - 1;
   endloop

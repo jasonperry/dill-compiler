@@ -30,6 +30,7 @@ let rec gen_expr the_module builder syms tenv (ex: typetag expr) =
         failwith ("BUG gen_expr: alloca address not present for " ^ varname)
      | Some alloca -> build_load alloca varname builder
   )
+  | ExpRecord _ -> failwith "Record codegen not implemented yet"
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
