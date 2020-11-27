@@ -18,7 +18,7 @@
 %token PROC RETURN NOP
 %token MODULE MODSPEC
 %token IMPORT AS OPEN EXPORT
-%token PRIVATE DOT TYPE STRUCT
+%token PRIVATE DOT TYPE STRUCT MUT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -132,8 +132,12 @@ fieldList:
   | fl=separated_list(COMMA, fieldDecl) { fl }
 
 fieldDecl:
-  | vn=IDENT_LC COLON te=IDENT_UC (* not varName, can't have dots *)
-    { (vn, TypeName te) }
+  | priv=option(PRIVATE) mut=option(MUT) fn=IDENT_LC COLON fty=IDENT_UC
+    { {fieldname=fn;
+       priv=Option.is_some priv;
+       mut=Option.is_some mut;
+       fieldtype=TypeName fty
+    } }
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=IDENT_LC 

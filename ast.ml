@@ -54,7 +54,6 @@ type 'ed raw_expr = (* should really probably change to inline records *)
 (** Decorated expression type *)
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
-
 type ('ed,'sd) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'ed expr option
   | StmtAssign of string * 'ed expr  (* need to make var expr on left? *)
@@ -109,14 +108,22 @@ type ('ed,'sd) proc = {
     decor: 'sd
   }
 
-(** A new type definition. *)
+(** Single field declaration of a struct type. *)
+type fieldDecl = {
+    fieldname: string;
+    priv: bool;
+    mut: bool;
+    fieldtype: typeExpr; (* Could be generic later *)
+  }
+
+(** A struct type definition. *)
 type structTypedef = {
     typename: string;
-    fields: (string * typeExpr) list (* should also be decorated with loc *)
+    (* actually need a fieldDecl for this *)
+    fields: fieldDecl list (* should also be decorated with loc *)
   }
 
 (* It needs the symbol table decoration for the methods, I think. *)
-(* It really needs a type environment...maybe later down. *)
 type typedef =
   | Struct of structTypedef
 

@@ -8,7 +8,7 @@ exception SymbolError of string
 (* Types can only be defined at the module level, not nested. *)
 (* Start with one global (later per-module) type environment. *)
 (* The structure of this also will relate to recursively defined types. *)
-type typeenv = classdata StrMap.t
+type typeenv = classData StrMap.t
 
 (** Initial type environment (known classes) *)
 let base_tenv =

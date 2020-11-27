@@ -645,19 +645,45 @@ let add_imports syms tenv specs istmts =
 
 (** Check one entire module, generating new versions of each component. *)
 let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
-  (* Check import statements and load modspecs *)
+  (* Check import statements and load modspecs into symtable
+     (they've been loaded from .dms files by the top level) *)
   match add_imports syms tenv ispecs dmod.imports with
   | Error errs -> Error errs 
   | Ok syms -> (  (* It's the same symtable node that's passed in... *)
-    (* Scope added so imports will be above the module scope. *)
+    (* Add new scope so imports will be topmost in the module scope. *)
     let syms = Symtable.new_scope syms in
+    (* create tenv entry (classdata) for a struct declaration *)
+    (* TODO: handle recursive type declarations *)
+    let build_struct_classdata std =
+      {
+        classname = std.typename;
+        muttype = List.exists (fun fd -> fd.mut) std.fields;
+        params = [];
+        implements = [];
+        (* later can generate field info with same type variables as outer *)
+        fields =
+          List.map (fun fd ->
+              {fieldname=fd.fieldname; priv=fd.priv;
+               mut=fd.mut;
+               fieldClass =
+                 StrMap.find (typeExpr_to_string fd.fieldtype) tenv
+              }
+            ) std.fields
+      }
+    in
+    (* fold typedefs into new type environment. *)
+    let tenv = List.fold_left
+                 (fun map -> function
+                   | Struct std ->
+                      StrMap.add std.typename (build_struct_classdata std) map)
+                 tenv dmod.typedefs in
     (* Check global declarations *)
     let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in
     if List.exists Result.is_error globalsrlist then
       Error (concat_errors globalsrlist)
     else
       let newglobals = concat_ok globalsrlist in
-      (* Check procedures (decls first to add to symbol table *)
+      (* Check procedure decls first, to add to symbol table *)
       let pdeclsrlist = List.map (fun proc ->
                          check_pdecl syms tenv dmod.name proc.decl)
                        dmod.procs in
