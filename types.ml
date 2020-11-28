@@ -16,11 +16,13 @@ and fieldInfo = {
 
 (** The specification for a class of types, as defined by a record or etc. *)
 and classData = {
-    classname: string;
+    (* classname: string; (* do I even need it? *) *)
+    ttag: typetag;  (* later, a typetag /template/ (or just subst tvars) *)
     muttype: bool;  (* in structs, inferred from field mutability *)
     params: typevar list; (* generic params *)
     implements: string list; (* interfaces *)
-    (* When we do generics, need to link the field type parameters. *)
+    (* When we do generics, need to link the field type parameters. 
+       (possibly just by varname) *)
     fields: fieldInfo list
     (* also need all method signatures. *)
   }
@@ -28,50 +30,55 @@ and classData = {
 (** Unique name of a concrete type. *)
 and typetag = {
     (* what to do for function type? *)
-    (* typename: string; *)  (* kept in the dictionary *)
-    tclass: classData;
-    paramtypes: (string * string) list; (* generics that are resolved. *)
+    modulename: string;
+    typename: string;
+    (* tclass: classData; *)
+    (* TODO: have an "unresolved" typetag. *)
+    paramtypes: typetag list; (* resolved generics. *)
     array: bool;   (* array type (the only native container type for now) *)
     (* size: int;  (* 4 if a reference type? 8? *) *)
     nullable: bool; (* will this be part of the classdata? *)
   }
 
+
 (** Generate a type for a typetag for a class (and later, specify generics *)
-let specify_type classdata _ (* "instants" *) =
-  (* should I make this work for built-in types? *)
-  { tclass=classdata;
-    paramtypes = []; (* need to match up variable names *)
-    array = false;
-    nullable = false;
-  }
-      
+let gen_ttag classdata _ (* "instants" (probably map) *) =
+  (* later: substitute class types *)
+  classdata.ttag
+     
 
 (** Convert a type tag to printable format. *)
-let typetag_to_string tt =
-  List.fold_left
-    (fun s (_, vval) -> s ^ "<" ^ vval ^ "> ") "" tt.paramtypes
-  ^ tt.tclass.classname
-  ^ (if tt.array then "[]" else "")
-  ^ (if tt.nullable then "?" else "")
+let rec typetag_to_string (tt: typetag) =
+  if tt.paramtypes <> [] then 
+    "<"
+    ^ List.fold_left
+        (fun s pt -> s ^ "," ^ (typetag_to_string pt)) "" tt.paramtypes
+    ^ ">"
+  else ""
+  ^ tt.modulename ^ "."
+  ^ tt.typename
+  ^ if tt.array then "[]" else ""
+  ^ if tt.nullable then "?" else ""
+
 
 (* Class definitions for built-in types, and tags for convenience. *)
-let void_class =  { classname="Void"; muttype=false; params=[];
+let void_ttag = { modulename = ""; typename="Void"; paramtypes=[];
+                  array=false; nullable=false }
+let void_class =  { ttag=void_ttag; muttype=false; params=[];
                     implements=[]; fields=[] }
-let void_ttag = {tclass = void_class; paramtypes=[];
-                 array=false; nullable=false}
 
-let int_class = {classname="Int"; muttype=false; params=[];
-                 implements=[]; fields=[] } (* later: "Arith" *)
-let int_ttag = {tclass=int_class;
-                paramtypes=[]; array=false; nullable=false}
+let int_ttag = { modulename = ""; typename="Int";
+                 paramtypes=[]; array=false; nullable=false }
+let int_class = { ttag=int_ttag; muttype=false; params=[];
+                  implements=[]; fields=[] } (* later: "Arith" *)
 
-let bool_class = {classname="Bool"; muttype=false; params=[];
-                  implements=[]; fields=[]}
-let bool_ttag = {tclass=bool_class; paramtypes=[]; array=false;
-                 nullable=false}
+let bool_ttag = { modulename=""; typename="Bool"; paramtypes=[];
+                  array=false; nullable=false }
+let bool_class = { ttag=bool_ttag; muttype=false; params=[];
+                   implements=[]; fields=[] }
 
-let float_class = {classname="Float"; muttype=false; params=[];
-                   implements=[]; fields=[]}
-let float_ttag = {tclass=float_class; paramtypes=[]; array=false;
-                  nullable=false}
+let float_ttag = { modulename=""; typename="Float"; paramtypes=[];
+                   array=false; nullable=false }
+let float_class = { ttag=float_ttag; muttype=false; params=[];
+                    implements=[]; fields=[]}
 (* whether the variable can be mutated is a feature of the symbol table. *)
