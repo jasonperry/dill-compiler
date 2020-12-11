@@ -16,8 +16,10 @@ and fieldInfo = {
 
 (** The specification for a class of types, as defined by a record or etc. *)
 and classData = {
-    (* classname: string; (* do I even need it? *) *)
-    ttag: typetag;  (* later, a typetag /template/ (or just subst tvars) *)
+    classname: string; (* do I even need it? It's the dict key *)
+    in_module: string; (* to make it self-contained for generating ttags. *)
+      (* anyway, if we have extensions, still need to reference the original
+       * module where the class was defined. *)
     muttype: bool;  (* in structs, inferred from field mutability *)
     params: typevar list; (* generic params *)
     implements: string list; (* interfaces *)
@@ -44,15 +46,24 @@ and typetag = {
 (** Generate a type for a typetag for a class (and later, specify generics *)
 let gen_ttag classdata _ (* "instants" (probably map) *) =
   (* later: substitute class types *)
-  classdata.ttag
+  {
+    modulename = classdata.in_module;
+    typename = classdata.classname;
+    paramtypes = [];
+    (* array and nullable types won't be part of the class, they're
+       specified in declarations. *)
+    array = false;  
+    nullable = false;
+  }
+    
      
 
 (** Convert a type tag to printable format. *)
 let rec typetag_to_string (tt: typetag) =
   if tt.paramtypes <> [] then 
     "<"
-    ^ List.fold_left
-        (fun s pt -> s ^ "," ^ (typetag_to_string pt)) "" tt.paramtypes
+    ^ String.concat ","
+        (List.map (fun pt -> typetag_to_string pt) tt.paramtypes)
     ^ ">"
   else ""
   ^ tt.modulename ^ "."
@@ -62,23 +73,19 @@ let rec typetag_to_string (tt: typetag) =
 
 
 (* Class definitions for built-in types, and tags for convenience. *)
-let void_ttag = { modulename = ""; typename="Void"; paramtypes=[];
-                  array=false; nullable=false }
-let void_class =  { ttag=void_ttag; muttype=false; params=[];
-                    implements=[]; fields=[] }
+let void_class =  { classname="Void"; in_module = "";
+                    muttype=false; params=[]; implements=[]; fields=[] }
+let void_ttag = gen_ttag void_class
 
-let int_ttag = { modulename = ""; typename="Int";
-                 paramtypes=[]; array=false; nullable=false }
-let int_class = { ttag=int_ttag; muttype=false; params=[];
+let int_class = { classname="Int"; in_module = ""; muttype=false; params=[];
                   implements=[]; fields=[] } (* later: "Arith" *)
+let int_ttag = gen_ttag int_class
 
-let bool_ttag = { modulename=""; typename="Bool"; paramtypes=[];
-                  array=false; nullable=false }
-let bool_class = { ttag=bool_ttag; muttype=false; params=[];
+let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
                    implements=[]; fields=[] }
+let bool_ttag = gen_ttag bool_class
 
-let float_ttag = { modulename=""; typename="Float"; paramtypes=[];
-                   array=false; nullable=false }
-let float_class = { ttag=float_ttag; muttype=false; params=[];
+let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
                     implements=[]; fields=[]}
+let float_ttag = gen_ttag float_class
 (* whether the variable can be mutated is a feature of the symbol table. *)
