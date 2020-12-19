@@ -37,14 +37,14 @@ and typetag = {
     (* tclass: classData; *)
     (* TODO: have an "unresolved" typetag. *)
     paramtypes: typetag list; (* resolved generics. *)
-    array: bool;   (* array type (the only native container type for now) *)
+    array: bool;   (* array type (going away) *)
     (* size: int;  (* 4 if a reference type? 8? *) *)
     nullable: bool; (* will this be part of the classdata? *)
   }
 
 
 (** Generate a type for a typetag for a class (and later, specify generics *)
-let gen_ttag classdata _ (* "instants" (probably map) *) =
+let gen_ttag (classdata: classData) _ (* mapping to type vars *) =
   (* later: substitute class types *)
   {
     modulename = classdata.in_module;
@@ -55,8 +55,7 @@ let gen_ttag classdata _ (* "instants" (probably map) *) =
     array = false;  
     nullable = false;
   }
-    
-     
+
 
 (** Convert a type tag to printable format. *)
 let rec typetag_to_string (tt: typetag) =
@@ -75,17 +74,17 @@ let rec typetag_to_string (tt: typetag) =
 (* Class definitions for built-in types, and tags for convenience. *)
 let void_class =  { classname="Void"; in_module = "";
                     muttype=false; params=[]; implements=[]; fields=[] }
-let void_ttag = gen_ttag void_class
+let void_ttag = gen_ttag void_class []
 
 let int_class = { classname="Int"; in_module = ""; muttype=false; params=[];
                   implements=[]; fields=[] } (* later: "Arith" *)
-let int_ttag = gen_ttag int_class
+let int_ttag = gen_ttag int_class []
 
 let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
                    implements=[]; fields=[] }
-let bool_ttag = gen_ttag bool_class
+let bool_ttag = gen_ttag bool_class []
 
 let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
                     implements=[]; fields=[]}
-let float_ttag = gen_ttag float_class
+let float_ttag = gen_ttag float_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)

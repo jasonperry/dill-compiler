@@ -1,4 +1,4 @@
-(** Semantic analyzer: check for errors and build type- and scope- 
+(** Semantic analyzer: check for errors and build type- and symbol- 
   * decorated AST *)
 
 open Common
@@ -29,13 +29,14 @@ let rec match_params (formal: 'a st_entry list) (actual: typetag list) =
  * easier and I might not need it further down the line. *)
 type typeExpr_result = (typetag, string) Stdlib.result
 
-(** Check that a type expression refers to a valid type in the environment. *)
-let check_typeExpr tenv (TypeName tyname) =
+(** Check that a type expression refers to a valid type in the environment, 
+    and return the tag. *)
+let check_typeExpr tenv (TypeName tyname) : (typetag, string) result =
   match StrMap.find_opt tyname tenv with
-  | Some cdata -> Ok ({ tclass=cdata; paramtypes=[]; array=false;
-                        nullable=false })
+  | Some cdata -> Ok ({ modulename = cdata.in_module;
+                        typename = cdata.classname;
+                        paramtypes=[]; array=false; nullable=false })
   | None -> Error ("Unknown type " ^ tyname)
-
 
 
 (** Expression result type (remember that exprs have a type field) *)
@@ -643,6 +644,27 @@ let add_imports syms tenv specs istmts =
   | errs -> Error errs
 
 
+(** Check a struct declaration, generating classData for the tenv. *)
+let check_struct modname tenv (std: structTypedef)= 
+  (* TODO: handle recursive type declarations *)
+  {
+    classname = std.typename;
+    in_module = modname;
+    muttype = List.exists (fun fd -> fd.mut) std.fields;
+    params = [];
+    implements = [];
+    (* later can generate field info with same type variables as outer *)
+    fields =
+      List.map (fun fd ->
+          {fieldname=fd.fieldname; priv=fd.priv;
+           mut=fd.mut;
+           fieldClass =
+             (* TODO: actually find errors. *)
+             StrMap.find (typeExpr_to_string fd.fieldtype) tenv
+          }
+        ) std.fields
+  }
+
 (** Check one entire module, generating new versions of each component. *)
 let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
   (* Check import statements and load modspecs into symtable
@@ -653,29 +675,12 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
     (* Add new scope so imports will be topmost in the module scope. *)
     let syms = Symtable.new_scope syms in
     (* create tenv entry (classdata) for a struct declaration *)
-    (* TODO: handle recursive type declarations *)
-    let build_struct_classdata std =
-      {
-        classname = std.typename;
-        muttype = List.exists (fun fd -> fd.mut) std.fields;
-        params = [];
-        implements = [];
-        (* later can generate field info with same type variables as outer *)
-        fields =
-          List.map (fun fd ->
-              {fieldname=fd.fieldname; priv=fd.priv;
-               mut=fd.mut;
-               fieldClass =
-                 StrMap.find (typeExpr_to_string fd.fieldtype) tenv
-              }
-            ) std.fields
-      }
-    in
     (* fold typedefs into new type environment. *)
     let tenv = List.fold_left
                  (fun map -> function
                    | Struct std ->
-                      StrMap.add std.typename (build_struct_classdata std) map)
+                      StrMap.add std.typename
+                        (check_struct dmod.name tenv std) map)
                  tenv dmod.typedefs in
     (* Check global declarations *)
     let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in

@@ -113,7 +113,8 @@ type fieldDecl = {
     fieldname: string;
     priv: bool;
     mut: bool;
-    fieldtype: typeExpr; (* Could be generic later *)
+    (* Create 'typevar' field matching the struct later *)
+    fieldtype: typeExpr;
   }
 
 (** A struct type definition. *)
@@ -153,7 +154,9 @@ type 'sd module_spec = {
     procdecls: 'sd procdecl list
   }
 
+
 (* printing functions start here *)
+
 
 let typeExpr_to_string te =
   match te with

@@ -10,13 +10,15 @@ exception SymbolError of string
 (* The structure of this also will relate to recursively defined types. *)
 type typeenv = classData StrMap.t
 
-(** Initial type environment (known classes) *)
+(** Initial type environment (primitive types) *)
 let base_tenv =
+  (* Maybe put this in dillc or types. *)
   StrMap.empty
-  |> StrMap.add void_class.classname void_class (* defined in Types *)
-  |> StrMap.add int_class.classname int_class
-  |> StrMap.add float_class.classname float_class
-  |> StrMap.add bool_class.classname bool_class
+  (* Maybe just add the string name for the scope *)
+  |> StrMap.add void_ttag.typename void_class (* defined in Types *)
+  |> StrMap.add int_ttag.typename int_class
+  |> StrMap.add float_ttag.typename float_class
+  |> StrMap.add bool_ttag.typename bool_class
 
 (* Symtable concept: a map for current scope, parent and children nodes *)
 
