@@ -109,24 +109,25 @@ type ('ed,'sd) proc = {
   }
 
 (** Single field declaration of a struct type. *)
-type fieldDecl = {
+type 'sd fieldDecl = {
     fieldname: string;
     priv: bool;
     mut: bool;
     (* Create 'typevar' field matching the struct later *)
     fieldtype: typeExpr;
+    decor: 'sd
   }
 
 (** A struct type definition. *)
-type structTypedef = {
+type 'sd structTypedef = {
     typename: string;
     (* actually need a fieldDecl for this *)
-    fields: fieldDecl list (* should also be decorated with loc *)
+    fields: 'sd fieldDecl list (* should also be decorated with loc *)
   }
 
 (* It needs the symbol table decoration for the methods, I think. *)
-type typedef =
-  | Struct of structTypedef
+type 'sd typedef =
+  | Struct of 'sd structTypedef
 
 
 (** Import statements occur separately, so it seems no need to include in 
@@ -139,7 +140,7 @@ type importStmt =
 type ('ed,'sd) dillmodule = {
     name: string;
     imports: importStmt list;
-    typedefs: typedef list;
+    typedefs: 'sd typedef list;
     globals: ('ed, 'sd) globalstmt list;
     procs: ('ed,'sd) proc list;
     (* initblock: ('ed,'sd) stmt list *)
@@ -149,7 +150,7 @@ type ('ed,'sd) dillmodule = {
 type 'sd module_spec = {
     name: string;
     imports: importStmt list;
-    typedefs: typedef list;
+    typedefs: 'sd typedef list;
     globals: 'sd globaldecl list;
     procdecls: 'sd procdecl list
   }

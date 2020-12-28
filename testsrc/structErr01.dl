@@ -1,0 +1,21 @@
+(* field redeclaration error *)
+module StructErr01 =
+
+open Stdio;
+
+type Complex = struct
+  i: Float,
+  i: Int;
+end Complex
+
+
+export proc main() : Void = 
+
+  var cpx: Complex = {i=4.0, j=-1.53};
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+
+end main
+
+
+end StructErr01

@@ -136,7 +136,8 @@ fieldDecl:
     { {fieldname=fn;
        priv=Option.is_some priv;
        mut=Option.is_some mut;
-       fieldtype=TypeName fty
+       fieldtype=TypeName fty;
+       decor=$loc
     } }
 
 proc:

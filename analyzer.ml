@@ -645,25 +645,44 @@ let add_imports syms tenv specs istmts =
 
 
 (** Check a struct declaration, generating classData for the tenv. *)
-let check_struct modname tenv (std: structTypedef)= 
+let check_typedef modname tenv (tydef: locinfo typedef) = 
   (* TODO: handle recursive type declarations *)
-  {
-    classname = std.typename;
-    in_module = modname;
-    muttype = List.exists (fun fd -> fd.mut) std.fields;
-    params = [];
-    implements = [];
-    (* later can generate field info with same type variables as outer *)
-    fields =
-      List.map (fun fd ->
-          {fieldname=fd.fieldname; priv=fd.priv;
-           mut=fd.mut;
-           fieldClass =
-             (* TODO: actually find errors. *)
-             StrMap.find (typeExpr_to_string fd.fieldtype) tenv
-          }
-        ) std.fields
-  }
+  match tydef with
+  | Struct sdecl ->
+     (* check for nonexistent types, field redecl *)
+     let rec check_fields flist acc = match flist with
+       | [] -> Ok (List.rev acc)
+       | fdecl :: rest ->
+          match StrMap.find_opt (typeExpr_to_string fdecl.fieldtype) tenv with
+          | None ->
+             Error [{ loc=fdecl.decor;
+                      value="Undeclared field type " ^
+                              typeExpr_to_string fdecl.fieldtype }]
+          | Some fclass ->
+             if List.exists (fun (fi : fieldInfo) ->
+                    fi.fieldname = fdecl.fieldname) acc then
+               Error [{ loc=fdecl.decor;
+                        value="Field redeclaration " ^ fdecl.fieldname }]
+             else 
+               let finfo =
+                 {fieldname=fdecl.fieldname; priv=fdecl.priv;
+                  mut=fdecl.mut;
+                  fieldClass = fclass
+                 }
+               in check_fields rest (finfo::acc)
+     in
+     match check_fields sdecl.fields [] with
+     | Error e -> Error e
+     | Ok flist -> Ok
+        {
+          classname = sdecl.typename;
+          in_module = modname;
+          muttype = List.exists (fun fdecl -> fdecl.mut) sdecl.fields;
+          params = [];
+          implements = [];
+          (* later can generate field info with same type variables as outer *)
+          fields = flist
+        }
 
 (** Check one entire module, generating new versions of each component. *)
 let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
@@ -676,41 +695,53 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
     let syms = Symtable.new_scope syms in
     (* create tenv entry (classdata) for a struct declaration *)
     (* fold typedefs into new type environment. *)
-    let tenv = List.fold_left
-                 (fun map -> function
-                   | Struct std ->
-                      StrMap.add std.typename
-                        (check_struct dmod.name tenv std) map)
-                 tenv dmod.typedefs in
-    (* Check global declarations *)
-    let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in
-    if List.exists Result.is_error globalsrlist then
-      Error (concat_errors globalsrlist)
-    else
-      let newglobals = concat_ok globalsrlist in
-      (* Check procedure decls first, to add to symbol table *)
-      let pdeclsrlist = List.map (fun proc ->
-                         check_pdecl syms tenv dmod.name proc.decl)
-                       dmod.procs in
-      if List.exists Result.is_error pdeclsrlist then
-        Error (concat_errors pdeclsrlist)
+    let structsrlist = List.map (check_typedef dmod.name tenv) dmod.typedefs in
+    if List.exists Result.is_error structsrlist then
+      Error (concat_errors structsrlist)
+    else 
+      let tenv = List.fold_left
+                   (fun map (cdata: classData) ->
+                     StrMap.add cdata.classname cdata map)
+                   tenv (concat_ok structsrlist) in
+      (* spam syms into the decor of the struct, not that it will
+         be needed...think about this again.  *) 
+      let newtypedefs = List.map (fun td ->
+                            match td with
+                            | Struct sdecl ->
+                               let newfields = List.map (fun fd ->
+                                                   {fd with decor=syms})
+                                                 sdecl.fields in
+                               Struct {sdecl with fields=newfields})
+                          dmod.typedefs in
+      (* Check global declarations *)
+      let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in
+      if List.exists Result.is_error globalsrlist then
+        Error (concat_errors globalsrlist)
       else
-        let newpdecls = 
-          List.map (fun ((pd: 'a st_node procdecl), pentry) ->
-              Symtable.addproc syms pd.name pentry;
-              pd) 
-            (concat_ok pdeclsrlist) in
-        (* Check procedure bodies *)
-        let procsrlist = List.map2 (check_proc tenv) newpdecls dmod.procs in
-        if List.exists Result.is_error procsrlist then
-          Error (concat_errors procsrlist)
+        let newglobals = concat_ok globalsrlist in
+        (* Check procedure decls first, to add to symbol table *)
+        let pdeclsrlist = List.map (fun proc ->
+                              check_pdecl syms tenv dmod.name proc.decl)
+                            dmod.procs in
+        if List.exists Result.is_error pdeclsrlist then
+          Error (concat_errors pdeclsrlist)
         else
-          let newprocs = concat_ok procsrlist in
-          (* Made it this far, assemble the newly-decorated module. *)
-          Ok {name=dmod.name; imports=dmod.imports;
-              typedefs=dmod.typedefs;
-              globals=newglobals; procs=newprocs
-            }
+          let newpdecls = 
+            List.map (fun ((pd: 'a st_node procdecl), pentry) ->
+                Symtable.addproc syms pd.name pentry;
+                pd) 
+              (concat_ok pdeclsrlist) in
+          (* Check procedure bodies *)
+          let procsrlist = List.map2 (check_proc tenv) newpdecls dmod.procs in
+          if List.exists Result.is_error procsrlist then
+            Error (concat_errors procsrlist)
+          else
+            let newprocs = concat_ok procsrlist in
+            (* Made it this far, assemble the newly-decorated module. *)
+            Ok {name=dmod.name; imports=dmod.imports;
+                typedefs=newtypedefs;
+                globals=newglobals; procs=newprocs
+              }
   )
 
 (** Auto-generate the interface object for a module *)
