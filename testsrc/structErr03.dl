@@ -1,0 +1,18 @@
+(* First struct example...still lots to make work *)
+module StructErr03 =
+
+open Stdio;
+
+type Complex = struct
+  i: Float,
+  j: Float,
+  r: Complex; (* non-terminating recursive type *)
+end Complex
+
+export proc main() : Void = 
+  var cpx: Complex = {i=4.0, j=-1.53};
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+end main
+
+end StructErr03

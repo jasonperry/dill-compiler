@@ -31,12 +31,12 @@ type typeExpr_result = (typetag, string) Stdlib.result
 
 (** Check that a type expression refers to a valid type in the environment, 
     and return the tag. *)
-let check_typeExpr tenv (TypeName tyname) : (typetag, string) result =
-  match StrMap.find_opt tyname tenv with
+let check_typeExpr tenv texp : (typetag, string) result =
+  match StrMap.find_opt texp.classname tenv with
   | Some cdata -> Ok ({ modulename = cdata.in_module;
                         typename = cdata.classname;
                         paramtypes=[]; array=false; nullable=false })
-  | None -> Error ("Unknown type " ^ tyname)
+  | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
 
 
 (** Expression result type (remember that exprs have a type field) *)
@@ -653,9 +653,15 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
      let rec check_fields flist acc = match flist with
        | [] -> Ok (List.rev acc)
        | fdecl :: rest ->
-          match StrMap.find_opt (typeExpr_to_string fdecl.fieldtype) tenv with
+          (* actually we only want to look up the ClassData *)
+          match StrMap.find_opt fdecl.fieldtype.classname tenv with
           | None ->
-             Error [{ loc=fdecl.decor;
+             if fdecl.fieldtype.classname = sdecl.typename then
+               Error [{ loc=fdecl.decor;
+                        value="Recursively defined types not implemented: "
+                              ^ typeExpr_to_string fdecl.fieldtype }]
+             else
+               Error [{ loc=fdecl.decor;
                       value="Undeclared field type " ^
                               typeExpr_to_string fdecl.fieldtype }]
           | Some fclass ->
@@ -695,16 +701,17 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
     let syms = Symtable.new_scope syms in
     (* create tenv entry (classdata) for a struct declaration *)
     (* fold typedefs into new type environment. *)
-    let structsrlist = List.map (check_typedef dmod.name tenv) dmod.typedefs in
-    if List.exists Result.is_error structsrlist then
-      Error (concat_errors structsrlist)
+    let typesrlist = List.map (check_typedef dmod.name tenv) dmod.typedefs in
+    if List.exists Result.is_error typesrlist then
+      Error (concat_errors typesrlist)
     else 
       let tenv = List.fold_left
                    (fun map (cdata: classData) ->
                      StrMap.add cdata.classname cdata map)
-                   tenv (concat_ok structsrlist) in
+                   tenv (concat_ok typesrlist) in
       (* spam syms into the decor of the struct, not that it will
-         be needed...think about this again.  *) 
+         be needed...maybe delete typedefs from the second AST
+         and turn the methods into just functions? *) 
       let newtypedefs = List.map (fun td ->
                             match td with
                             | Struct sdecl ->
@@ -762,10 +769,11 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
           { decor = gdecl.decor;
             varname = gdecl.varname;
             typeexp = 
-              (* regenerate typeExpr (string) from symtable type *)
-              let vtype =
+              (* regenerate a typeExpr from symtable type *)
+              let vttag =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
-              TypeName (typetag_to_string vtype)
+              { modname = Some (vttag.modulename);
+                classname = vttag.typename }
           }
         ) the_mod.globals;
     procdecls =

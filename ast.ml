@@ -38,8 +38,11 @@ type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
 (** Syntactic type expression. Needs to be expanded *)
-type typeExpr =
-  | TypeName of string  (* module, params, array, null *)
+type typeExpr = {
+    modname: string option;
+    classname: string;
+    (* module, params, array, null *)
+  }
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
@@ -160,8 +163,10 @@ type 'sd module_spec = {
 
 
 let typeExpr_to_string te =
-  match te with
-  | TypeName s -> s
+  (match te.modname with
+   | Some mn -> mn ^ "."
+   | None -> "")
+  ^ te.classname
 
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
@@ -186,7 +191,7 @@ let rec stmt_to_string st =
       | StmtDecl (v, t, eopt) ->
          "var " ^ v 
          ^ (match t with
-            | Some (TypeName tn) -> " : " ^ tn
+            | Some te -> ": " ^ typeExpr_to_string te 
             | None -> "" )
          ^ (match eopt with
             | Some e -> " = " ^ exp_to_string e

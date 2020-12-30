@@ -132,11 +132,11 @@ fieldList:
   | fl=separated_list(COMMA, fieldDecl) { fl }
 
 fieldDecl:
-  | priv=option(PRIVATE) mut=option(MUT) fn=IDENT_LC COLON fty=IDENT_UC
+  | priv=option(PRIVATE) mut=option(MUT) fn=IDENT_LC COLON fty=typeExp
     { {fieldname=fn;
        priv=Option.is_some priv;
        mut=Option.is_some mut;
-       fieldtype=TypeName fty;
+       fieldtype=fty;
        decor=$loc
     } }
 
@@ -250,7 +250,7 @@ whileStmt:
 typeExp:
   (* This will be elaborated to include array, null, type variables,... *)
   | tn=IDENT_UC
-    { TypeName tn }
+    { { modname=None; classname=tn } }
 
 (* Expressions are what evaluates to a value. *)
 expr:
