@@ -47,7 +47,7 @@ type typeExpr = {
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
   | ExpVar of string * string list (* field specifiers *)
-  | ExpRecord of (string * 'ed expr) list
+  | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * 'ed expr list

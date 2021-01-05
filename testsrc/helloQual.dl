@@ -1,0 +1,10 @@
+module HelloQual =
+
+import Stdio;
+
+export proc main(): Int =
+   Stdio.printInt(43);
+   return 0;
+end main
+
+end HelloQual

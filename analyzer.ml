@@ -223,7 +223,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
     | Some (_, scope) when scope = syms.scopedepth ->
        Error [{loc=stm.decor; value="Redeclaration of variable " ^ v}]
     | Some _ | None -> (
-      match initopt with
+      match initopt with (* TODO: fix for record init (needs typeExp) *)
       | None -> (
          match tyopt with
          | None ->
@@ -233,13 +233,28 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             match check_typeExpr tenv dty with
             | Error msg -> Error [{loc=stm.decor; value=msg}] 
             | Ok ttag ->
+               (* TODO: add nested scope for fields if the type has them. *)
+               (* Cheat idea: just add "var.field" symbols *)
                Symtable.addvar syms v
                  {symname=v; symtype=ttag; var=true; addr=None};
+               (* add symtable entries for record fields, if any. *)
+               let rec add_field v (finfo: fieldInfo) =
+                 let varstr = v ^ "." ^ finfo.fieldname in
+                 Symtable.addvar syms varstr
+                   {symname=varstr; symtype=finfo.fieldtype;
+                    var=finfo.mut; addr=None};
+                 (* recursively add fields-of-fields *)
+                 let cdata = StrMap.find finfo.fieldtype.typename tenv in 
+                 List.iter (add_field varstr) cdata.fields
+               in 
+               let the_classdata = StrMap.find ttag.typename tenv in
+               List.iter (add_field v) the_classdata.fields;
                (* Add to uninitialized variable set *)
                syms.uninit <- StrSet.add v syms.uninit;
                Ok {st=StmtDecl (v, tyopt, None); decor=syms}
       )
       | Some initexp -> (
+        (* This has to change for record types, I still need the typeExpr *)
         match check_expr syms tenv initexp with
         | Error err -> Error [err]
         | Ok ({e=_; decor=ettag} as e2) -> (
@@ -285,7 +300,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                           ^ typetag_to_string ettag}]
           else if sym.var = false then
             Error [{loc=stm.decor;
-                    value="Cannot assign to non-var " ^ "v"}]
+                    value="Assignment to immutable var/field " ^ v}]
           else (
             (* remove variable from unitialized set. *)
             syms.uninit <- StrSet.remove v syms.uninit;
@@ -653,8 +668,12 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
      let rec check_fields flist acc = match flist with
        | [] -> Ok (List.rev acc)
        | fdecl :: rest ->
-          (* actually we only want to look up the ClassData *)
-          match StrMap.find_opt fdecl.fieldtype.classname tenv with
+          match check_typeExpr tenv fdecl.fieldtype with
+          | Error e ->
+             Error [{loc=fdecl.decor; (* Maybe don't need this prefix *)
+                     value="Field type error: " ^ e}]
+          | Ok ttag -> 
+          (* match StrMap.find_opt fdecl.fieldtype.classname tenv with
           | None ->
              if fdecl.fieldtype.classname = sdecl.typename then
                Error [{ loc=fdecl.decor;
@@ -664,7 +683,7 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
                Error [{ loc=fdecl.decor;
                       value="Undeclared field type " ^
                               typeExpr_to_string fdecl.fieldtype }]
-          | Some fclass ->
+          | Some fclass -> *)
              if List.exists (fun (fi : fieldInfo) ->
                     fi.fieldname = fdecl.fieldname) acc then
                Error [{ loc=fdecl.decor;
@@ -673,7 +692,7 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
                let finfo =
                  {fieldname=fdecl.fieldname; priv=fdecl.priv;
                   mut=fdecl.mut;
-                  fieldClass = fclass
+                  fieldtype = ttag
                  }
                in check_fields rest (finfo::acc)
      in
@@ -751,7 +770,7 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
               }
   )
 
-(** Auto-generate the interface object for a module *)
+(** Auto-generate the interface object for a module, to be serialized. *)
 let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
   {
     name = the_mod.name;

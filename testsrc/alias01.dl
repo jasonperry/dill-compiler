@@ -1,11 +1,11 @@
 module Alias01 =
 
-using Collatz as Ctz;
+open Stdio;
+import Collatz as Ctz;
 
-begin
-
-printInt(Ctz.collatz(99));
-
-end
+export proc main() : Void = 
+   printInt(Ctz.collatz(99));
+   return;
+end main
 
 end Alias01

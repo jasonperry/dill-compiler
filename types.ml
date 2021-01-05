@@ -11,7 +11,7 @@ and fieldInfo = {
     fieldname: string;
     priv: bool;
     mut: bool;
-    fieldClass: classData
+    fieldtype: typetag (* classData, formerly *)
   }
 
 (** The specification for a class of types, as defined by a record or etc. *)
