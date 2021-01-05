@@ -62,7 +62,7 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
          Ok { e=ExpVar (varname, fields); decor=ent.symtype }
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ varname}
   )
-  | ExpRecord _ -> failwith "Record exp typechecking no implemented"
+  | ExpRecord _ -> failwith "Record exp typechecking not implemented"
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
     | Ok ({e=_; decor=ty1} as e1) -> (  (* without () e1 is the whole thing *)
@@ -147,6 +147,49 @@ and check_call syms tenv (fname, args) =
         Error ("Argument match failure for " ^ fname)
     )
     | None -> Error ("Unknown procedure name: " ^ fname)
+
+(** Check that a record expression matches the given type. *)
+let rec check_recExpr syms (tenv: classData StrMap.t)
+          (ttag: typetag) (rexp: locinfo expr) = match rexp.e with
+  | ExpRecord flist ->
+     let cdata = StrMap.find ttag.typename tenv in
+     (* make a map from the fields to their types. *)
+     let fdict = List.fold_left (fun s (fi: fieldInfo) ->
+                     StrMap.add fi.fieldname fi.fieldtype s)
+                   StrMap.empty
+                   cdata.fields in
+     (* check field types, recursively removing from the map. *)
+     let rec check_fields
+               (flist: (string * locinfo expr) list)
+               (accdict: typetag StrMap.t)
+               (accfields: (string * typetag expr) list) = match flist with
+       | [] ->
+          if StrMap.is_empty accdict
+          then Ok {e=ExpRecord accfields; decor=ttag}
+          else Error {
+                   loc=rexp.decor;
+                   value=("Undefined record field "
+                          ^ fst (StrMap.choose accdict))}
+       | (fname, fexp)::rest ->
+          let ftype = StrMap.find fname accdict in
+          (* recurse if it's a recExpr *)
+          let res = match fexp.e with
+            | ExpRecord _ -> check_recExpr syms tenv ftype fexp
+            | _ -> check_expr syms tenv fexp in
+          match res with 
+          | Error err -> Error err
+          | Ok eres ->
+             if eres.decor = ftype
+             then check_fields rest
+                    (StrMap.remove fname accdict) ((fname,eres)::accfields)
+             else Error {
+                      loc=rexp.decor;
+                      value=("Field type mismatch: got "
+                             ^ typetag_to_string eres.decor ^ ", needed "
+                             ^ typetag_to_string ftype)}
+     in
+     check_fields flist fdict []
+  | _ -> failwith "BUG: check_recExpr called with non-record variant"
 
 
 (** Check for a redeclaration (name exists at same scope) *)
@@ -238,23 +281,23 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                Symtable.addvar syms v
                  {symname=v; symtype=ttag; var=true; addr=None};
                (* add symtable entries for record fields, if any. *)
-               let rec add_field v (finfo: fieldInfo) =
+               let rec add_field_sym v (finfo: fieldInfo) =
                  let varstr = v ^ "." ^ finfo.fieldname in
                  Symtable.addvar syms varstr
                    {symname=varstr; symtype=finfo.fieldtype;
                     var=finfo.mut; addr=None};
                  (* recursively add fields-of-fields *)
                  let cdata = StrMap.find finfo.fieldtype.typename tenv in 
-                 List.iter (add_field varstr) cdata.fields
+                 List.iter (add_field_sym varstr) cdata.fields
                in 
                let the_classdata = StrMap.find ttag.typename tenv in
-               List.iter (add_field v) the_classdata.fields;
+               List.iter (add_field_sym v) the_classdata.fields;
                (* Add to uninitialized variable set *)
                syms.uninit <- StrSet.add v syms.uninit;
                Ok {st=StmtDecl (v, tyopt, None); decor=syms}
       )
       | Some initexp -> (
-        (* This has to change for record types, I still need the typeExpr *)
+        (* TODO: call check_recExpr if it's a record type and should be good! *)
         match check_expr syms tenv initexp with
         | Error err -> Error [err]
         | Ok ({e=_; decor=ettag} as e2) -> (
