@@ -62,7 +62,9 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
          Ok { e=ExpVar (varname, fields); decor=ent.symtype }
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ varname}
   )
-  | ExpRecord _ -> failwith "Record exp typechecking not implemented"
+  | ExpRecord _ ->
+     Error {loc=ex.decor;
+            value="Record literal not allowed in this context"}
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
     | Ok ({e=_; decor=ty1} as e1) -> (  (* without () e1 is the whole thing *)
@@ -168,9 +170,10 @@ let rec check_recExpr syms (tenv: classData StrMap.t)
           then Ok {e=ExpRecord accfields; decor=ttag}
           else Error {
                    loc=rexp.decor;
-                   value=("Undefined record field "
-                          ^ fst (StrMap.choose accdict))}
+                   value=("Record field " ^ fst (StrMap.choose accdict)
+                          ^ " must be defined in expression")}
        | (fname, fexp)::rest ->
+          (* Oh, I have to catch this error *)
           let ftype = StrMap.find fname accdict in
           (* recurse if it's a recExpr *)
           let res = match fexp.e with
@@ -276,8 +279,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             match check_typeExpr tenv dty with
             | Error msg -> Error [{loc=stm.decor; value=msg}] 
             | Ok ttag ->
-               (* TODO: add nested scope for fields if the type has them. *)
-               (* Cheat idea: just add "var.field" symbols *)
+               (* add nested scope for fields if the type has them. *)
+               (* Cheat way: just add "var.field" symbols *)
                Symtable.addvar syms v
                  {symname=v; symtype=ttag; var=true; addr=None};
                (* add symtable entries for record fields, if any. *)
@@ -326,15 +329,18 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
   ))))
 
   | StmtAssign (v, e) -> (
-     (* Typecheck e, look up v, make sure types match *)
-     match check_expr syms tenv e with
-     | Error err -> Error [err]
-     | Ok ({e=_; decor=ettag} as te) -> ( 
-       (* How about object field assignment? See .org for discussion. *)
-       match Symtable.findvar_opt v syms with
-       | None -> Error [{loc=stm.decor; value="Unknown variable " ^ v}]
-       | Some (sym, scope) ->
-          (* Type error is more fundamental, give priority to report it. *)
+    (* Typecheck e, look up v, make sure types match *)
+    (* Switched to look up v's type first, for records. *)
+    match Symtable.findvar_opt v syms with
+    | None -> Error [{loc=stm.decor; value="Unknown variable or field " ^ v}]
+    | Some (sym, scope) -> (
+      let eres = match e.e with
+        | ExpRecord _ -> check_recExpr syms tenv sym.symtype e
+        | _ -> check_expr syms tenv e in
+      match eres with
+       | Error err -> Error [err]
+       | Ok ({e=_; decor=ettag} as te) -> 
+          (* How about object field assignment? Should just work now *)
           if sym.symtype <> ettag then
             Error [{loc=stm.decor;
                     value="Assignment type mismatch: "
