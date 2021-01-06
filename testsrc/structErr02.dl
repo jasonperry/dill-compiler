@@ -1,4 +1,4 @@
-(* field redeclaration error *)
+(* struct with bad field type error *)
 module StructErr02 =
 
 open Stdio;

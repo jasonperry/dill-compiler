@@ -43,7 +43,8 @@ let check_typeExpr tenv texp : (typetag, string) result =
 type expr_result = (typetag expr, string located) Stdlib.result
 
 (** Check semantics of an expression, replacing with a type *)
-let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
+let rec check_expr syms tenv ?thint:(thint=None)
+          (ex: locinfo expr) : expr_result = 
   match ex.e with
   (* The type info in constants is already there...ok I guess *)
   | ExpConst (IntVal i) ->
@@ -62,9 +63,16 @@ let rec check_expr syms tenv (ex: locinfo expr) : expr_result =
          Ok { e=ExpVar (varname, fields); decor=ent.symtype }
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ varname}
   )
-  | ExpRecord _ ->
-     Error {loc=ex.decor;
-            value="Record literal not allowed in this context"}
+  | ExpRecord _ -> (
+    match thint with
+    | None ->
+       Error {
+           loc=ex.decor;
+           value="Type of record literal cannot be determined in this context"
+         }
+    | Some ttag ->
+       check_recExpr syms tenv ttag ex
+  )
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
     | Ok ({e=_; decor=ty1} as e1) -> (  (* without () e1 is the whole thing *)
@@ -151,11 +159,12 @@ and check_call syms tenv (fname, args) =
     | None -> Error ("Unknown procedure name: " ^ fname)
 
 (** Check that a record expression matches the given type. *)
-let rec check_recExpr syms (tenv: classData StrMap.t)
+and check_recExpr syms (tenv: classData StrMap.t)
           (ttag: typetag) (rexp: locinfo expr) = match rexp.e with
-  | ExpRecord flist ->
+  | ExpRecord flist -> 
      let cdata = StrMap.find ttag.typename tenv in
      (* make a map from the fields to their types. *)
+     (* Should probably leave it as a list in the ClassInfo, for ordering. *)
      let fdict = List.fold_left (fun s (fi: fieldInfo) ->
                      StrMap.add fi.fieldname fi.fieldtype s)
                    StrMap.empty
@@ -186,13 +195,13 @@ let rec check_recExpr syms (tenv: classData StrMap.t)
              then check_fields rest
                     (StrMap.remove fname accdict) ((fname,eres)::accfields)
              else Error {
-                      loc=rexp.decor;
+                      loc=fexp.decor;
                       value=("Field type mismatch: got "
                              ^ typetag_to_string eres.decor ^ ", needed "
                              ^ typetag_to_string ftype)}
      in
      check_fields flist fdict []
-  | _ -> failwith "BUG: check_recExpr called with non-record variant"
+  | _ -> failwith "BUG: check_recExpr called with non-record expr"
 
 
 (** Check for a redeclaration (name exists at same scope) *)
@@ -269,64 +278,70 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
     | Some (_, scope) when scope = syms.scopedepth ->
        Error [{loc=stm.decor; value="Redeclaration of variable " ^ v}]
     | Some _ | None -> (
-      match initopt with (* TODO: fix for record init (needs typeExp) *)
-      | None -> (
-         match tyopt with
-         | None ->
-            Error [{loc=stm.decor;
-                    value="Var declaration must have type or initializer"}]
-         | Some dty ->
-            match check_typeExpr tenv dty with
-            | Error msg -> Error [{loc=stm.decor; value=msg}] 
-            | Ok ttag ->
-               (* add nested scope for fields if the type has them. *)
-               (* Cheat way: just add "var.field" symbols *)
-               Symtable.addvar syms v
-                 {symname=v; symtype=ttag; var=true; addr=None};
-               (* add symtable entries for record fields, if any. *)
-               let rec add_field_sym v (finfo: fieldInfo) =
-                 let varstr = v ^ "." ^ finfo.fieldname in
-                 Symtable.addvar syms varstr
-                   {symname=varstr; symtype=finfo.fieldtype;
-                    var=finfo.mut; addr=None};
-                 (* recursively add fields-of-fields *)
-                 let cdata = StrMap.find finfo.fieldtype.typename tenv in 
-                 List.iter (add_field_sym varstr) cdata.fields
-               in 
-               let the_classdata = StrMap.find ttag.typename tenv in
-               List.iter (add_field_sym v) the_classdata.fields;
-               (* Add to uninitialized variable set *)
-               syms.uninit <- StrSet.add v syms.uninit;
-               Ok {st=StmtDecl (v, tyopt, None); decor=syms}
-      )
-      | Some initexp -> (
-        (* TODO: call check_recExpr if it's a record type and should be good! *)
-        match check_expr syms tenv initexp with
-        | Error err -> Error [err]
-        | Ok ({e=_; decor=ettag} as e2) -> (
-          let tycheck_res = (* I might want more lets to make it cleaner *) 
-            match tyopt with
-            | Some dty -> (
-              match check_typeExpr tenv dty with
-              | Ok ttag ->
-                 (* May need a more sophisticated comparison here later. *)
-                 if ttag = ettag then Ok ttag
-                 else
-                   Error [{loc=stm.decor;
-                           value="Declared type: " ^ typetag_to_string ttag
-                                 ^ " for variable " ^ v
-                                 ^ " does not match initializer type: "
-                                 ^ typetag_to_string ettag}]
-              | Error msg -> Error [{loc=stm.decor; value=msg}] )
-            | None -> Ok ettag in
-          match tycheck_res with
-          | Ok ety -> 
-             (* syms is mutated, so don't need to return it *)
-             Symtable.addvar syms v
-               {symname=v; symtype=ety; var=true; addr=None};
-             Ok {st=StmtDecl (v, tyopt, Some e2); decor=syms}
-          | Error errs -> Error errs
-  ))))
+      (* check type expr and have result of option - is there a nicer way? *)
+      let tyres = match tyopt with
+        | None -> Ok None
+        | Some dtyexp -> (
+          match check_typeExpr tenv dtyexp with 
+          | Error msg -> Error [{loc=stm.decor; value=msg}] 
+          | Ok ttag -> Ok (Some ttag) )
+      in
+      match tyres with
+      | Error mlist -> Error mlist
+      | Ok ttagopt -> (
+        (* Check the initialization expression and its type if needed.
+         * Value is a result with (ty, expr Option) pair *)
+        let initres = match initopt with
+          | None -> (
+             match ttagopt with
+             | None ->
+                Error [{loc=stm.decor;
+                        value="Var declaration must have type or initializer"}]
+             | Some ttag -> 
+                Ok (None, ttag) )
+          | Some initexp -> (
+            match check_expr syms tenv ~thint:ttagopt initexp with
+            | Error err -> Error [err]
+            | Ok ({e=_; decor=ettag} as e2) -> (
+                match ttagopt with
+                | Some ttag -> 
+                  (* May need a more sophisticated comparison here later. *)
+                  if ttag = ettag then Ok (Some e2, ttag)
+                  else
+                    Error [{loc=stm.decor;
+                            value="Declared type: " ^ typetag_to_string ttag
+                                  ^ " for variable " ^ v
+                                  ^ " does not match initializer type: "
+                                  ^ typetag_to_string ettag}] 
+                | None -> Ok (Some e2, ettag)
+            ))
+        in
+        match initres with
+        | Error errs -> Error errs
+        | Ok (e2opt, vty) -> (
+          (* Everything is Ok, create symbol table structures. *)
+          Symtable.addvar syms v
+            {symname=v; symtype=vty; var=true; addr=None};
+          if Option.is_none e2opt then
+            (* Add to uninitialized variable set *)
+            syms.uninit <- StrSet.add v syms.uninit;
+          (* add symtable entries for record fields, if any. *)
+          (* add nested scope for fields if the type has them. *)
+          (* Cheat way: just add "var.field" symbols *)
+          let rec add_field_sym v (finfo: fieldInfo) =
+            let varstr = v ^ "." ^ finfo.fieldname in
+            Symtable.addvar syms varstr
+              {symname=varstr; symtype=finfo.fieldtype;
+               var=finfo.mut; addr=None};
+            (* recursively add fields-of-fields *)
+            let cdata = StrMap.find finfo.fieldtype.typename tenv in 
+            List.iter (add_field_sym varstr) cdata.fields
+          in 
+          let the_classdata = StrMap.find vty.typename tenv in
+          List.iter (add_field_sym v) the_classdata.fields;
+
+          Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
+        ))))
 
   | StmtAssign (v, e) -> (
     (* Typecheck e, look up v, make sure types match *)
@@ -334,10 +349,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
     match Symtable.findvar_opt v syms with
     | None -> Error [{loc=stm.decor; value="Unknown variable or field " ^ v}]
     | Some (sym, scope) -> (
-      let eres = match e.e with
-        | ExpRecord _ -> check_recExpr syms tenv sym.symtype e
-        | _ -> check_expr syms tenv e in
-      match eres with
+      (* Passing the type hint takes care of records! *)
+      match check_expr syms tenv ~thint:(Some sym.symtype) e with
        | Error err -> Error [err]
        | Ok ({e=_; decor=ettag} as te) -> 
           (* How about object field assignment? Should just work now *)
@@ -382,7 +395,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                                 ^ typetag_to_string inproc.rettype}]
       | Some e -> 
          (* have to have optional return type expression for void. *)
-         match check_expr syms tenv e with
+         match check_expr syms tenv ~thint:(Some inproc.rettype) e with
          | Error err -> Error [err]
          | Ok ({e=_; decor=ettag} as te) -> (
            if ettag <> inproc.rettype then

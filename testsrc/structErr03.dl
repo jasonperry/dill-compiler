@@ -1,4 +1,4 @@
-(* First struct example...still lots to make work *)
+(* struct with recursive field type *)
 module StructErr03 =
 
 open Stdio;
