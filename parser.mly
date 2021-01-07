@@ -9,7 +9,7 @@
 %token EQ NE LT GT LE GE
 %token AND OR NOT
 %token TRUE FALSE
-%token ASSIGN COLON SEMI COMMA
+%token ASSIGN COLON DCOLON SEMI COMMA
 %token VAR
 %token BEGIN END
 %token NULLASSIGN
@@ -340,7 +340,7 @@ opExp:
 callExp:
 (* Todo: for methods, will be preceded by varExp and dot *)
 (* Resolved conflicts by putting procName options here. *)
-  | mn=moduleName DOT pn=IDENT_LC LPAREN al=argList RPAREN
+  | mn=moduleName DCOLON pn=IDENT_LC LPAREN al=argList RPAREN
     { ExpCall (mn ^ "." ^ pn, al) }
   | pn=IDENT_LC LPAREN al=argList RPAREN
     { ExpCall (pn, al) }

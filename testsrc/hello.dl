@@ -1,9 +1,9 @@
 module Hello =
 
-open Stdio;
+import Stdio;
 
 export proc main(): Int =
-   printInt(43);
+   Stdio::printInt(43);
    return 0;
 end main
 

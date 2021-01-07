@@ -13,8 +13,8 @@ export proc main() : Void =
 
   var cpx: Complex = {i=2.0, j=1.111};
   cpx = {i=4.0, j=-1.53};
-  (* printFloat(cpx.i);
-  printFloat(cpx.j); *)
+  printFloat(cpx.i);
+  printFloat(cpx.j);
 
 end main
 

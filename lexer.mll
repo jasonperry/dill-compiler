@@ -62,10 +62,11 @@ rule token = parse  (* funny that it's called parse *)
   | "||"    { OR }
   | '!'     { NOT }
   | '='	    { ASSIGN }
+  | "?="    { NULLASSIGN }
   | ','	    { COMMA }
   | ';'	    { SEMI }
+  | "::"    { DCOLON }
   | ':'	    { COLON }
-  | "?="    { NULLASSIGN }
   | "var"   { VAR }
   | "if"    { IF }
   | "then"  { THEN }

@@ -54,14 +54,16 @@ let rec check_expr syms tenv ?thint:(thint=None)
   | ExpConst (BoolVal b) ->
      Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
   | ExpVar (varname, fields) -> (
-    match Symtable.findvar_opt varname syms with
+    (* a funny little bit of unparsing here... *)
+    let varstr = String.concat "." (varname::fields) in
+    match Symtable.findvar_opt varstr syms with
     | Some (ent, _) ->
-       if StrSet.mem varname syms.uninit then
+       if StrSet.mem varstr syms.uninit then
          Error {loc=ex.decor;
-                value="Variable " ^ varname ^ " may not be initialized"}
+                value="Variable " ^ varstr ^ " may not be initialized"}
        else 
          Ok { e=ExpVar (varname, fields); decor=ent.symtype }
-    | None -> Error {loc=ex.decor; value="Undefined variable " ^ varname}
+    | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
   )
   | ExpRecord _ -> (
     match thint with

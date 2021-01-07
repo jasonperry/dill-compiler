@@ -63,10 +63,12 @@ type 'addr st_node = {
 
 let st_node_to_string node =
   let rec ts' pad nd = 
-    pad ^ "{ (" 
-    ^ StrMap.fold (fun _ ent s -> ent.symname ^ ", " ^ s) nd.syms ""
+    pad ^ "{ ("
+    ^ String.concat ","
+        (List.map (fun entry -> (snd entry).symname) (StrMap.bindings nd.syms))
     ^ ")\n" ^ pad ^ "  ("
-    ^ StrMap.fold (fun _ ent s -> ent.procname ^ ", " ^ s) nd.fsyms ""
+    ^ String.concat ","
+        (List.map (fun entry -> (snd entry).procname) (StrMap.bindings nd.fsyms))
     ^ ")\n"
     ^ String.concat "" (List.map (ts' (pad ^ "    ")) nd.children)
     ^ pad ^ "}\n" in

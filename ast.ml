@@ -50,7 +50,7 @@ type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
-  | ExpCall of string * 'ed expr list
+  | ExpCall of string * 'ed expr list (* includes module name and ., for now *)
   (* the bool is true if declaring a new var *)
   | ExpNullAssn of bool * string * typeExpr option * 'ed expr
 
@@ -172,7 +172,7 @@ let typeExpr_to_string te =
 let rec exp_to_string (e: 'a expr) =
   match e.e with
   | ExpConst _ -> "CONSTEXP "
-  | ExpVar (v, _) -> "(VAREXP " ^ v ^ "POSSIBLE DOT FIELDS) "
+  | ExpVar (v, _) -> "VAREXP(" ^ v ^ ",POSSIBLE DOT FIELDS)"
   | ExpRecord fl ->
       "{" ^ String.concat ", "
               (List.map (fun (fname, ex) ->
@@ -180,7 +180,8 @@ let rec exp_to_string (e: 'a expr) =
       ^ "}"
   | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
-  | ExpCall (pn, _) -> pn ^ "(yadda, yadda)"
+  | ExpCall (pn, args) ->
+     pn ^ "(" ^ String.concat ", " (List.map exp_to_string args) ^ ")"
   | ExpNullAssn (decl, v, tyopt, e) ->
      (if decl then "var " else "")
      ^ v ^ Option.fold ~none:"" ~some:typeExpr_to_string tyopt
