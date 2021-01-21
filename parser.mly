@@ -230,7 +230,7 @@ blockStmt:
     { StmtBlock sb }
 
 ifStmt:
-  | IF LPAREN e=expr RPAREN THEN
+  | IF e=expr THEN
     tb=stmtSeq
     eifs=list(elsifBlock)
     eb=option(preceded(ELSE, stmtSeq))
@@ -238,7 +238,7 @@ ifStmt:
     { StmtIf (e, tb, eifs, eb) }
 
 elsifBlock:
-  | ELSIF LPAREN e=expr RPAREN THEN body=stmtSeq
+  | ELSIF e=expr THEN body=stmtSeq
     { (e, body) }
 
 whileStmt:
