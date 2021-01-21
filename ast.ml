@@ -123,6 +123,7 @@ type 'sd fieldDecl = {
 
 (** A struct type definition. *)
 type 'sd structTypedef = {
+    (* Do I need the module name in here? *)
     typename: string;
     (* actually need a fieldDecl for this *)
     fields: 'sd fieldDecl list (* should also be decorated with loc *)

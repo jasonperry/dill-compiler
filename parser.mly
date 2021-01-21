@@ -242,7 +242,7 @@ elsifBlock:
     { (e, body) }
 
 whileStmt:
-  | WHILE LPAREN cond=expr RPAREN LOOP
+  | WHILE cond=expr LOOP
     body=stmtSeq
     ENDLOOP
     { StmtWhile (cond, body) }

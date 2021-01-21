@@ -52,7 +52,7 @@ let gen_ttag (classdata: classData) _ (* mapping to type vars *) =
     paramtypes = [];
     (* array and nullable types won't be part of the class, they're
        specified in declarations. *)
-    array = false;  
+    array = false;
     nullable = false;
   }
 
@@ -65,10 +65,9 @@ let rec typetag_to_string (tt: typetag) =
         (List.map (fun pt -> typetag_to_string pt) tt.paramtypes)
     ^ ">"
   else ""
-  ^ tt.modulename ^ "."
-  ^ tt.typename
-  ^ if tt.array then "[]" else ""
-  ^ if tt.nullable then "?" else ""
+       ^ tt.modulename ^ "." ^ tt.typename
+       ^ (if tt.array then "[]" else "")
+       ^ if tt.nullable then "?" else ""
 
 
 (* Class definitions for built-in types, and tags for convenience. *)

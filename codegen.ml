@@ -22,9 +22,10 @@ let rec gen_expr the_module builder syms tenv (ex: typetag expr) =
   | ExpConst (FloatVal f) -> const_float float_type f
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
   (* stmtDecl will create new symtable entry ,this will get it. *)
-  | ExpVar (varname, _) -> (
-     let (entry, _) = Symtable.findvar varname syms in
-     match entry.addr with
+  | ExpVar (varname, fields) -> (
+    let varstr = String.concat "." (varname::fields) in
+    let (entry, _) = Symtable.findvar varstr syms in
+    match entry.addr with
      | None ->
         (* find it in the params and use the llvalue directly *)
         failwith ("BUG gen_expr: alloca address not present for " ^ varname)
@@ -114,6 +115,7 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
     (* technically, decl should only lookup in this scope. *)
     let (entry, _) = Symtable.findvar varname syms in
     let allocatype =
+      (* TODO: build alloca type into tenv, and get it from there. *)
       if entry.symtype = int_ttag then int_type
       else if entry.symtype = float_ttag then float_type
       else if entry.symtype = bool_ttag then bool_type
@@ -319,9 +321,13 @@ let gen_global_decl the_module (gdecl: ('ed, 'sd) globalstmt) =
      Symtable.set_addr syms gdecl.varname gaddr;
   | None -> failwith "Shouldn't happen, global checked for initializer"
 
+(** Process a type definition and add it to the known llvm types map. *)
+let add_lltype lltypes (tdef: 'sd typedef) = match tdef with
+  | Struct _ -> lltypes
 
 (** Convert a type tag from the AST into a suitable LLVM type. *)
 let ttag_to_llvmtype ttag =
+  (* Now it should look up the type info in the tenv. *)
   if ttag = void_ttag then void_type
   else if ttag = int_ttag then int_type
   else if ttag = float_ttag then float_type
@@ -387,6 +393,8 @@ let gen_proc the_module builder tenv proc =
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   let builder = builder context in
+  (* Generate llvm types for the type definitions (and imports) *)
+  (* let lltypes = gen_llvm_types context modtree.typdefs *)
   (* Generate decls for imports (already in the top symbol table node.) *)
   gen_fdecls the_module topsyms.fsyms;
   (* The next symtable node underneath has this module's proc declarations *)
