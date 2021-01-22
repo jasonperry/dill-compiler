@@ -32,7 +32,8 @@ type typeExpr_result = (typetag, string) Stdlib.result
 (** Check that a type expression refers to a valid type in the environment, 
     and return the tag. *)
 let check_typeExpr tenv texp : (typetag, string) result =
-  match StrMap.find_opt texp.classname tenv with
+  match TypeMap.find_opt (Option.value texp.modname ~default:"", texp.classname)
+          tenv with
   | Some cdata -> Ok ({ modulename = cdata.in_module;
                         typename = cdata.classname;
                         paramtypes=[]; array=false; nullable=false })
@@ -43,7 +44,7 @@ let check_typeExpr tenv texp : (typetag, string) result =
 type expr_result = (typetag expr, string located) Stdlib.result
 
 (** Check semantics of an expression, replacing with a type *)
-let rec check_expr syms tenv ?thint:(thint=None)
+let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
           (ex: locinfo expr) : expr_result = 
   match ex.e with
   (* The type info in constants is already there...ok I guess *)
@@ -161,10 +162,10 @@ and check_call syms tenv (fname, args) =
     | None -> Error ("Unknown procedure name: " ^ fname)
 
 (** Check that a record expression matches the given type. *)
-and check_recExpr syms (tenv: classData StrMap.t)
+and check_recExpr syms (tenv: typeenv)
           (ttag: typetag) (rexp: locinfo expr) = match rexp.e with
   | ExpRecord flist -> 
-     let cdata = StrMap.find ttag.typename tenv in
+     let cdata = TypeMap.find (ttag.modulename, ttag.typename) tenv in
      (* make a map from the fields to their types. *)
      (* Should probably leave it as a list in the ClassInfo, for ordering. *)
      let fdict = List.fold_left (fun s (fi: fieldInfo) ->
@@ -214,7 +215,7 @@ let is_redecl varname syms =
   | Some (_, scope) -> scope = syms.scopedepth
 
 (** Conditional exprs can have an assignment, so handle it specially. *)
-let check_condexp condsyms tenv condexp =
+let check_condexp condsyms (tenv: typeenv) condexp =
   match condexp.e with
   | ExpNullAssn (decl, varname, tyopt, ex) -> (
     match check_expr condsyms tenv ex with
@@ -336,10 +337,12 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
               {symname=varstr; symtype=finfo.fieldtype;
                var=finfo.mut; addr=None};
             (* recursively add fields-of-fields *)
-            let cdata = StrMap.find finfo.fieldtype.typename tenv in 
+            let cdata = TypeMap.find
+                          (finfo.fieldtype.modulename, finfo.fieldtype.typename)
+                          tenv in 
             List.iter (add_field_sym varstr) cdata.fields
           in 
-          let the_classdata = StrMap.find vty.typename tenv in
+          let the_classdata = TypeMap.find (vty.modulename, vty.typename) tenv in
           List.iter (add_field_sym v) the_classdata.fields;
 
           Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
@@ -774,7 +777,7 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
         }
 
 (** Check one entire module, generating new versions of each component. *)
-let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
+let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
   (* Check import statements and load modspecs into symtable
      (they've been loaded from .dms files by the top level) *)
   match add_imports syms tenv ispecs dmod.imports with
@@ -789,8 +792,8 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
       Error (concat_errors typesrlist)
     else 
       let tenv = List.fold_left
-                   (fun map (cdata: classData) ->
-                     StrMap.add cdata.classname cdata map)
+                   (fun m (cdata: classData) ->
+                     TypeMap.add (cdata.in_module, cdata.classname) cdata m)
                    tenv (concat_ok typesrlist) in
       (* spam syms into the decor of the struct, not that it will
          be needed...maybe delete typedefs from the second AST
@@ -828,10 +831,11 @@ let check_module syms tenv ispecs (dmod: ('ed, 'sd) dillmodule) =
           else
             let newprocs = concat_ok procsrlist in
             (* Made it this far, assemble the newly-decorated module. *)
-            Ok {name=dmod.name; imports=dmod.imports;
+            Ok ({name=dmod.name; imports=dmod.imports;
                 typedefs=newtypedefs;
                 globals=newglobals; procs=newprocs
-              }
+                },
+                tenv)
   )
 
 (** Auto-generate the interface object for a module, to be serialized. *)

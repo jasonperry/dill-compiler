@@ -39,7 +39,7 @@ type 'a located =
 
 (** Syntactic type expression. Needs to be expanded *)
 type typeExpr = {
-    modname: string option;
+    modname: string option; (* TODO: may be easier to just use empty strings *)
     classname: string;
     (* module, params, array, null *)
   }

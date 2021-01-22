@@ -15,8 +15,34 @@ let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context
 
+type lltenv = lltype TypeMap.t
 
-let rec gen_expr the_module builder syms tenv (ex: typetag expr) = 
+(** Convert a type tag from the symtables/AST into a suitable LLVM type. *)
+let ttag_to_llvmtype lltypes ttag =
+  let basetype = 
+    TypeMap.find (ttag.modulename, ttag.typename) lltypes
+  in
+  if ttag.array then
+    array_type basetype 0  (* a stub for now, to give the idea. *)
+  else
+    basetype
+
+(** Process a classData to generate a new llvm type *)
+let gen_lltype context (lltypes: lltenv) (cdata: classData) =
+  (* need special case for primitive types. Should handle this with some
+   * data structure, so it's consistent among modules *)
+  match (cdata.in_module, cdata.classname) with
+  | ("", "Void") -> void_type
+  | ("", "Int") -> int_type
+  | ("", "Float") -> float_type
+  | ("", "Bool") -> bool_type
+  | _ -> 
+     let tlist = List.map (fun fi ->
+                     ttag_to_llvmtype lltypes fi.fieldtype) cdata.fields in
+     struct_type context (Array.of_list tlist)
+
+
+let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
@@ -35,7 +61,7 @@ let rec gen_expr the_module builder syms tenv (ex: typetag expr) =
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
-    let e1val = gen_expr the_module builder syms tenv e1 in
+    let e1val = gen_expr the_module builder syms lltypes e1 in
     if e1.decor = int_ttag then 
       match op with
       (* type checker should catch negating an unsigned. *)
@@ -54,9 +80,10 @@ let rec gen_expr the_module builder syms tenv (ex: typetag expr) =
       failwith "BUG: Unknown type in unary op"
   )
   | ExpBinop (e1, op, e2) -> (
-    let e1val = gen_expr the_module builder syms tenv e1 in
-    let e2val = gen_expr the_module builder syms tenv e2 in
-    (* for other tags, we'll emit the appropriate procedure call. *)
+    let e1val = gen_expr the_module builder syms lltypes e1 in
+    let e2val = gen_expr the_module builder syms lltypes e2 in
+    (* TODO: look up operator in classdata. Probably a variant type 
+     * for a built-in versus method. Though only codegen knows the instruction. *)
     if e1.decor = int_ttag then
       match op with
       | OpTimes -> build_mul e1val e2val "imultemp" builder
@@ -99,7 +126,7 @@ let rec gen_expr the_module builder syms tenv (ex: typetag expr) =
      * (or at least the class name, so it can be generated.) *)
     | None -> failwith "BUG: unknown function name in codegen"
     | Some callee ->
-       let args = List.map (gen_expr the_module builder syms tenv) params
+       let args = List.map (gen_expr the_module builder syms lltypes) params
                   |> Array.of_list in
        build_call callee args "calltmp" builder
   )
@@ -107,20 +134,18 @@ let rec gen_expr the_module builder syms tenv (ex: typetag expr) =
      failwith "BUG: null assign found outside condition"
 
 
-let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
+let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   let syms = stmt.decor in
   (* later: look up types in tenv *)
   match stmt.st with
   | StmtDecl (varname, _, eopt) -> (
     (* technically, decl should only lookup in this scope. *)
     let (entry, _) = Symtable.findvar varname syms in
-    let allocatype =
-      (* TODO: build alloca type into tenv, and get it from there. *)
-      if entry.symtype = int_ttag then int_type
+    let allocatype = ttag_to_llvmtype lltypes entry.symtype in 
+      (* if entry.symtype = int_ttag then int_type
       else if entry.symtype = float_ttag then float_type
       else if entry.symtype = bool_ttag then bool_type
-      else failwith "Unknown type for allocation"
-    in
+      else failwith "Unknown type for allocation" *)
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
@@ -135,13 +160,13 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
     | None -> ()
     | Some initexp ->
        (* make a fake assignment statement to avoid duplication. *)
-       gen_stmt the_module builder tenv
+       gen_stmt the_module builder lltypes
          {st=StmtAssign (varname, initexp); decor=syms}
   )
 
   | StmtAssign (varname, ex) -> (
      let (entry, _) = Symtable.findvar varname syms in
-     let expval = gen_expr the_module builder syms tenv ex in
+     let expval = gen_expr the_module builder syms lltypes ex in
      match entry.addr with
      | None -> failwith ("BUG stmtAssign: alloca address not present for "
                          ^ varname)
@@ -156,7 +181,7 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
     (match eopt with
      | None -> ignore (build_ret_void builder)
      | Some rexp -> 
-        let expval = gen_expr the_module builder syms tenv rexp in
+        let expval = gen_expr the_module builder syms lltypes rexp in
         ignore (build_ret expval builder)
     );
     (* Add a basic block after in case a break is added afterwards. *)
@@ -173,13 +198,13 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
       | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
          (* if it's a null-assignment, set the var's addr in thenblock's syms *)
          failwith "Null assignment not implemented yet"
-      | _ -> gen_expr the_module builder syms tenv cond
+      | _ -> gen_expr the_module builder syms lltypes cond
     in
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
     let then_bb = append_block context "then" the_function in
     position_at_end then_bb builder;
-    List.iter (gen_stmt the_module builder tenv) thenblock;
+    List.iter (gen_stmt the_module builder lltypes) thenblock;
     let new_then_bb = insertion_block builder in
     (* elsif generating code *)
     let gen_elsif (cond, block) =
@@ -191,10 +216,10 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
         | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
            (* if it's a null-assignment, set the var addr in thenblock's syms *)
            failwith "Null assignment not implemented yet"
-        | _ -> gen_expr the_module builder syms tenv cond in
+        | _ -> gen_expr the_module builder syms lltypes cond in
       let then_bb = append_block context "elsifthen" the_function in
       position_at_end then_bb builder;
-      List.iter (gen_stmt the_module builder tenv) block;
+      List.iter (gen_stmt the_module builder lltypes) block;
       (condres, cond_bb, then_bb, insertion_block builder) (* for jumps *)
     in
     let elsif_blocks = List.map gen_elsif elsifs in
@@ -203,7 +228,7 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
     position_at_end else_bb builder;
     (match elsopt with
      | Some elseblock ->
-        List.iter (gen_stmt the_module builder tenv) elseblock
+        List.iter (gen_stmt the_module builder lltypes) elseblock
      | None -> ());
     let new_else_bb = insertion_block builder in
     let merge_bb = append_block context "ifcont" the_function in
@@ -249,11 +274,11 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
     position_at_end test_bb builder;
     let condres = match cond.e with
       | ExpNullAssn (_,_,_,_) -> failwith "null assign not yet implemented"
-      | _ -> gen_expr the_module builder syms tenv cond in
+      | _ -> gen_expr the_module builder syms lltypes cond in
     (* Create loop block and fill it in *)
     let loop_bb = append_block context "loop" the_function in
     position_at_end loop_bb builder;
-    List.iter (gen_stmt the_module builder tenv) body;
+    List.iter (gen_stmt the_module builder lltypes) body;
     (* add unconditional jump back to test *)
     let new_loop_bb = insertion_block builder in (* don't need? *)
     position_at_end new_loop_bb builder;         (* is it there already? *)
@@ -272,7 +297,7 @@ let rec gen_stmt the_module builder tenv (stmt: (typetag, 'a st_node) stmt) =
      * (or at least the class name, so it can be generated.) *)
     | None -> failwith "BUG: unknown function name in codegen"
     | Some callee ->
-       let args = List.map (gen_expr the_module builder syms tenv) params
+       let args = List.map (gen_expr the_module builder syms lltypes) params
                   |> Array.of_list in
        (* instructions returning void cannot have a name *)
        ignore (build_call callee args "" builder)
@@ -321,26 +346,13 @@ let gen_global_decl the_module (gdecl: ('ed, 'sd) globalstmt) =
      Symtable.set_addr syms gdecl.varname gaddr;
   | None -> failwith "Shouldn't happen, global checked for initializer"
 
-(** Process a type definition and add it to the known llvm types map. *)
-let add_lltype lltypes (tdef: 'sd typedef) = match tdef with
-  | Struct _ -> lltypes
-
-(** Convert a type tag from the AST into a suitable LLVM type. *)
-let ttag_to_llvmtype ttag =
-  (* Now it should look up the type info in the tenv. *)
-  if ttag = void_ttag then void_type
-  else if ttag = int_ttag then int_type
-  else if ttag = float_ttag then float_type
-  else if ttag = bool_ttag then bool_type
-  else failwith "Unsupported type for procedure"   
-
 
 (** Generate llvm function decls for a set of procs from the AST. *)
 (* Could this work for both local and imported functions? *)
-let gen_fdecls the_module fsyms =
+let gen_fdecls the_module lltypes fsyms =
   StrMap.iter (fun _ procentry ->
-      let rtype = ttag_to_llvmtype procentry.rettype in
-      let params = List.map (fun entry -> ttag_to_llvmtype entry.symtype)
+      let rtype = ttag_to_llvmtype lltypes procentry.rettype in
+      let params = List.map (fun entry -> ttag_to_llvmtype lltypes entry.symtype)
                      procentry.fparams
                    |> Array.of_list in
       (* print_string ("Declaring function " ^ procentry.procname ^ "\n"); *)
@@ -353,7 +365,7 @@ let gen_fdecls the_module fsyms =
 
 (** generate code for a procedure body (its declaration should already
  * be defined *)
-let gen_proc the_module builder tenv proc =
+let gen_proc the_module builder lltypes proc =
   let fname = proc.decl.name in
   (* procedure is now defined in its own scope, so "getproc" *)
   let fentry = Symtable.getproc fname proc.decor in 
@@ -373,7 +385,7 @@ let gen_proc the_module builder tenv proc =
          ignore (build_store (param func i) alloca builder);
          Symtable.set_addr proc.decor varname alloca
        ) proc.decl.params;
-     List.iter (gen_stmt the_module builder tenv) (proc.body);
+     List.iter (gen_stmt the_module builder lltypes) (proc.body);
      (* If it doesn't end in a terminator, add either a void return or a 
       * dummy branch. *)
      if Option.is_none (block_terminator (insertion_block builder)) then
@@ -393,17 +405,19 @@ let gen_proc the_module builder tenv proc =
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   let builder = builder context in
-  (* Generate llvm types for the type definitions (and imports) *)
-  (* let lltypes = gen_llvm_types context modtree.typdefs *)
+  (* Generate llvm types for the type definitions. TODO: imports) *)
+  let lltypes = TypeMap.fold (fun key ci lt ->
+                    TypeMap.add key (gen_lltype context lt ci) lt)
+                  tenv TypeMap.empty in
   (* Generate decls for imports (already in the top symbol table node.) *)
-  gen_fdecls the_module topsyms.fsyms;
+  gen_fdecls the_module lltypes topsyms.fsyms;
   (* The next symtable node underneath has this module's proc declarations *)
   (* if List.length (topsyms.children) <> 1 then
     failwith "BUG: didn't find unique module-level symtable"; *)
   let modsyms = List.hd (topsyms.children) in
   List.iter (gen_global_decl the_module) modtree.globals;
   (* Generate proc declarations first, so they can mutually refer *)
-  gen_fdecls the_module modsyms.fsyms;
-  List.iter (gen_proc the_module builder tenv) modtree.procs;
+  gen_fdecls the_module lltypes modsyms.fsyms;
+  List.iter (gen_proc the_module builder lltypes) modtree.procs;
   Llvm_analysis.assert_valid_module the_module;
   the_module

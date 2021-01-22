@@ -3,6 +3,19 @@
 module StrMap = Map.Make(String)
 module StrSet = Set.Make(String)
 
+module StrPairs =
+  struct
+    type t = string * string
+    let compare (x0,y0) (x1,y1) =
+      match Stdlib.compare x0 x1 with
+        0 -> Stdlib.compare y0 y1
+      | c -> c
+  end
+
+(* Currently only used for (module, classname) types. But we'll see. *)
+(* Oh, but maybe I have to use it for tenv now too! *)
+module TypeMap = Map.Make(StrPairs)
+
 (* List.concat_map doesn't exist until 4.10 *)
 let concat_map f l = List.concat (List.map f l)
 

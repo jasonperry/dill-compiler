@@ -8,17 +8,17 @@ exception SymbolError of string
 (* Types can only be defined at the module level, not nested. *)
 (* Start with one global (later per-module) type environment. *)
 (* The structure of this also will relate to recursively defined types. *)
-type typeenv = classData StrMap.t
+type typeenv = classData TypeMap.t
 
 (** Initial type environment (primitive types) *)
 let base_tenv =
   (* Maybe put this in dillc or types. *)
-  StrMap.empty
+  TypeMap.empty
   (* Maybe just add the string name for the scope *)
-  |> StrMap.add void_ttag.typename void_class (* defined in Types *)
-  |> StrMap.add int_ttag.typename int_class
-  |> StrMap.add float_ttag.typename float_class
-  |> StrMap.add bool_ttag.typename bool_class
+  |> TypeMap.add (void_ttag.modulename, void_ttag.typename) void_class
+  |> TypeMap.add (int_ttag.modulename, int_ttag.typename) int_class
+  |> TypeMap.add (float_ttag.modulename, float_ttag.typename) float_class
+  |> TypeMap.add (bool_ttag.modulename, bool_ttag.typename) bool_class
 
 (* Symtable concept: a map for current scope, parent and children nodes *)
 

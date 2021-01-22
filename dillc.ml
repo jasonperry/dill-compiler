@@ -122,12 +122,13 @@ let analysis_codegen cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
    ( so the analyzer doesn't have to call back out. *)
   (* Imports are folded together. *)
   let ispecs = load_imports cconfig ispecs parsedmod.imports in
+  (* TODO: need to build new type environment from this too *)
   match Analyzer.check_module topsyms base_tenv ispecs parsedmod with
   | Error errs -> Error errs
-  | Ok typed_mod ->
+  | Ok (typed_mod, mod_tenv) ->
      if cconfig.print_symtable then
        print_string (Symtable1.st_node_to_string topsyms); 
-     let modcode = Codegen.gen_module base_tenv topsyms typed_mod in
+     let modcode = Codegen.gen_module mod_tenv topsyms typed_mod in
      let header = Analyzer.create_module_spec typed_mod in
      Ok (modcode, header) (* Hope codegen never gives errors! *)
 
