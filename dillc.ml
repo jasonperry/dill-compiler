@@ -130,10 +130,12 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
        print_string (Symtable1.st_node_to_string topsyms);
      Ok (typed_mod, mod_tenv, topsyms)
 
+
 let codegen (_: dillc_config) tenv syms typedmod = 
      let modcode = Codegen.gen_module tenv syms typedmod in
      let header = Analyzer.create_module_spec typedmod in
      modcode, header
+
 
 let write_header srcdir header = 
   let headerfilename =
@@ -236,7 +238,7 @@ let () =
             prerr_string (format_errors errs);
             exit 1
          | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
-           if not cconfig.typecheck_only then
+           if not cconfig.typecheck_only then (
              print_endline "going ahead with codegen";
              let modcode, header = codegen cconfig tenv syms typedmod in 
              (* print_string (st_node_to_string topsyms); *)
@@ -245,9 +247,12 @@ let () =
                write_module_llvm srcfilename modcode
              else 
                write_module_native srcfilename modcode
+           )
          ); ispecs
        )
   in
   (* why do we carry import specs through if they're never changed?
-   * or if it's mutated? Should "analysis" return a new one? *)
+   * or if it's mutated? Should "analysis" return a new one? I think so.
+   * I think the fold is only for efficiency, to avoid re-parsing, because
+   * modules are self-contained! *)
   ignore (List.fold_left process_sourcefile StrMap.empty srcfiles)

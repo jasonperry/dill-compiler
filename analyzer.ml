@@ -164,7 +164,6 @@ and check_call syms tenv (fname, args) =
 and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) = match rexp.e with
   | ExpRecord flist ->
      let cdata = ttag.tclass in 
-     (* let cdata = TypeMap.find ((*ttag.modulename*)"", ttag.typename) tenv in *)
      (* make a map from the fields to their types. *)
      (* Should probably leave it as a list in the ClassInfo, for ordering. *)
      let fdict = List.fold_left (fun s (fi: fieldInfo) ->
@@ -328,7 +327,6 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
           Symtable.addvar syms v
             {symname=v; symtype=vty; var=true; addr=None};
           if Option.is_none e2opt then
-            (* Add to uninitialized variable set *)
             syms.uninit <- StrSet.add v syms.uninit;
           (* add symtable entries for record fields, if any. *)
           (* add nested scope for fields if the type has them. *)
@@ -339,17 +337,12 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
               {symname=varstr; symtype=finfo.fieldtype;
                var=finfo.mut; addr=None};
             (* recursively add fields-of-fields *)
-            match TypeMap.find_opt
-                    (finfo.fieldtype.modulename, finfo.fieldtype.typename)
-                    tenv with
-            | Some cdata -> List.iter (add_field_sym varstr) cdata.fields
-            | None -> failwith ("Didn't find " ^ finfo.fieldtype.typename)
-          in 
-          match TypeMap.find_opt (vty.modulename, vty.typename) tenv with
-           | Some the_classdata -> 
-              List.iter (add_field_sym v) the_classdata.fields;
-              Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
-           | None -> failwith ("Didn't find classdata for " ^ vty.typename)
+            let cdata = finfo.fieldtype.tclass in
+            List.iter (add_field_sym varstr) cdata.fields
+          in
+          let the_classdata = vty.tclass in
+          List.iter (add_field_sym v) the_classdata.fields;
+          Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
         ))))
 
   | StmtAssign (v, e) -> (
@@ -596,6 +589,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
         (* Create procedure symtable entry.
          * Don't add it to module symbtable node here; caller does it. *)
         let procentry =
+          (* TODO: I now use :: to separate module and thing. Change this? *)
           {procname=(if not pdecl.export then modname ^ "." else "")
                     ^ pdecl.name;
            rettype=rttag; fparams=paramentries} in
@@ -620,14 +614,13 @@ let check_proc tenv (pdecl: 'addr st_node procdecl) proc =
   match check_stmt_seq procscope tenv proc.body with
   | Error errs -> Error errs
   | Ok newslist ->
-     (* procedure's decoration is its inner symbol table *)
-     (* return check is done afterwards. No it's not, what's up? *)
      let rettype = (Symtable.getproc pdecl.name procscope).rettype in
      if rettype <> void_ttag && not (block_returns proc.body) then 
        Error [{loc=proc.decor;
                value="Non-void procedure " ^ pdecl.name
                      ^ " may not return a value"}]
      else
+       (* procedure's decoration is its inner symbol table *)
        Ok {decl=pdecl; body=newslist; decor=procscope}
 
 
@@ -791,16 +784,16 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
     let syms = Symtable.new_scope syms in
     (* create tenv entry (classdata) for a struct declaration *)
     (* fold typedefs into new type environment. *)
-    let typesrlist = List.map (check_typedef dmod.name tenv) dmod.typedefs in
-    if List.exists Result.is_error typesrlist then
-      Error (concat_errors typesrlist)
+    let tdefsrlist = List.map (check_typedef dmod.name tenv) dmod.typedefs in
+    if List.exists Result.is_error tdefsrlist then
+      Error (concat_errors tdefsrlist)
     else 
       let tenv = List.fold_left
                    (fun m (cdata: classData) ->
                      (* Changed: not indexed by module name locally. *)
                      TypeMap.add ("", cdata.classname) cdata m)
                      (* TypeMap.add (cdata.in_module, cdata.classname) cdata m) *)
-                   tenv (concat_ok typesrlist) in
+                   tenv (concat_ok tdefsrlist) in
       (* spam syms into the decor of the struct, not that it will
          be needed...maybe delete typedefs from the second AST
          and turn the methods into just functions? *) 
