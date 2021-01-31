@@ -15,10 +15,10 @@ let base_tenv =
   (* Maybe put this in dillc or types. *)
   TypeMap.empty
   (* Maybe just add the string name for the scope *)
-  |> TypeMap.add (void_ttag.modulename, void_ttag.typename) void_class
-  |> TypeMap.add (int_ttag.modulename, int_ttag.typename) int_class
-  |> TypeMap.add (float_ttag.modulename, float_ttag.typename) float_class
-  |> TypeMap.add (bool_ttag.modulename, bool_ttag.typename) bool_class
+  |> TypeMap.add ("", void_ttag.typename) void_class
+  |> TypeMap.add ("", int_ttag.typename) int_class
+  |> TypeMap.add ("", float_ttag.typename) float_class
+  |> TypeMap.add ("", bool_ttag.typename) bool_class
 
 (* Symtable concept: a map for current scope, parent and children nodes *)
 

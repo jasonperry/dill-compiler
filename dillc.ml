@@ -113,7 +113,7 @@ let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
   List.fold_left load_import modmap istmts
 
 (** Do analysis and codegen phases, return module code and header object *)
-let analysis_codegen cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) = 
+let analysis cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) = 
   let open Symtable1 in
   (* populate top-level symbol table. Formerly with pervasive_syms *)
   let topsyms : Llvm.llvalue st_node = Symtable.make_empty () in 
@@ -121,17 +121,19 @@ let analysis_codegen cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
   (* We pass in the headers from the AST here,
    ( so the analyzer doesn't have to call back out. *)
   (* Imports are folded together. *)
-  let ispecs = load_imports cconfig ispecs parsedmod.imports in
   (* TODO: need to build new type environment from this too *)
+  let ispecs = load_imports cconfig ispecs parsedmod.imports in
   match Analyzer.check_module topsyms base_tenv ispecs parsedmod with
   | Error errs -> Error errs
   | Ok (typed_mod, mod_tenv) ->
      if cconfig.print_symtable then
-       print_string (Symtable1.st_node_to_string topsyms); 
-     let modcode = Codegen.gen_module mod_tenv topsyms typed_mod in
-     let header = Analyzer.create_module_spec typed_mod in
-     Ok (modcode, header) (* Hope codegen never gives errors! *)
+       print_string (Symtable1.st_node_to_string topsyms);
+     Ok (typed_mod, mod_tenv, topsyms)
 
+let codegen (_: dillc_config) tenv syms typedmod = 
+     let modcode = Codegen.gen_module tenv syms typedmod in
+     let header = Analyzer.create_module_spec typedmod in
+     modcode, header
 
 let write_header srcdir header = 
   let headerfilename =
@@ -225,24 +227,27 @@ let () =
     | Some parsedmod ->
        if cconfig.parse_only then (
          print_string (module_to_string parsedmod);
-         ispecs
+         ispecs (* import specifications carried through *)
        )
        else (
          (* Load imports into a symbol table before calling the analyzer *)
-         match analysis_codegen cconfig ispecs parsedmod with
+         match analysis cconfig ispecs parsedmod with
          | Error errs -> 
             prerr_string (format_errors errs);
             exit 1
-         | Ok (modcode, header) ->
-            (* print_string (st_node_to_string topsyms); *)
-            write_header cconfig.source_dir header;
-            if cconfig.emit_llvm then (
-              write_module_llvm srcfilename modcode )
-            else 
-              write_module_native srcfilename modcode
-            ;
-              ispecs
+         | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
+           if not cconfig.typecheck_only then
+             print_endline "going ahead with codegen";
+             let modcode, header = codegen cconfig tenv syms typedmod in 
+             (* print_string (st_node_to_string topsyms); *)
+             write_header cconfig.source_dir header;
+             if cconfig.emit_llvm then 
+               write_module_llvm srcfilename modcode
+             else 
+               write_module_native srcfilename modcode
+         ); ispecs
        )
   in
-  (* List.iter print_endline srcfiles; *)
+  (* why do we carry import specs through if they're never changed?
+   * or if it's mutated? Should "analysis" return a new one? *)
   ignore (List.fold_left process_sourcefile StrMap.empty srcfiles)

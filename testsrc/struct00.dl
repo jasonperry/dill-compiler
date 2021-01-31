@@ -1,0 +1,21 @@
+(* struct example without use, to test everything except use *)
+module Struct00 =
+
+open Stdio;
+
+type Complex = struct
+  i: Float,
+  j: Float;
+end Complex
+
+
+export proc main() : Void = 
+
+  var cpx: Complex = {i=2.0, j=1.111};
+  cpx = {i=4.0, j=-1.53};
+  (* printFloat(cpx.i);
+   * printFloat(cpx.j); *)
+
+end main
+
+end Struct00

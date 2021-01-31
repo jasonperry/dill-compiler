@@ -8,12 +8,10 @@ open Symtable1
 
 exception SemanticError of string
 
-(* Analysis pass populates symbol table, including with types. 
+(* Analysis pass populates symbol table and type environment. 
  * Hopefully all possibilities of error can be caught in this phase. *)
 
-(* Should I add pointers to the symbol table node for a given scope to the 
- * AST? Maybe, because if I just rely on following, the order matters,
- * Or else you'd need a unique identifier for each child. *)
+(* Symbol table nodes are decorations for statements. *)
 
 (** Helper to match a formal with actual parameter list, for
    typechecking procedure calls. *)
@@ -32,11 +30,12 @@ type typeExpr_result = (typetag, string) Stdlib.result
 (** Check that a type expression refers to a valid type in the environment, 
     and return the tag. *)
 let check_typeExpr tenv texp : (typetag, string) result =
+  (* TODO: substitute the module I'm in...but what about primitives? *)
+  (* Maybe I can have a set of primitive types that I just check.
+   * but also need to check trying to shadow primitive types. or is it OK? *)
   match TypeMap.find_opt (Option.value texp.modname ~default:"", texp.classname)
           tenv with
-  | Some cdata -> Ok ({ modulename = cdata.in_module;
-                        typename = cdata.classname;
-                        paramtypes=[]; array=false; nullable=false })
+  | Some cdata -> Ok (gen_ttag cdata [])
   | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
 
 
@@ -162,10 +161,10 @@ and check_call syms tenv (fname, args) =
     | None -> Error ("Unknown procedure name: " ^ fname)
 
 (** Check that a record expression matches the given type. *)
-and check_recExpr syms (tenv: typeenv)
-          (ttag: typetag) (rexp: locinfo expr) = match rexp.e with
-  | ExpRecord flist -> 
-     let cdata = TypeMap.find (ttag.modulename, ttag.typename) tenv in
+and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) = match rexp.e with
+  | ExpRecord flist ->
+     let cdata = ttag.tclass in 
+     (* let cdata = TypeMap.find ((*ttag.modulename*)"", ttag.typename) tenv in *)
      (* make a map from the fields to their types. *)
      (* Should probably leave it as a list in the ClassInfo, for ordering. *)
      let fdict = List.fold_left (fun s (fi: fieldInfo) ->
@@ -184,24 +183,27 @@ and check_recExpr syms (tenv: typeenv)
                    loc=rexp.decor;
                    value=("Record field " ^ fst (StrMap.choose accdict)
                           ^ " must be defined in expression")}
-       | (fname, fexp)::rest ->
+       | (fname, fexp)::rest -> (
           (* Oh, I have to catch this error *)
-          let ftype = StrMap.find fname accdict in
-          (* recurse if it's a recExpr *)
-          let res = match fexp.e with
-            | ExpRecord _ -> check_recExpr syms tenv ftype fexp
-            | _ -> check_expr syms tenv fexp in
-          match res with 
-          | Error err -> Error err
-          | Ok eres ->
-             if eres.decor = ftype
-             then check_fields rest
-                    (StrMap.remove fname accdict) ((fname,eres)::accfields)
-             else Error {
-                      loc=fexp.decor;
-                      value=("Field type mismatch: got "
-                             ^ typetag_to_string eres.decor ^ ", needed "
-                             ^ typetag_to_string ftype)}
+         match StrMap.find_opt fname accdict with
+         | None -> failwith ("Couldn't find field name " ^ fname ^ " in accdict")
+         | Some ftype -> 
+             (* recurse if it's a recExpr *)
+             let res = match fexp.e with
+               | ExpRecord _ -> check_recExpr syms tenv ftype fexp
+               | _ -> check_expr syms tenv fexp in
+             match res with 
+             | Error err -> Error err
+             | Ok eres ->
+                if eres.decor = ftype
+                then check_fields rest
+                       (StrMap.remove fname accdict) ((fname,eres)::accfields)
+                else Error {
+                         loc=fexp.decor;
+                         value=("Field type mismatch: got "
+                                ^ typetag_to_string eres.decor ^ ", needed "
+                                ^ typetag_to_string ftype)}
+       )
      in
      check_fields flist fdict []
   | _ -> failwith "BUG: check_recExpr called with non-record expr"
@@ -337,15 +339,17 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
               {symname=varstr; symtype=finfo.fieldtype;
                var=finfo.mut; addr=None};
             (* recursively add fields-of-fields *)
-            let cdata = TypeMap.find
-                          (finfo.fieldtype.modulename, finfo.fieldtype.typename)
-                          tenv in 
-            List.iter (add_field_sym varstr) cdata.fields
+            match TypeMap.find_opt
+                    (finfo.fieldtype.modulename, finfo.fieldtype.typename)
+                    tenv with
+            | Some cdata -> List.iter (add_field_sym varstr) cdata.fields
+            | None -> failwith ("Didn't find " ^ finfo.fieldtype.typename)
           in 
-          let the_classdata = TypeMap.find (vty.modulename, vty.typename) tenv in
-          List.iter (add_field_sym v) the_classdata.fields;
-
-          Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
+          match TypeMap.find_opt (vty.modulename, vty.typename) tenv with
+           | Some the_classdata -> 
+              List.iter (add_field_sym v) the_classdata.fields;
+              Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
+           | None -> failwith ("Didn't find classdata for " ^ vty.typename)
         ))))
 
   | StmtAssign (v, e) -> (
@@ -793,7 +797,9 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
     else 
       let tenv = List.fold_left
                    (fun m (cdata: classData) ->
-                     TypeMap.add (cdata.in_module, cdata.classname) cdata m)
+                     (* Changed: not indexed by module name locally. *)
+                     TypeMap.add ("", cdata.classname) cdata m)
+                     (* TypeMap.add (cdata.in_module, cdata.classname) cdata m) *)
                    tenv (concat_ok typesrlist) in
       (* spam syms into the decor of the struct, not that it will
          be needed...maybe delete typedefs from the second AST

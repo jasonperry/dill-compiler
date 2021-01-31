@@ -29,19 +29,23 @@ and classData = {
     (* also need all method signatures. *)
   }
 
-(** Unique name of a concrete type. *)
+(** Unique specification of a concrete type. *)
 and typetag = {
     (* what to do for function type? *)
     modulename: string;
     typename: string;
-    (* tclass: classData; *)
-    (* TODO: have an "unresolved" typetag. *)
+    tclass: classData;
+    (* Will I need an "unresolved" typetag for generics? *)
     paramtypes: typetag list; (* resolved generics. *)
     array: bool;   (* array type (going away) *)
     (* size: int;  (* 4 if a reference type? 8? *) *)
     nullable: bool; (* will this be part of the classdata? *)
   }
 
+(* Could just use this generated string as the key to tenv *)
+let typename (ttag: typetag) =
+  (* Maybe it's okay for primitive types to be called ::Int, internally. *)
+  ttag.modulename ^ "::" ^ ttag.typename
 
 (** Generate a type for a typetag for a class (and later, specify generics *)
 let gen_ttag (classdata: classData) _ (* mapping to type vars *) =
@@ -49,6 +53,7 @@ let gen_ttag (classdata: classData) _ (* mapping to type vars *) =
   {
     modulename = classdata.in_module;
     typename = classdata.classname;
+    tclass = classdata;
     paramtypes = [];
     (* array and nullable types won't be part of the class, they're
        specified in declarations. *)

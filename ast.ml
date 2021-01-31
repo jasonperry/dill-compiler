@@ -231,7 +231,7 @@ and if_to_string (e, tb, eifs, els) =
 (* let interpret_params plist =  *)
 
 let procdecl_to_string (pdecl: 'sd procdecl) =
-  if pdecl.export then "export " else ""
+  (if pdecl.export then "export " else "")
   ^ "proc " ^ pdecl.name ^ "("
   ^ String.concat "," (
         List.map (fun (varname, vartype) ->

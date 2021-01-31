@@ -17,7 +17,7 @@ let void_type = void_type context
 
 type lltenv = lltype TypeMap.t
 
-(** Convert a type tag from the symtables/AST into a suitable LLVM type. *)
+(** Use a type tag to generate the corresponding LLVM type. *)
 let ttag_to_llvmtype lltypes ttag =
   let basetype = 
     TypeMap.find (ttag.modulename, ttag.typename) lltypes
@@ -364,7 +364,7 @@ let gen_fdecls the_module lltypes fsyms =
 
 
 (** generate code for a procedure body (its declaration should already
- * be defined *)
+ * be defined) *)
 let gen_proc the_module builder lltypes proc =
   let fname = proc.decl.name in
   (* procedure is now defined in its own scope, so "getproc" *)
@@ -405,9 +405,9 @@ let gen_proc the_module builder lltypes proc =
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   let builder = builder context in
-  (* Generate llvm types for the type definitions. TODO: imports) *)
-  let lltypes = TypeMap.fold (fun key ci lt ->
-                    TypeMap.add key (gen_lltype context lt ci) lt)
+  (* Generate dict of llvm types for the type definitions. TODO: imports) *)
+  let lltypes = TypeMap.fold (fun key cdata lltenv ->
+                    TypeMap.add key (gen_lltype context lltenv cdata) lltenv)
                   tenv TypeMap.empty in
   (* Generate decls for imports (already in the top symbol table node.) *)
   gen_fdecls the_module lltypes topsyms.fsyms;
