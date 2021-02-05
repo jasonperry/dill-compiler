@@ -17,31 +17,46 @@ let void_type = void_type context
 
 type lltenv = lltype TypeMap.t
 
-(** Use a type tag to generate the corresponding LLVM type. *)
-let ttag_to_llvmtype lltypes ttag =
-  let basetype = 
-    TypeMap.find (ttag.modulename, ttag.typename) lltypes
-  in
-  if ttag.array then
-    array_type basetype 0  (* a stub for now, to give the idea. *)
-  else
-    basetype
-
-(** Process a classData to generate a new llvm type *)
-let gen_lltype context (lltypes: lltenv) (cdata: classData) =
+(** Process a classData to generate a new llvm base type *)
+let rec gen_lltype context
+      (types: classData TypeMap.t) (lltypes: lltenv) (cdata: classData) =
+  match (cdata.in_module, cdata.classname) with
   (* need special case for primitive types. Should handle this with some
    * data structure, so it's consistent among modules *)
-  match (cdata.in_module, cdata.classname) with
   | ("", "Void") -> void_type
   | ("", "Int") -> int_type
   | ("", "Float") -> float_type
   | ("", "Bool") -> bool_type
   | _ -> 
-     let tlist = List.map (fun fi ->
-                     ttag_to_llvmtype lltypes fi.fieldtype) cdata.fields in
+     let tlist =
+       List.map (fun fi ->
+           let mname, tname = fi.fieldtype.modulename, fi.fieldtype.typename in
+           let basetype = match TypeMap.find_opt (mname, tname) lltypes with
+             | Some basetype -> basetype                                  
+             | None ->
+                gen_lltype context types lltypes
+                  (TypeMap.find (mname, tname) types)                
+           in if fi.fieldtype.array
+              then array_type basetype 0
+              else basetype 
+         ) cdata.fields
+     in
      struct_type context (Array.of_list tlist)
 
+(** Use a type tag to generate the LLVM type from the base type. *)
+let ttag_to_llvmtype lltypes ttag =
+  (* find_opt only for debugging. *)
+  match TypeMap.find_opt (ttag.modulename, ttag.typename) lltypes with
+  | None -> failwith ("no lltype found for " ^ ttag.modulename
+                      ^ "::" ^ ttag.typename)
+  | Some basetype -> 
+     if ttag.array then
+       array_type basetype 0  (* a stub for now, to give the idea. *)
+     else
+       basetype
 
+
+(** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
   | ExpConst (IntVal i) -> const_int int_type i
@@ -136,16 +151,14 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
 
 let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   let syms = stmt.decor in
-  (* later: look up types in tenv *)
   match stmt.st with
   | StmtDecl (varname, _, eopt) -> (
-    (* technically, decl should only lookup in this scope. *)
+    (* technically, decl should only lookup in this scope. 
+     * But we don't care in codegen, right, it's all correct? *)
+    print_string ("looking up " ^ varname ^ " for decl codegen\n");
     let (entry, _) = Symtable.findvar varname syms in
+    print_string "Found var to alloc\n";
     let allocatype = ttag_to_llvmtype lltypes entry.symtype in 
-      (* if entry.symtype = int_ttag then int_type
-      else if entry.symtype = float_ttag then float_type
-      else if entry.symtype = bool_ttag then bool_type
-      else failwith "Unknown type for allocation" *)
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
@@ -406,8 +419,12 @@ let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   let builder = builder context in
   (* Generate dict of llvm types for the type definitions. TODO: imports) *)
-  let lltypes = TypeMap.fold (fun key cdata lltenv ->
-                    TypeMap.add key (gen_lltype context lltenv cdata) lltenv)
+  let lltypes = TypeMap.fold (fun _ cdata lltenv ->
+                    (* fully-qualified typename now *)
+                    let newkey = (cdata.in_module, cdata.classname) in
+                    print_string ("adding type " ^ (fst newkey) ^ "::"
+                                  ^ (snd newkey) ^ " to lltenv\n");
+                    TypeMap.add newkey (gen_lltype context tenv lltenv cdata) lltenv)
                   tenv TypeMap.empty in
   (* Generate decls for imports (already in the top symbol table node.) *)
   gen_fdecls the_module lltypes topsyms.fsyms;

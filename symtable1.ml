@@ -26,9 +26,9 @@ let base_tenv =
 type 'addr st_entry = {
     symname: string;
     symtype: typetag;
-    (* when I generate code, will I need a (stack or heap) location? *)
-    var: bool;  (* "var" semantics means it can be reassigned. OR
-                 * mutating methods called? No, they're different *)
+    (* This might work for mut also, since record fields have their own 
+     * entries? *)
+    var: bool;
     (* may_mut: bool; *)
     (* store an address (stack or heap) for code generation. *)
     addr: 'addr option
