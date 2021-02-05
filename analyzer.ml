@@ -23,16 +23,14 @@ let rec match_params (formal: 'a st_entry list) (actual: typetag list) =
      (* Later, this could inform code generation of template types *)
      fent.symtype = atag && match_params frest arest
 
-(** make the type expr result return only the tag for now. Seems
- * easier and I might not need it further down the line. *)
+(** make the type expr result return only the tag for now. 
+ *  Hopefully there's no need for a rewritten typeExp in the AST. *)
 type typeExpr_result = (typetag, string) Stdlib.result
 
 (** Check that a type expression refers to a valid type in the environment, 
     and return the tag. *)
 let check_typeExpr tenv texp : (typetag, string) result =
-  (* TODO: substitute the module I'm in...but what about primitives? *)
-  (* Maybe I can have a set of primitive types that I just check.
-   * but also need to check trying to shadow primitive types. or is it OK? *)
+  (* Types should be in the typeenv keyed by the name used locally. *)
   match TypeMap.find_opt (Option.value texp.modname ~default:"", texp.classname)
           tenv with
   | Some cdata -> Ok (gen_ttag cdata [])
@@ -130,6 +128,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
      Error {loc=ex.decor;
             value="Null-check assignment not allowed in this context"}
 
+
 (** Procedure call check factored out; it's used for both exprs and stmts. *)
 and check_call syms tenv (fname, args) =
   (* recursively check argument exprs and store types in list. *)
@@ -160,8 +159,10 @@ and check_call syms tenv (fname, args) =
     )
     | None -> Error ("Unknown procedure name: " ^ fname)
 
+
 (** Check that a record expression matches the given type. *)
-and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) = match rexp.e with
+and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
+  match rexp.e with
   | ExpRecord flist ->
      let cdata = ttag.tclass in 
      (* make a map from the fields to their types. *)
@@ -174,7 +175,8 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) = match rexp.e 
      let rec check_fields
                (flist: (string * locinfo expr) list)
                (accdict: typetag StrMap.t)
-               (accfields: (string * typetag expr) list) = match flist with
+               (accfields: (string * typetag expr) list) =
+       match flist with
        | [] ->
           if StrMap.is_empty accdict
           then Ok {e=ExpRecord accfields; decor=ttag}
@@ -183,9 +185,12 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) = match rexp.e 
                    value=("Record field " ^ fst (StrMap.choose accdict)
                           ^ " must be defined in expression")}
        | (fname, fexp)::rest -> (
-          (* Oh, I have to catch this error *)
          match StrMap.find_opt fname accdict with
-         | None -> failwith ("Couldn't find field name " ^ fname ^ " in accdict")
+         | None ->
+            Error {
+                loc=fexp.decor;
+                value=("Unknown record field name or double init: " ^ fname)
+              }
          | Some ftype -> 
              (* recurse if it's a recExpr *)
              let res = match fexp.e with
@@ -202,7 +207,7 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) = match rexp.e 
                          value=("Field type mismatch: got "
                                 ^ typetag_to_string eres.decor ^ ", needed "
                                 ^ typetag_to_string ftype)}
-       )
+       ) (* end check_fields *)
      in
      check_fields flist fdict []
   | _ -> failwith "BUG: check_recExpr called with non-record expr"
@@ -214,6 +219,7 @@ let is_redecl varname syms =
   match Symtable.findvar_opt varname syms with
   | None -> false
   | Some (_, scope) -> scope = syms.scopedepth
+
 
 (** Conditional exprs can have an assignment, so handle it specially. *)
 let check_condexp condsyms (tenv: typeenv) condexp =
@@ -264,6 +270,7 @@ let check_condexp condsyms (tenv: typeenv) condexp =
         else
           goodex
   )
+
 
 (* Statements need a pointer back to their symbol table for future
  * traversals, or else I need a way to pick the correct child.
