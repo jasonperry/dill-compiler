@@ -15,38 +15,70 @@ let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context
 
-type lltenv = lltype TypeMap.t
+(* dressed-up type environment to store field offsets as well. *)
+module Lltenv = struct
+  type fieldmap = int StrMap.t
+  type t = (lltype * fieldmap) TypeMap.t
+  let empty: t = TypeMap.empty
+  (* Return just the LLVM type for a given type name. *)
+  let add = TypeMap.add
+  let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
+  let find_lltype_opt tkey tmap =
+    Option.map fst (TypeMap.find_opt tkey tmap)
+  (* Get an LLVM type (for a record) and offset of a field in it. *)
+  let find_field tkey fieldname tmap =
+    let (llty, fmap) = TypeMap.find tkey tmap in
+    (llty, StrMap.find fieldname fmap)
+end
 
 (** Process a classData to generate a new llvm base type *)
 let rec gen_lltype context
-      (types: classData TypeMap.t) (lltypes: lltenv) (cdata: classData) =
+      (types: classData TypeMap.t) (lltypes: Lltenv.t) (cdata: classData) =
   match (cdata.in_module, cdata.classname) with
   (* need special case for primitive types. Should handle this with some
    * data structure, so it's consistent among modules *)
-  | ("", "Void") -> void_type
-  | ("", "Int") -> int_type
-  | ("", "Float") -> float_type
-  | ("", "Bool") -> bool_type
-  | _ -> 
+  | ("", "Void") -> void_type, StrMap.empty
+  | ("", "Int") -> int_type, StrMap.empty
+  | ("", "Float") -> float_type, StrMap.empty
+  | ("", "Bool") -> bool_type, StrMap.empty
+  | _ ->
+     (* Generate list of types (AND: offsets) from record fields *)
      let tlist =
-       List.map (fun fi ->
+       List.mapi (fun i fi ->
            let mname, tname = fi.fieldtype.modulename, fi.fieldtype.typename in
-           let basetype = match TypeMap.find_opt (mname, tname) lltypes with
-             | Some basetype -> basetype                                  
-             | None ->
-                gen_lltype context types lltypes
-                  (TypeMap.find (mname, tname) types)                
+           let basetype = match Lltenv.find_lltype_opt
+                                  (mname, tname) lltypes with
+             | Some basetype -> basetype
+             (* what happens if this recursively generated type's field 
+              * offsets need to be added too?  
+              * I believe its type will be generated and added separately.
+              * I hope it doesn't confuse LLVM if the same named type is
+              * generated twice. *)
+             | None -> fst (gen_lltype context types lltypes
+                              (TypeMap.find (mname, tname) types))
            in if fi.fieldtype.array
-              then array_type basetype 0
-              else basetype 
+              then (array_type basetype 0, i)
+              else (basetype, i)
          ) cdata.fields
      in
-     struct_type context (Array.of_list tlist)
+     (* Create a mapping from field names to offsets. *)
+     let field_offsets =
+       List.fold_left (fun fomap (_, i) ->
+           StrMap.add ((List.nth cdata.fields i).fieldname) i fomap
+         ) StrMap.empty tlist in
+     (* Create named struct type *)
+     let typename = cdata.in_module ^ "::" ^ cdata.classname in
+     let structtype = named_struct_type context typename in
+     (* Don't know if we will want packed structs in the future *)
+     struct_set_body structtype (List.map fst tlist |> Array.of_list) false;
+     (structtype, field_offsets)
+
 
 (** Use a type tag to generate the LLVM type from the base type. *)
 let ttag_to_llvmtype lltypes ttag =
   (* find_opt only for debugging. *)
-  match TypeMap.find_opt (ttag.modulename, ttag.typename) lltypes with
+  (* I think we will look up the field offsets elsewhere *)
+  match Lltenv.find_lltype_opt (ttag.modulename, ttag.typename) lltypes with
   | None -> failwith ("no lltype found for " ^ ttag.modulename
                       ^ "::" ^ ttag.typename)
   | Some basetype -> 
@@ -72,7 +104,13 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
         failwith ("BUG gen_expr: alloca address not present for " ^ varname)
      | Some alloca -> build_load alloca varname builder
   )
-  | ExpRecord _ -> failwith "Record codegen not implemented yet"
+  | ExpRecord _ (* fieldlist *) ->
+     (* I need to map the fields to the numbers. *)
+     (* Do I need the type hint here, like I do in the analyzer? *)
+     (* look up each field in symtable to get its address, 
+      * put in a list, sort by the index, remove the index? *)
+     (* finally: struct_set_body *)
+     failwith "Record codegen not implemented yet"
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
@@ -414,7 +452,7 @@ let gen_proc the_module builder lltypes proc =
        )
 
 
-(** Generate code for an entire module. *)
+(** Generate LLVM code for an analyzed module. *)
 let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   let builder = builder context in
@@ -422,10 +460,12 @@ let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let lltypes = TypeMap.fold (fun _ cdata lltenv ->
                     (* fully-qualified typename now *)
                     let newkey = (cdata.in_module, cdata.classname) in
+                    (* note that lltydata is a pair type. *)
+                    let lltydata = gen_lltype context tenv lltenv cdata in
                     print_string ("adding type " ^ (fst newkey) ^ "::"
                                   ^ (snd newkey) ^ " to lltenv\n");
-                    TypeMap.add newkey (gen_lltype context tenv lltenv cdata) lltenv)
-                  tenv TypeMap.empty in
+                    Lltenv.add newkey lltydata lltenv
+                  ) tenv Lltenv.empty in
   (* Generate decls for imports (already in the top symbol table node.) *)
   gen_fdecls the_module lltypes topsyms.fsyms;
   (* The next symtable node underneath has this module's proc declarations *)

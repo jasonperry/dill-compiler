@@ -11,8 +11,8 @@ end Complex
 
 export proc main() : Void = 
 
-  var cpx: Complex = {i=2.0, j=1.111};
-  cpx = {i=4.0, j=-1.53};
+  var cpx: Complex; (*  = {i=2.0, j=1.111};
+  cpx = {i=4.0, j=-1.53}; *)
   (* printFloat(cpx.i);
    * printFloat(cpx.j); *)
 

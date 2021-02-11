@@ -42,9 +42,8 @@ and typetag = {
     nullable: bool; (* will this be part of the classdata? *)
   }
 
-(* Could just use this generated string as the key to tenv *)
+(** Should only need this for printing out, not internally. *)
 let typename (ttag: typetag) =
-  (* Maybe it's okay for primitive types to be called ::Int, internally. *)
   ttag.modulename ^ "::" ^ ttag.typename
 
 (** Generate a type for a typetag for a class (and later, specify generics *)

@@ -27,7 +27,7 @@ type 'addr st_entry = {
     symname: string;
     symtype: typetag;
     (* This might work for mut also, since record fields have their own 
-     * entries? *)
+     * entries? (And we don't worry about mutability at codegen time) *)
     var: bool;
     (* may_mut: bool; *)
     (* store an address (stack or heap) for code generation. *)
