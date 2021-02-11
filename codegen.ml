@@ -212,18 +212,26 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     | Some initexp ->
        (* make a fake assignment statement to avoid duplication. *)
        gen_stmt the_module builder lltypes
-         {st=StmtAssign (varname, initexp); decor=syms}
+         {st=StmtAssign ((varname, []), initexp); decor=syms}
   )
 
-  | StmtAssign (varname, ex) -> (
-     let (entry, _) = Symtable.findvar varname syms in
-     let expval = gen_expr the_module builder syms lltypes ex in
-     match entry.addr with
-     | None -> failwith ("BUG stmtAssign: alloca address not present for "
-                         ^ varname)
-     | Some alloca ->
-        ignore (build_store expval alloca builder)
-        (* print_string (string_of_llvalue store) *)
+  | StmtAssign ((v, fl), ex) -> (
+    let varname = String.concat "." (v::fl) in
+    let (entry, _) = Symtable.findvar varname syms in
+    (* if it's a record type, need multiple stores *)
+    if is_record_type entry.symtype then
+      (* for assignment to a single field, will need to do "deep" lookup.
+       * Seems like "varname" string should not be arg type here now.
+       * Is the left side of an assignment just a varExp? *)
+      ()
+    else 
+      let expval = gen_expr the_module builder syms lltypes ex in
+      match entry.addr with
+      | None -> failwith ("BUG stmtAssign: alloca address not present for "
+                          ^ varname)
+      | Some alloca ->
+         ignore (build_store expval alloca builder)
+  (* print_string (string_of_llvalue store) *)
   )
 
   | StmtNop -> () (* will I need to generate so labels work? *)

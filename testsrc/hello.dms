@@ -1,3 +1,0 @@
-modspec Hello = 
-export proc main() : Int;
-end Hello

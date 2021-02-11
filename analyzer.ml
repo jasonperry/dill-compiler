@@ -352,10 +352,11 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
           Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
         ))))
 
-  | StmtAssign (v, e) -> (
+  | StmtAssign ((v, fl), e) -> (
     (* Typecheck e, look up v, make sure types match *)
     (* Switched to look up v's type first, for records. *)
-    match Symtable.findvar_opt v syms with
+    let varstr = String.concat "." (v::fl) in
+    match Symtable.findvar_opt varstr syms with
     | None -> Error [{loc=stm.decor; value="Unknown variable or field " ^ v}]
     | Some (sym, scope) -> (
       (* Passing the type hint takes care of records! *)
@@ -366,21 +367,21 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
           if sym.symtype <> ettag then
             Error [{loc=stm.decor;
                     value="Assignment type mismatch: "
-                          ^ " variable " ^ v ^ " of type " 
+                          ^ " variable " ^ varstr ^ " of type " 
                           ^ typetag_to_string sym.symtype ^ " can't store "
                           ^ typetag_to_string ettag}]
           else if sym.var = false then
             Error [{loc=stm.decor;
-                    value="Assignment to immutable var/field " ^ v}]
+                    value="Assignment to immutable var/field " ^ varstr}]
           else (
-            (* remove variable from unitialized set. *)
-            syms.uninit <- StrSet.remove v syms.uninit;
+            (* remove variable from unitialized set. Fields? *)
+            syms.uninit <- StrSet.remove varstr syms.uninit;
             if scope < syms.scopedepth then 
               (* print_string
                 ("Initializing variable from parent scope: " ^ v ^ "\n");
                *)
-              syms.parent_init <- StrSet.add v syms.parent_init;
-            Ok {st=StmtAssign (v, te); decor=syms}
+              syms.parent_init <- StrSet.add varstr syms.parent_init;
+            Ok {st=StmtAssign ((v, fl), te); decor=syms}
           )
   ))
 

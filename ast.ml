@@ -59,7 +59,7 @@ and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
 type ('ed,'sd) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'ed expr option
-  | StmtAssign of string * 'ed expr  (* need to make var expr on left? *)
+  | StmtAssign of (string * string list) * 'ed expr
   | StmtNop
   | StmtReturn of 'ed expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
@@ -199,7 +199,9 @@ let rec stmt_to_string st =
             | Some e -> " = " ^ exp_to_string e
             | None -> "")
          ^ ";\n"
-      | StmtAssign (v, e) -> v ^ " = " ^ exp_to_string e ^ ";\n"
+      | StmtAssign ((v, fl), e) ->
+         v ^ String.concat "." (v::fl) ^ " = "
+         ^ exp_to_string e ^ ";\n"
       | StmtNop -> "nop;\n"
       | StmtReturn (Some e) -> "return " ^ exp_to_string e ^ ";\n"
       | StmtReturn None -> "return;\n"

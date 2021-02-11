@@ -1,3 +1,0 @@
-modspec Collatz = 
-proc collatz(n: Int) : Int;
-end Collatz

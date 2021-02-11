@@ -1,3 +1,0 @@
-modspec If01 = 
-export proc main() : Void;
-end If01

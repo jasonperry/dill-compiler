@@ -1,3 +1,0 @@
-modspec Fntriple = 
-proc triple(x: Int) : Int;
-end Fntriple

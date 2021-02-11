@@ -42,6 +42,10 @@ and typetag = {
     nullable: bool; (* will this be part of the classdata? *)
   }
 
+
+let is_record_type ttag =
+  ttag.tclass.fields <> []
+
 (** Should only need this for printing out, not internally. *)
 let typename (ttag: typetag) =
   ttag.modulename ^ "::" ^ ttag.typename

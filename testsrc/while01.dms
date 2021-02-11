@@ -1,5 +1,0 @@
-modspec While01 = 
-var i: Int;
-var j: Int;
-export ;
-end While01

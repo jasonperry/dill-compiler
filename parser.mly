@@ -209,8 +209,11 @@ declInitStmt:
     { (v, t, Some e) }
 
 assignStmt:
-  | v=varName ASSIGN e=expr SEMI
-    { StmtAssign (v, e) }
+  | ve=varExp ASSIGN e=expr SEMI
+    { match ve with
+      | ExpVar (v, fl) -> StmtAssign ((v, fl), e)
+      | _ -> $syntaxerror (* not possible. Maybe change expr *)
+    }
 
 nopStmt:
   | NOP SEMI
@@ -279,8 +282,8 @@ constExp:
 
 varExp:
   (* a method call could be preceded by this. *)
-  | v=varName fns=list(preceded(DOT, varName))
-    { ExpVar (v, fns) }
+  | v=varName fl=list(preceded(DOT, varName))
+    { ExpVar (v, fl) }
 
 varName:
   vn=IDENT_LC { vn }

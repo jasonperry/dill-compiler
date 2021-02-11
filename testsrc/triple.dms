@@ -1,3 +1,0 @@
-modspec Triple = 
-proc triple(x: Int) : Int;
-end Triple
