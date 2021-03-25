@@ -42,7 +42,7 @@ let rec gen_lltype context
   | ("", "Float") -> float_type, StrMap.empty
   | ("", "Bool") -> bool_type, StrMap.empty
   | _ ->
-     (* Generate list of types (AND: offsets) from record fields *)
+     (* Must be record type. Generate list of types from record fields *)
      let tlist =
        List.mapi (fun i fi ->
            let mname, tname = fi.fieldtype.modulename, fi.fieldtype.typename in
@@ -105,11 +105,10 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      | Some alloca -> build_load alloca varname builder
   )
   | ExpRecord _ (* fieldlist *) ->
-     (* I need to map the fields to the numbers. *)
+     (* Record init expr will be desugared to a list of assignments. *)
      (* Do I need the type hint here, like I do in the analyzer? *)
      (* look up each field in symtable to get its address, 
       * put in a list, sort by the index, remove the index? *)
-     (* finally: struct_set_body *)
      failwith "Record codegen not implemented yet"
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
@@ -210,29 +209,43 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     match eopt with
     | None -> ()
     | Some initexp ->
-       (* make a fake assignment statement to avoid duplication. *)
+       (* desugar to an assignment statement to avoid duplication. *)
        gen_stmt the_module builder lltypes
          {st=StmtAssign ((varname, []), initexp); decor=syms}
   )
 
-  | StmtAssign ((v, fl), ex) -> (
-    let varname = String.concat "." (v::fl) in
+  | StmtAssign ((v, flds), ex) -> (
+    let varname = String.concat "." (v::flds) in
     let (entry, _) = Symtable.findvar varname syms in
-    (* if it's a record type, need multiple stores *)
-    if is_record_type entry.symtype then
-      (* for assignment to a single field, will need to do "deep" lookup.
-       * Seems like "varname" string should not be arg type here now.
-       * Is the left side of an assignment just a varExp? *)
-      ()
-    else 
+    match ex.e with
+    (* for full-record assignment: desugar to individual assignments *)
+    | ExpRecord _ (* assignment list *) -> ()
+    (* normal single-value assignment: generate the expression. *)
+    | _ -> (
       let expval = gen_expr the_module builder syms lltypes ex in
-      match entry.addr with
-      | None -> failwith ("BUG stmtAssign: alloca address not present for "
+      match entry.addr with 
+      | None -> failwith ("BUG StmtAssign: alloca address not present for "
                           ^ varname)
       | Some alloca ->
+         (* traverse record fields to generate final alloca for store *)
+         let rec get_falloca flds parentty alloca =
+           match flds with
+           | [] -> alloca
+           | fld::rest -> 
+              (* Get just the class of parent type so we can find its field info. *)
+              let ptypekey = (parentty.modulename, parentty.typename) in
+              (* look up field in Lltenv, emit gep *)
+              let _, offset = Lltenv.find_field ptypekey fld lltypes in
+              let alloca = build_struct_gep alloca offset "fld" builder in
+              (* this hack probably needs to go. want to look up field type in tenv. *)
+              (* can I get field's typetag and use its classdata? *)
+              let fentry, _ = Symtable.findvar (v ^ "." ^ fld) syms in
+              get_falloca rest fentry.symtype alloca
+         in
+         let alloca = get_falloca flds entry.symtype alloca in
          ignore (build_store expval alloca builder)
   (* print_string (string_of_llvalue store) *)
-  )
+  ))
 
   | StmtNop -> () (* will I need to generate so labels work? *)
 

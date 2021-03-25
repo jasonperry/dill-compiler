@@ -42,7 +42,7 @@ and typetag = {
     nullable: bool; (* will this be part of the classdata? *)
   }
 
-
+(** delete this if it turns out not to be needed. *)
 let is_record_type ttag =
   ttag.tclass.fields <> []
 
