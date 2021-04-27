@@ -217,7 +217,6 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
      * But we don't care in codegen, right, it's all correct? *)
     print_string ("looking up " ^ varname ^ " for decl codegen\n");
     let (entry, _) = Symtable.findvar varname syms in
-    print_string "Found var to alloc\n";
     let allocatype = ttag_to_llvmtype lltypes entry.symtype in 
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)

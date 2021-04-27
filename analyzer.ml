@@ -343,10 +343,12 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             Symtable.addvar syms varstr
               {symname=varstr; symtype=finfo.fieldtype;
                var=finfo.mut; addr=None};
-            (* recursively add fields-of-fields *)
+            (* yes, need to mark each field as uninitted also. *)
+            syms.uninit <- StrSet.add varstr syms.uninit;
+           (* recursively add fields-of-fields *)
             let cdata = finfo.fieldtype.tclass in
             List.iter (add_field_sym varstr) cdata.fields
-          in
+           in
           let the_classdata = vty.tclass in
           List.iter (add_field_sym v) the_classdata.fields;
           Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
@@ -370,7 +372,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                           ^ " variable " ^ varstr ^ " of type " 
                           ^ typetag_to_string sym.symtype ^ " can't store "
                           ^ typetag_to_string ettag}]
-          else if sym.var = false (* debug *) && false then
+          else if sym.var = false then
             Error [{loc=stm.decor;
                     value="Assignment to immutable var/field " ^ varstr}]
           else (

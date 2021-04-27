@@ -1,4 +1,3 @@
-(* First struct example...still lots to make work *)
 module Struct01 =
 
 open Stdio;
