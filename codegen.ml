@@ -17,18 +17,18 @@ let void_type = void_type context
 
 (* dressed-up type environment to store field offsets as well. *)
 module Lltenv = struct
-  type fieldmap = int StrMap.t
-  type t = (lltype * fieldmap) TypeMap.t
+  type fieldmap = (int * typetag) StrMap.t
+  type t = (lltype * fieldmap) TypeMap.t  (* TypeMap.t maps string pairs -> value *)
   let empty: t = TypeMap.empty
-  (* Return just the LLVM type for a given type name. *)
   let add = TypeMap.add
+  (* Return just the LLVM type for a given type name. *)
   let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
   let find_lltype_opt tkey tmap =
     Option.map fst (TypeMap.find_opt tkey tmap)
-  (* Get an LLVM type (for a record) and offset of a field in it. *)
+  (* Get the offset of a record field. *)
   let find_field tkey fieldname tmap =
-    let (llty, fmap) = TypeMap.find tkey tmap in
-    (llty, StrMap.find fieldname fmap)
+    let (_, fmap) = TypeMap.find tkey tmap in
+    StrMap.find fieldname fmap
 end
 
 (** Process a classData to generate a new llvm base type *)
@@ -57,20 +57,21 @@ let rec gen_lltype context
              | None -> fst (gen_lltype context types lltypes
                               (TypeMap.find (mname, tname) types))
            in if fi.fieldtype.array
-              then (array_type basetype 0, i)
-              else (basetype, i)
+              then (array_type basetype 0, i, fi.fieldtype)
+              else (basetype, i, fi.fieldtype)
          ) cdata.fields
      in
-     (* Create a mapping from field names to offsets. *)
+     (* Create a mapping from field names to offsets (and types). *)
      let field_offsets =
-       List.fold_left (fun fomap (_, i) ->
-           StrMap.add ((List.nth cdata.fields i).fieldname) i fomap
+       List.fold_left (fun fomap (_, i, ftype) ->
+           StrMap.add ((List.nth cdata.fields i).fieldname) (i, ftype) fomap
          ) StrMap.empty tlist in
      (* Create named struct type *)
      let typename = cdata.in_module ^ "::" ^ cdata.classname in
      let structtype = named_struct_type context typename in
      (* Don't know if we will want packed structs in the future *)
-     struct_set_body structtype (List.map fst tlist |> Array.of_list) false;
+     struct_set_body structtype (List.map (fun (lty, _, _) -> lty) tlist
+                                 |> Array.of_list) false;
      (structtype, field_offsets)
 
 
@@ -88,6 +89,31 @@ let ttag_to_llvmtype lltypes ttag =
        basetype
 
 
+(** Generate LLVM allocation for a varexp, traversing fields *)
+let gen_varexp_alloca varentry fieldlist lltypes builder =
+  match varentry.addr with 
+  | None -> failwith ("BUG gen_varexp_alloca: alloca address not present for "
+                      ^ varentry.symname)
+  | Some alloca ->
+     (* traverse record fields to generate final alloca for store. *)
+     (* BIG IDEA: symtable for record itself, only tenv for subfields.
+      *  Hope it works because you only need the offset, not the address. *)
+     let rec get_field_alloca flds parentty alloca =
+       match flds with
+       | [] -> alloca
+       | fld::rest -> 
+          (* Get just the class of parent type so we can find its field info. *)
+          (* Later: handle array indexing. *)
+          let ptypekey = (parentty.modulename, parentty.typename) in
+          (* Look up field offset in Lltenv, emit gep *)
+          let offset, fieldtype = Lltenv.find_field ptypekey fld lltypes in
+          let alloca = build_struct_gep alloca offset "fld" builder in
+          (*  Propagate field's typetag to next iteration *)
+          get_field_alloca rest fieldtype alloca
+     in
+     get_field_alloca fieldlist varentry.symtype alloca
+  
+
 (** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
@@ -98,11 +124,8 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpVar (varname, fields) -> (
     let varstr = String.concat "." (varname::fields) in
     let (entry, _) = Symtable.findvar varstr syms in
-    match entry.addr with
-     | None ->
-        (* find it in the params and use the llvalue directly *)
-        failwith ("BUG gen_expr: alloca address not present for " ^ varname)
-     | Some alloca -> build_load alloca varname builder
+    let alloca = gen_varexp_alloca entry fields lltypes builder in
+    build_load alloca varname builder
   )
   | ExpRecord _ (* fieldlist *) ->
      (* Record init expr will be desugared to a list of assignments. *)
@@ -223,26 +246,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* normal single-value assignment: generate the expression. *)
     | _ -> (
       let expval = gen_expr the_module builder syms lltypes ex in
-      match entry.addr with 
-      | None -> failwith ("BUG StmtAssign: alloca address not present for "
-                          ^ varname)
-      | Some alloca ->
-         (* traverse record fields to generate final alloca for store *)
-         let rec get_falloca flds parentty alloca =
-           match flds with
-           | [] -> alloca
-           | fld::rest -> 
-              (* Get just the class of parent type so we can find its field info. *)
-              let ptypekey = (parentty.modulename, parentty.typename) in
-              (* look up field in Lltenv, emit gep *)
-              let _, offset = Lltenv.find_field ptypekey fld lltypes in
-              let alloca = build_struct_gep alloca offset "fld" builder in
-              (* this hack probably needs to go. want to look up field type in tenv. *)
-              (* can I get field's typetag and use its classdata? *)
-              let fentry, _ = Symtable.findvar (v ^ "." ^ fld) syms in
-              get_falloca rest fentry.symtype alloca
-         in
-         let alloca = get_falloca flds entry.symtype alloca in
+      let alloca = gen_varexp_alloca entry flds lltypes builder in
          ignore (build_store expval alloca builder)
   (* print_string (string_of_llvalue store) *)
   ))

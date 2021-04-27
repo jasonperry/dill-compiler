@@ -370,7 +370,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                           ^ " variable " ^ varstr ^ " of type " 
                           ^ typetag_to_string sym.symtype ^ " can't store "
                           ^ typetag_to_string ettag}]
-          else if sym.var = false then
+          else if sym.var = false (* debug *) && false then
             Error [{loc=stm.decor;
                     value="Assignment to immutable var/field " ^ varstr}]
           else (
