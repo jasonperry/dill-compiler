@@ -1,4 +1,3 @@
-(* struct example without use, to test everything except use *)
 module Struct00 =
 
 open Stdio;
@@ -12,12 +11,12 @@ end Complex
 export proc main() : Void = 
 
   (* var cpx: Complex = {i=2.0, j=1.111}; *)
-  var cpx: Complex;
-  cpx.i = 4.0; (* Illegal because immutable...have to use record syntax? *)
-  cpx.j = -1.53;
   (*  cpx = {i=4.0, j=-1.53}; *)
-  (* printFloat(cpx.i);
-  printFloat(cpx.j); *)
+  var cpx: Complex;
+  (* cpx.i = 4.0; (* Illegal because immutable...have to use record syntax *)
+  cpx.j = -1.53; *)
+  printFloat(cpx.i);
+  printFloat(cpx.j);
 
 end main
 

@@ -122,8 +122,8 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
   (* stmtDecl will create new symtable entry ,this will get it. *)
   | ExpVar (varname, fields) -> (
-    let varstr = String.concat "." (varname::fields) in
-    let (entry, _) = Symtable.findvar varstr syms in
+    (* let varstr = String.concat "." (varname::fields) in *)
+    let (entry, _) = Symtable.findvar varname (*varstr*) syms in
     let alloca = gen_varexp_alloca entry fields lltypes builder in
     build_load alloca varname builder
   )
@@ -237,8 +237,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          {st=StmtAssign ((varname, []), initexp); decor=syms}
   )
 
-  | StmtAssign ((v, flds), ex) -> (
-    let varname = String.concat "." (v::flds) in
+  | StmtAssign ((varname, flds), ex) -> (
+    (* let varname = String.concat "." (v::flds) in *)
     let (entry, _) = Symtable.findvar varname syms in
     match ex.e with
     (* for full-record assignment: desugar to individual assignments *)
