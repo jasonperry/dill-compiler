@@ -1,3 +1,4 @@
+(* Struct initialized at declaration. *)
 module Struct01 =
 
 open Stdio;
@@ -11,7 +12,7 @@ end Complex
 export proc main() : Void = 
 
   var cpx: Complex = {i=2.0, j=1.111};
-  cpx = {i=4.0, j=-1.53};
+  (* cpx = {i=4.0, j=-1.53}; *)
   printFloat(cpx.i);
   printFloat(cpx.j);
 

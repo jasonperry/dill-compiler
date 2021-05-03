@@ -294,7 +294,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
         | None -> Ok None
         | Some dtyexp -> (
           match check_typeExpr tenv dtyexp with 
-          | Error msg -> Error [{loc=stm.decor; value=msg}] 
+          | Error msg -> Error [{loc=stm.decor; value=msg}]
           | Ok ttag -> Ok (Some ttag) )
       in
       match tyres with
@@ -335,24 +335,27 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             {symname=v; symtype=vty; var=true; addr=None};
           if Option.is_none e2opt then
             syms.uninit <- StrSet.add v syms.uninit;
-          (* add symtable entries for record fields, if any. *)
-          (* add nested scope for fields if the type has them. *)
-          (* Cheat way: just add "var.field" symbols *)
+          (* function to add symtable entries for a record fields *)
           let rec add_field_sym v (finfo: fieldInfo) =
+            (* instead of adding nested scope for record fields,
+             * we just add "var.field" symbols *)
             let varstr = v ^ "." ^ finfo.fieldname in
             Symtable.addvar syms varstr
               {symname=varstr; symtype=finfo.fieldtype;
                var=finfo.mut; addr=None};
-            (* yes, need to mark each field as uninitted also. *)
-            syms.uninit <- StrSet.add varstr syms.uninit;
-           (* recursively add fields-of-fields *)
+            (* It's enough to just check if there's an initializer, because 
+             * a record expression will have to init every field. *)
+            if Option.is_none e2opt then 
+              syms.uninit <- StrSet.add varstr syms.uninit;
+            (* recursively add fields-of-fields *)
             let cdata = finfo.fieldtype.tclass in
             List.iter (add_field_sym varstr) cdata.fields
-           in
+          in
           let the_classdata = vty.tclass in
+          (* add symtable info for record fields, if any. *)
           List.iter (add_field_sym v) the_classdata.fields;
           Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
-        ))))
+  ))))
 
   | StmtAssign ((v, fl), e) -> (
     (* Typecheck e, look up v, make sure types match *)
@@ -376,8 +379,13 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             Error [{loc=stm.decor;
                     value="Assignment to immutable var/field " ^ varstr}]
           else (
-            (* remove variable from unitialized set. Fields? *)
+            (* remove variable from unitialized set. *)
             syms.uninit <- StrSet.remove varstr syms.uninit;
+            (* remove fields from uninit, if any. *)
+            (match te.e with
+             | ExpRecord _ ->
+                print_endline "TODO: Remove record fields from uninit"
+             | _ -> ());
             if scope < syms.scopedepth then 
               (* print_string
                 ("Initializing variable from parent scope: " ^ v ^ "\n");

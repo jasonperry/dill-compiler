@@ -1,19 +1,18 @@
+(* mutable struct initialized with individual field assignments. *)
 module Struct00 =
 
 open Stdio;
 
 type Complex = struct
-  i: Float,
-  j: Float;
+  mut i: Float,
+  mut j: Float;
 end Complex
 
 
 export proc main() : Void = 
 
-  (* var cpx: Complex = {i=2.0, j=1.111}; *)
-  (*  cpx = {i=4.0, j=-1.53}; *)
   var cpx: Complex;
-  cpx.i = 4.0; (* Illegal because immutable...have to use record syntax *)
+  cpx.i = 4.0;
   cpx.j = -1.53;
   printFloat(cpx.i);
   printFloat(cpx.j);

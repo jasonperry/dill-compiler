@@ -1,5 +1,5 @@
-(* mutable struct example *)
-module Struct00 =
+(* mutable struct example, initted by record exp after declaration *)
+module Struct02 =
 
 open Stdio;
 
@@ -11,14 +11,11 @@ end Complex
 
 export proc main() : Void = 
 
-  (* var cpx: Complex = {i=2.0, j=1.111}; *)
-  (*  cpx = {i=4.0, j=-1.53}; *)
-  var cpx: Complex;
-  cpx.i = 4.0;
-  cpx.j = -1.53;
+  var cpx: Complex; (*  = {i=2.0, j=1.111};*)
+  cpx = {i=4.0, j=-1.53};
   printFloat(cpx.i);
   printFloat(cpx.j);
 
 end main
 
-end Struct00
+end Struct02

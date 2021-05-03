@@ -241,7 +241,11 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let (entry, _) = Symtable.findvar varname syms in
     match ex.e with
     (* for full-record assignment: desugar to individual assignments *)
-    | ExpRecord _ (* assignment list *) -> ()
+    | ExpRecord fieldlist ->
+       List.iter (fun (fname, fexp) ->
+           gen_stmt the_module builder lltypes
+             { st=StmtAssign ((varname, flds @ [fname]), fexp);
+               decor=stmt.decor }) fieldlist
     (* normal single-value assignment: generate the expression. *)
     | _ -> (
       let expval = gen_expr the_module builder syms lltypes ex in
