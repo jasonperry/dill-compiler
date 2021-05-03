@@ -379,12 +379,13 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             Error [{loc=stm.decor;
                     value="Assignment to immutable var/field " ^ varstr}]
           else (
-            (* remove variable from unitialized set. *)
+            (* remove variable (and record fields if any) from unitialized. *)
             syms.uninit <- StrSet.remove varstr syms.uninit;
-            (* remove fields from uninit, if any. *)
             (match te.e with
-             | ExpRecord _ ->
-                print_endline "TODO: Remove record fields from uninit"
+             | ExpRecord flist ->
+                List.iter (fun (fname, _) ->
+                    syms.uninit <-
+                      StrSet.remove (varstr ^ "." ^ fname) syms.uninit) flist
              | _ -> ());
             if scope < syms.scopedepth then 
               (* print_string
