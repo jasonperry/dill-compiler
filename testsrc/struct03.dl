@@ -1,0 +1,10 @@
+(* library-only struct definition *)
+
+module Struct03 =
+
+type Complex = struct
+  i: Float,
+  j: Float;
+end Complex
+
+end Struct03

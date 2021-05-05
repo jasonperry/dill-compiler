@@ -678,76 +678,12 @@ let check_globdecl syms tenv gstmt =
                     value="Globals must be initialized when declared"}]
 
 
-(** Check imported module specs and add global var & proc symbols. *)
-let add_imports syms tenv specs istmts = 
-  (* Should I make types global? No, let them be parameterized also *)
-  (* Even if you open a module, you should remember which module the 
-   * function came from, for error messages *)
-  (* In other words, as vars have in_proc, funcs should have in_module. 
-   * But wouldn't (global) variables need it too? *)
-  (* Maybe vars can have a 'parent_struct' that could either be a 
-     proc or a type or a module. *) 
-  let add_import istmt = 
-    let (modname, prefix) = match istmt with
-      | Using (modname, aliasopt) -> (
-        match aliasopt with
-        | Some alias -> (modname, alias ^ ".")
-        | None -> (modname, modname ^ "." ) )
-      | Open modname -> (modname, "") in
-    let the_spec = StrMap.find modname specs in
-    (* Iterate over global variable declarations and add those *)
-    List.map (
-        fun (gdecl: 'st globaldecl) ->
-        let refname = prefix ^ gdecl.varname in
-        let fullname = modname ^ "." ^ gdecl.varname in
-        match check_typeExpr tenv gdecl.typeexp with
-          | Error msg ->
-             (* Yes, this is where modspecs get semantically checked. *)
-             Error [{value=msg; loc=gdecl.decor}] 
-          | Ok ttag -> (
-            match Symtable.findvar_opt refname syms with
-            | Some (_, _) ->
-               Error [{value=("Duplicated extern variable " ^ refname);
-                       loc=gdecl.decor}]
-            | None ->
-               let entry = {
-                   symname = fullname; symtype = ttag; 
-                   var = true; addr = None
-                 } in
-               Symtable.addvar syms refname entry;
-               if refname <> fullname then
-                 Symtable.addvar syms fullname entry;
-               Ok syms (* doesn't get used *)
-      )) the_spec.globals
-    (* iterate over procedure declarations and add those. *)
-    @ (List.map (
-           fun (pdecl: 'sd procdecl) ->
-           let refname = prefix ^ pdecl.name in
-           let fullname = modname ^ "." ^ pdecl.name in
-           (* check_pdecl now gets module name prefix from AST. *)
-           match check_pdecl syms tenv modname pdecl 
-           (* { pdecl with name=(prefix ^ pdecl.name) } *) with
-           | Ok (_, entry) ->
-              print_string ("Adding imported proc symbol: " ^ refname ^ "\n");
-              Symtable.addproc syms refname entry;
-              if refname <> fullname then 
-                Symtable.addproc syms fullname entry;
-              Ok syms
-           | Error errs -> Error errs
-         ) the_spec.procdecls
-      ) (* end add_import *)
-  in
-  match concat_errors (concat_map add_import istmts) with
-  | [] -> Ok syms
-  | errs -> Error errs
-
-
 (** Check a struct declaration, generating classData for the tenv. *)
 let check_typedef modname tenv (tydef: locinfo typedef) = 
   (* TODO: handle recursive type declarations *)
   match tydef with
   | Struct sdecl ->
-     (* check for nonexistent types, field redecl *)
+     (* check for nonexistent types, field redeclaration *)
      let rec check_fields flist acc = match flist with
        | [] -> Ok (List.rev acc)
        | fdecl :: rest ->
@@ -792,18 +728,114 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
           fields = flist
         }
 
+
+(** From imported module specs, add types and global var/proc symbols. *)
+let add_imports syms tenv specs istmts = 
+  (* Should I make types global? No, let them be parameterized also *)
+  (* Even if you open a module, you should remember which module the 
+   * function came from, for error messages *)
+  (* In other words, as vars have in_proc, funcs should have in_module. 
+   * But wouldn't (global) variables need it too? *)
+  (* Maybe vars can have a 'parent_struct' that could either be a 
+     proc or a type or a module. *) 
+    (* Construct the right names to use from the statements. *)
+    (* check type definitions and add to tenv. *)
+    let rec check_importtypes modname modalias tdefs tenv_acc =
+      match tdefs with
+      | [] -> Ok tenv_acc
+      | td::rest ->
+         match check_typedef modname tenv_acc td with
+         | Ok cdata ->
+            print_endline ("adding imported type " ^ modalias ^ "::"
+                           ^ cdata.classname);
+            let newtenv =
+              TypeMap.add (modalias, cdata.classname) cdata tenv_acc in
+            check_importtypes modname modalias rest newtenv
+         | Error e -> Error e
+    in
+    let check_importdecls modname prefix the_spec = 
+      (* Iterate over global variable declarations and add to symtable *)
+      List.map (
+          fun (gdecl: 'st globaldecl) ->
+          let refname = prefix ^ gdecl.varname in
+          let fullname = modname ^ "." ^ gdecl.varname in
+          match check_typeExpr tenv gdecl.typeexp with
+          | Error msg ->
+             Error [{value=msg; loc=gdecl.decor}] 
+          | Ok ttag -> (
+            match Symtable.findvar_opt refname syms with
+            | Some (_, _) ->
+               Error [{value=("Duplicated extern variable " ^ refname);
+                       loc=gdecl.decor}]
+            | None ->
+               let entry = {
+                   symname = fullname; symtype = ttag; 
+                   var = true; addr = None
+                 } in
+               (* wait, should we not add both? *)
+               Symtable.addvar syms refname entry;
+               if refname <> fullname then
+                 Symtable.addvar syms fullname entry;
+               Ok syms (* doesn't get used *)
+        )) the_spec.globals
+      (* iterate over procedure declarations and add those. *)
+      @ (List.map (
+             fun (pdecl: 'sd procdecl) ->
+             let refname = prefix ^ pdecl.name in
+             let fullname = modname ^ "." ^ pdecl.name in
+             (* check_pdecl now gets module name prefix from AST. *)
+             match check_pdecl syms tenv modname pdecl 
+             (* { pdecl with name=(prefix ^ pdecl.name) } *) with
+             | Ok (_, entry) ->
+                print_string ("Adding imported proc symbol: " ^ refname ^ "\n");
+                Symtable.addproc syms refname entry;
+                if refname <> fullname then 
+                  Symtable.addproc syms fullname entry;
+                Ok syms
+             | Error errs -> Error errs
+           ) the_spec.procdecls
+        ) (* end add_import *)
+    in
+    let rec mainloop stmts tenv_acc =
+      match stmts with
+      | [] -> Ok (syms, tenv_acc) (* return value of outer function *)
+      | istmt::rest -> (
+        (* get the module names to be used in the symtable and tenv. *)
+        let (modname, modalias) = match istmt with
+          | Using (modname, aliasopt) -> (
+            match aliasopt with
+            | Some alias -> (modname, alias)
+            | None -> (modname, modname) )
+          | Open modname -> (modname, "") in
+        let prefix = if modalias = "" then "" else modalias ^ "." in
+        (* Get the modspec from the preloaded list. *)
+        let the_spec = StrMap.find modname specs in
+        (* Call the function to check imported types *)
+        match
+          check_importtypes modname modalias the_spec.typedefs tenv_acc with
+        | Error errs -> Error errs
+        | Ok newtenv -> (
+          (* print_typekeys newtenv; *)
+          match concat_errors (check_importdecls modname prefix the_spec) with
+          | [] -> mainloop rest newtenv
+          | errs -> Error errs
+      )) (* end mainloop *)
+    in mainloop istmts tenv
+
+
 (** Check one entire module, generating new versions of each component. *)
 let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
   (* Check import statements and load modspecs into symtable
      (they've been loaded from .dms files by the top level) *)
   match add_imports syms tenv ispecs dmod.imports with
   | Error errs -> Error errs 
-  | Ok syms -> (  (* It's the same symtable node that's passed in... *)
+  | Ok (syms, tenv) -> (  (* It's the same symtable node that's passed in... *)
+    (* print_typekeys tenv; *)
     (* Add new scope so imports will be topmost in the module scope. *)
     let syms = Symtable.new_scope syms in
-    (* create tenv entry (classdata) for a struct declaration *)
-    (* fold typedefs into new type environment. *)
+    (* create tenv entries (classdata) for struct declarations *)
     let tdefsrlist = List.map (check_typedef dmod.name tenv) dmod.typedefs in
+    (* fold typedefs into new type environment. *)
     if List.exists Result.is_error tdefsrlist then
       Error (concat_errors tdefsrlist)
     else 

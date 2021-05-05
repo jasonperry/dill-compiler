@@ -55,9 +55,9 @@ let format_errors elist =
   String.concat "\n" errstrs ^ "\n"
 
 
-(** Lex and parse an open source or header file, returning the AST
+(** Lex and parse an open source or spec file, returning the AST
  *  with location decoration *)
-let parse_sourcefile channel =
+let parse_sourcefile channel filename =
   let buf = Lexing.from_channel channel in
   let open Lexing in 
   try
@@ -65,14 +65,16 @@ let parse_sourcefile channel =
   with
   | Lexer.Error msg ->
      let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
+     print_endline ("Error while lexing file " ^ filename ^ ":");
      print_string
-       ("At line " ^ format_loc spos epos ^ ": lexical error:\n    "
-          ^ msg ^ "\n");
+       ("  At line " ^ format_loc spos epos ^ ": lexical error:\n    "
+        ^ msg ^ "\n");
      failwith "Compilation terminated at lexing."
   | Parser.Error ->
      let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
+     print_endline ("Error while parsing file " ^ filename ^ ":");
      print_string
-       ("At line " ^ format_loc spos epos ^ ": syntax error.\n");
+       ("  At line " ^ format_loc spos epos ^ ": syntax error.\n");
      failwith "Compilation terminated at parsing."
 
 (** Try to open a given filename, searching paths *)
@@ -101,7 +103,7 @@ let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
       | None -> failwith ("Could not find spec file " ^ specfilename)
       | Some specfile -> (
         (* what kind of ('ed, 'sd) are they? Location, at first... *)
-        match parse_sourcefile specfile with
+        match parse_sourcefile specfile specfilename with
         | (Some spec, None) ->
            let newmap = StrMap.add modname spec mmap in
            List.fold_left load_import newmap spec.imports
@@ -182,7 +184,6 @@ let write_module_llvm filename modcode =
   print_endline ("Wrote LLVM IR code file " ^ irfilename)
 
 
-
 let parse_cmdline args =
   let rec ploop i srcfiles config =
     if i == Array.length args then (List.rev srcfiles, config)
@@ -216,11 +217,11 @@ let parse_cmdline args =
 
 let () =
   let (srcfiles, cconfig) = parse_cmdline Sys.argv in
-  (* Loop over all source file arguments, with accumulator of
-   * interfaces that are loaded. *)
+  (* Loop over all source file arguments, accumulating map of
+   * modspecs that are loaded. *)
   let process_sourcefile ispecs srcfilename =
     let infile = open_in srcfilename in
-    let (specopt, modopt) = parse_sourcefile infile in
+    let (specopt, modopt) = parse_sourcefile infile srcfilename in
     if Option.is_some specopt then
       failwith ("Module specs cannot be given on the command line "
                 ^ "or in Dill source files.");
@@ -232,7 +233,6 @@ let () =
          ispecs (* import specifications carried through *)
        )
        else (
-         (* Load imports into a symbol table before calling the analyzer *)
          match analysis cconfig ispecs parsedmod with
          | Error errs -> 
             prerr_string (format_errors errs);
@@ -251,8 +251,6 @@ let () =
          ); ispecs
        )
   in
-  (* why do we carry import specs through if they're never changed?
-   * or if it's mutated? Should "analysis" return a new one? I think so.
-   * I think the fold is only for efficiency, to avoid re-parsing, because
-   * modules are self-contained! *)
+  (* We accumulate module headers for efficiency, to avoid reading the same 
+   * one multiple times. *)
   ignore (List.fold_left process_sourcefile StrMap.empty srcfiles)

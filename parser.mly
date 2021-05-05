@@ -91,12 +91,13 @@ moduleName: mn=IDENT_UC { mn }
 modspec:
   | MODSPEC mn=moduleName ASSIGN
     iss=list(includeStmt)
+    tys=list(typedef)
     gls=list(declOnlyStmt) pd=list(procDecl)
     END mn2=moduleName
     { if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
-	  typedefs=[];
+	  typedefs=tys;
 	  globals= List.map (
 		       fun (v, t) -> {varname=v; 
 				      typeexp=t; decor=$loc}
@@ -252,6 +253,8 @@ whileStmt:
 
 typeExp:
   (* This will be elaborated to include array, null, type variables,... *)
+  | mn=moduleName DCOLON tn=IDENT_UC
+    { { modname=Some mn; classname=tn } }
   | tn=IDENT_UC
     { { modname=None; classname=tn } }
 

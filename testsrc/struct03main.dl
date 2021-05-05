@@ -1,0 +1,13 @@
+(* driver for Struct03, testing type imports *)
+module Struct003 =
+
+open Struct03;
+open Stdio;
+
+export proc main (): Void =
+  var cpx: Complex = {i=2.0, j=1.111};
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+end main
+
+end Struct003

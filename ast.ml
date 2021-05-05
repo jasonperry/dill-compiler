@@ -163,11 +163,23 @@ type 'sd module_spec = {
 (* printing functions start here *)
 
 
-let typeExpr_to_string te =
+let rec typeExpr_to_string te =
   (match te.modname with
-   | Some mn -> mn ^ "."
+   | Some mn -> mn ^ "::"
    | None -> "")
   ^ te.classname
+
+and fieldDecl_to_string fd =
+  (if fd.priv then "private " else "")
+  ^ (if fd.mut then "mut " else "")
+  ^ fd.fieldname ^ ": "
+  ^ typeExpr_to_string fd.fieldtype
+
+and typedef_to_string = function
+  | Struct std -> 
+     "type " ^ std.typename ^ " = struct\n  "
+     ^ String.concat ",\n  " (List.map fieldDecl_to_string std.fields)
+     ^ ";\nend " ^ std.typename ^ "\n"
 
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
@@ -267,8 +279,10 @@ let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   (* ^ block_to_string dmod.initblock *)
   ^ "end " ^ dmod.name ^ "\n"
 
+(** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: 'sd module_spec) =
   "modspec " ^ mspec.name ^ " = \n"
+  ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
         fun s (gdecl: 'sd globaldecl) ->
         s ^ "var " ^ gdecl.varname ^ ": "

@@ -12,11 +12,16 @@ module StrPairs =
       | c -> c
   end
 
-(* Currently only used for (module, classname) types. But we'll see. *)
-(* Oh, but maybe I have to use it for tenv now too! *)
+(** Map from string pairs. Currently only used for (module, classname)
+   types in the tenv. *)
 module TypeMap = Map.Make(StrPairs)
 
-(* List.concat_map doesn't exist until 4.10 *)
+let print_typekeys (tmap: 'a TypeMap.t) =
+  TypeMap.bindings tmap
+  |> List.iter (fun ((modalias, tname), _) ->
+         print_endline (modalias ^ " :: " ^ tname))
+
+(* List.concat_map doesn't exist until OCaml 4.10 *)
 let concat_map f l = List.concat (List.map f l)
 
 (** Mash list of error lists into a single list *)

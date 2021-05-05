@@ -2,14 +2,15 @@ module Globals01 =
 
 open Stdio;
 
-var x: Int;
+var x: Int = 16;
 var y = 4.0;
 
-begin
+export proc main() : Void =
   x = 14;
   (* y = 2.2; *)
   printFloat(y);
-  var pp = x + 33;
-end
+  var pp = x + 33;  (* should be 47, not 49 *)
+  printInt(pp);
+end main
 
 end Globals01
