@@ -584,6 +584,8 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
     let argchecks = List.map (fun (_, texp) -> check_typeExpr tenv texp)
                       pdecl.params in
     if List.exists Result.is_error argchecks then
+      (* can't exactly use concat_errors here because typeExpr check
+       * errors are strings, not list. But should still simplify this. *)
       let errs =
         concat_map (
             fun r -> match r with
@@ -595,20 +597,30 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
       (* Create symbol table entries for params *)
       let paramentries =
         List.map2 (
-            fun (paramname, _) arg ->
-            match arg with
-            | Error _ -> failwith "Bug: errors in param list should be gone"
-            | Ok ttag ->
-               {symname = paramname; symtype=ttag; var=false; addr=None}
-          ) pdecl.params argchecks in
-      (* Typecheck return type. *)
+            fun (paramname, _ (* typeExp, not needed*)) argtype ->
+            (* generate record field entries if any. similar to StmtDecl. *)
+            {symname = paramname; symtype=argtype; var=false; addr=None}
+          ) pdecl.params (concat_ok argchecks)
+      in
+      let fieldentries = List.concat (
+        paramentries |>
+          List.map (fun pentry -> 
+              List.map (fun (finfo: fieldInfo) -> {
+                            symname=pentry.symname ^ "." ^ finfo.fieldname;
+                            symtype=finfo.fieldtype;
+                            var=false; (* TODO: finfo.mut && param is mut *)
+                            addr=None
+                          } 
+                ) pentry.symtype.tclass.fields ))
+      in
+      (* Typecheck return type *)
       match check_typeExpr tenv pdecl.rettype with
       | Error msg -> Error [{loc=pdecl.decor; value=msg}]
       | Ok rttag -> (
         (* Create procedure symtable entry.
          * Don't add it to module symbtable node here; caller does it. *)
         let procentry =
-          (* TODO: I now use :: to separate module and thing. Change this? *)
+          (* Still using . instead of :: for procedures internally *)
           {procname=(if not pdecl.export then modname ^ "." else "")
                     ^ pdecl.name;
            rettype=rttag; fparams=paramentries} in
@@ -618,8 +630,10 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
         (* Should I add the proc to its own symbol table? Don't see why. *)
         (* Did I do this so codegen for recursive calls "just works"? *)
         Symtable.addproc procscope pdecl.name procentry;
-        List.iter (fun param -> Symtable.addvar procscope param.symname param)
-          paramentries;
+        List.iter (fun param ->
+            Symtable.addvar procscope param.symname param) paramentries;
+        List.iter (fun pfield ->
+            Symtable.addvar procscope pfield.symname pfield) fieldentries;
         Ok ({name=pdecl.name; params=pdecl.params;
              rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
             procentry)
@@ -627,7 +641,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
 
 
 (** Check the body of a procedure whose header has already been checked 
-  * (and added to the symbol table) *)
+  * (and had its parameters added to the symbol table) *)
 let check_proc tenv (pdecl: 'addr st_node procdecl) proc =  
   let procscope = pdecl.decor in
   match check_stmt_seq procscope tenv proc.body with
@@ -753,6 +767,7 @@ let add_imports syms tenv specs istmts =
             check_importtypes modname modalias rest newtenv
          | Error e -> Error e
     in
+    (* global variables and procs done together, both create symbols *)
     let check_importdecls modname prefix the_spec = 
       (* Iterate over global variable declarations and add to symtable *)
       List.map (
@@ -794,7 +809,7 @@ let add_imports syms tenv specs istmts =
                 Ok syms
              | Error errs -> Error errs
            ) the_spec.procdecls
-        ) (* end add_import *)
+        ) (* end check_importdecls *)
     in
     let rec mainloop stmts tenv_acc =
       match stmts with

@@ -97,6 +97,7 @@ type ('ed, 'sd) globalstmt = {
 type 'sd procdecl = {
     name: string;
     (* One could imagine removing the typeExprs after analysis. *)
+    (* TODO: add mutable-reference signifier maybe "paraminfo" type? *)
     params: (string * typeExpr) list;
     (* Also need "private" signifier. *)
     export: bool;
