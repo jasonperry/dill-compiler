@@ -9,10 +9,10 @@
 %token EQ NE LT GT LE GE
 %token AND OR NOT
 %token TRUE FALSE
-%token ASSIGN COLON DCOLON SEMI COMMA
+%token COLON DCOLON SEMI COMMA HASH
+%token ASSIGN NULLASSIGN
 %token VAR
 %token BEGIN END
-%token NULLASSIGN
 %token IF THEN ELSIF ELSE ENDIF
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
@@ -162,15 +162,16 @@ procHeader:
 procDecl: ph=procHeader SEMI { ph }
 
 paramList:
-  | pl=separated_list(COMMA, nameAndType)
+  | pl=separated_list(COMMA, paramInfo)
     { pl }
 
-nameAndType:
+paramInfo:
   (* should this be varexp or should I have a different 'varname' rule? 
-   * I think later I will have objExp and then I'll need it. 
-   * It's definitely not an expression. *)
+   * I believe it's just a name, you can't have dots in a parameter. *)
+  | HASH v=varName COLON t=typeExp
+    { true, v, t }
   | v=varName COLON t=typeExp
-    { v, t }
+    { false, v, t } (* (string * typeExpr) for procdecl.params *)
 
 stmtSeq:
   | sl = list(stmt)
@@ -352,8 +353,12 @@ callExp:
     { ExpCall (pn, al) }
 
 argList:
-  | al=separated_list(COMMA, expr)
-    { al }
+(* Turn the mutability marker into a boolean *)
+  | al=separated_list(COMMA, pair(option(HASH), expr))
+    { List.map (fun (eopt, ex) -> match eopt with
+				  | Some _ -> (true, ex)
+				  | None -> (false, ex)
+	       ) al }
 
 nullAssnExp:  (* This needs lookahead, will it work? *)
   | VAR v=varName COLON ty=typeExp NULLASSIGN e=expr

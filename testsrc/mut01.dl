@@ -1,0 +1,31 @@
+(* first attempt at mutating a parameter! *)
+module Mut01 =
+
+open Stdio;
+
+type Complex = struct
+  mut i: Float,
+  mut j: Float;
+end Complex
+
+
+(* Oops, it looks like a comment when it's next to the paren. *)
+proc swapij(#c: Complex) : Void =
+  var temp = c.i;
+  c.i = c.j;
+  c.j = temp;
+  return;
+end swapij
+
+export proc main() : Void = 
+
+  var cpx: Complex = {i=2.0, j=1.111};
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+  swapij(#cpx);
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+
+end main
+
+end Mut01

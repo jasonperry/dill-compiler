@@ -46,11 +46,12 @@ type typeExpr = {
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
+  (* is the module name already concatted in the var name? *)
   | ExpVar of string * string list (* field specifiers *)
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
-  | ExpCall of string * 'ed expr list (* includes module name and ., for now *)
+  | ExpCall of string * (bool * 'ed expr) list (* function name, mut * value list *)
   (* the bool is true if declaring a new var *)
   | ExpNullAssn of bool * string * typeExpr option * 'ed expr
 
@@ -97,9 +98,9 @@ type ('ed, 'sd) globalstmt = {
 type 'sd procdecl = {
     name: string;
     (* One could imagine removing the typeExprs after analysis. *)
-    (* TODO: add mutable-reference signifier maybe "paraminfo" type? *)
-    params: (string * typeExpr) list;
-    (* Also need "private" signifier. *)
+    (* bool is mut indicator; maybe "paraminfo" type later *)
+    params: (bool * string * typeExpr) list; 
+    (* TODO: Also need "private" signifier. *)
     export: bool;
     rettype: typeExpr;
     decor: 'sd
@@ -194,8 +195,11 @@ let rec exp_to_string (e: 'a expr) =
       ^ "}"
   | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
-  | ExpCall (pn, args) ->
-     pn ^ "(" ^ String.concat ", " (List.map exp_to_string args) ^ ")"
+  | ExpCall (procname, args) ->
+     procname ^ "(" ^ String.concat ", "
+                        (List.map (fun (mut, ex) ->
+                             (if mut then "#" else "")
+                             ^ exp_to_string ex) args) ^ ")"
   | ExpNullAssn (decl, v, tyopt, e) ->
      (if decl then "var " else "")
      ^ v ^ Option.fold ~none:"" ~some:typeExpr_to_string tyopt
@@ -249,8 +253,9 @@ let procdecl_to_string (pdecl: 'sd procdecl) =
   (if pdecl.export then "export " else "")
   ^ "proc " ^ pdecl.name ^ "("
   ^ String.concat "," (
-        List.map (fun (varname, vartype) ->
-            varname ^ ": " ^ typeExpr_to_string vartype) pdecl.params)
+        List.map (fun (mut, varname, vartype) ->
+            (if mut then "#" else "")
+            ^ varname ^ ": " ^ typeExpr_to_string vartype) pdecl.params)
   ^ ") : " ^ typeExpr_to_string pdecl.rettype
 
 let proc_to_string (proc: ('ed, 'sd) proc) =

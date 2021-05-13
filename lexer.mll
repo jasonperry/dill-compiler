@@ -61,6 +61,7 @@ rule token = parse  (* funny that it's called parse *)
   | "&&"    { AND }
   | "||"    { OR }
   | '!'     { NOT }
+  | '#'     { HASH }
   | '='	    { ASSIGN }
   | "?="    { NULLASSIGN }
   | ','	    { COMMA }

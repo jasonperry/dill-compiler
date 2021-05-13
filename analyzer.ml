@@ -132,8 +132,10 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
 (** Procedure call check factored out; it's used for both exprs and stmts. *)
 and check_call syms tenv (fname, args) =
   (* recursively check argument exprs and store types in list. *)
-  let args_res = List.map (check_expr syms tenv) args in
+  let args_res = List.map (check_expr syms tenv) (List.map snd args) in
   (* Concatenate errors from args check and bail out if any *)
+  (* check_expr doesn't return a list, so stitch into one. *)
+  (* FIX: probably check_expr should return a list also, for consistency *)
   let err_strs =
     List.fold_left (
         fun es res -> match res with
@@ -141,7 +143,6 @@ and check_call syms tenv (fname, args) =
                       | Error {loc=_; value} -> es ^ "\n" ^ value
       ) "" args_res in
   if err_strs <> "" then
-    (* check_expr doesn't return a list, so stitch into one. *)
     Error err_strs
   else
     (* could construct these further down... *)
@@ -150,14 +151,52 @@ and check_call syms tenv (fname, args) =
                      args_typed in 
     (* find and match procedure *)
     match Symtable.findproc_opt fname syms with
-    | Some (proc, _) -> (
-      if match_params proc.fparams argtypes then
-        Ok {e=ExpCall (fname, args_typed); decor=proc.rettype}
-      else
-        (* TODO: make it print out the arg list *)
-        Error ("Argument match failure for " ^ fname)
-    )
     | None -> Error ("Unknown procedure name: " ^ fname)
+    | Some (proc, _) -> (
+      if not (match_params proc.fparams argtypes) then
+        (* TODO: make it print out the arg list (make it return a result type) *)
+        Error ("Argument match failure for " ^ fname)
+      else
+        (* trying putting mutability checking here, after all other checks. *)
+        let rec check_mutability params args =
+          match (params, args) with
+          | (pentry::paramrest, (mut, argexp)::argsrest) -> (
+            (* First, check that formal & actual have the same mut flag. *)
+            (* Maybe put this in match_params (for the sake of keeping the 
+             * flag together as well. *)
+            if pentry.mut <> mut
+            then Error ("Mutability flag mismatch for argument "
+                        ^ exp_to_string argexp)
+            else (
+              if not mut
+              then check_mutability paramrest argsrest
+              (* If mutable, make sure it's a var reference and mutable *)
+              else match argexp.e with
+                 (* can we pass a field as a mutable reference? Yes, it could be
+                  * a mutable type itself. *)
+                 | ExpVar _ -> 
+                    let varentry, _ =
+                      (* FIX: exp_to_string won't work with array element refs. *)
+                      Symtable.findvar (exp_to_string argexp) syms in
+                    if not (varentry.var && varentry.mut)
+                    then Error ("Variable expression "
+                                ^ exp_to_string argexp
+                                ^ "cannot be passed mutably")
+                    else
+                      check_mutability paramrest argsrest
+                 | _ ->
+                    Error ("Non-variable expression "
+                           ^ exp_to_string argexp ^ "cannot be passed mutably")
+          ))
+          | ([], []) -> Ok ()
+          | _ -> failwith "BUG: arg and param list length mismatch"
+        in
+        match check_mutability proc.fparams args with
+        | Error err -> Error err
+        | Ok _ ->
+           (* TODO: put the mut flags back together (see above) *)
+           Ok {e=ExpCall (fname, args_typed); decor=proc.rettype}
+    )
 
 
 (** Check that a record expression matches the given type. *)
@@ -581,7 +620,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
      Error [{loc=pdecl.decor; value="Redeclaration of procedure " ^ pdecl.name}]
   | _ -> (
     (* Typecheck arguments *)
-    let argchecks = List.map (fun (_, texp) -> check_typeExpr tenv texp)
+    let argchecks = List.map (fun (_, _, texp) -> check_typeExpr tenv texp)
                       pdecl.params in
     if List.exists Result.is_error argchecks then
       (* can't exactly use concat_errors here because typeExpr check
@@ -594,49 +633,70 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
           ) argchecks
       in Error errs
     else
-      (* Create symbol table entries for params *)
-      let paramentries =
-        List.map2 (
-            fun (paramname, _ (* typeExp, not needed*)) argtype ->
-            (* generate record field entries if any. similar to StmtDecl. *)
-            {symname = paramname; symtype=argtype; var=false; addr=None}
-          ) pdecl.params (concat_ok argchecks)
+      let argtypes = concat_ok argchecks in
+      (* check that any mutability markers on parameters are allowable. *)
+      let rec check_mutparams argtypes params =
+        match (argtypes, params) with
+        | (argtype::argsrest, (mut, _, _)::paramsrest) ->
+           if mut && not argtype.tclass.muttype
+           then Error {loc=pdecl.decor;
+                       value="Type " ^ argtype.tclass.classname
+                             ^ " is immutable and cannot be passed mutable" }
+           else check_mutparams argsrest paramsrest
+        | ([], []) -> Ok ()
+        | _ -> failwith "BUG: param types and param list length mismatch"
       in
-      let fieldentries = List.concat (
-        paramentries |>
-          List.map (fun pentry -> 
-              List.map (fun (finfo: fieldInfo) -> {
-                            symname=pentry.symname ^ "." ^ finfo.fieldname;
-                            symtype=finfo.fieldtype;
-                            var=false; (* TODO: finfo.mut && param is mut *)
-                            addr=None
-                          } 
-                ) pentry.symtype.tclass.fields ))
-      in
-      (* Typecheck return type *)
-      match check_typeExpr tenv pdecl.rettype with
-      | Error msg -> Error [{loc=pdecl.decor; value=msg}]
-      | Ok rttag -> (
-        (* Create procedure symtable entry.
-         * Don't add it to module symbtable node here; caller does it. *)
-        let procentry =
-          (* Still using . instead of :: for procedures internally *)
-          {procname=(if not pdecl.export then modname ^ "." else "")
-                    ^ pdecl.name;
-           rettype=rttag; fparams=paramentries} in
-        (* create new inner scope under the procedure, and add args *)
-        (* Woops, it creates a "dangling" scope if proc isn't defined *)
-        let procscope = Symtable.new_proc_scope syms procentry in
-        (* Should I add the proc to its own symbol table? Don't see why. *)
-        (* Did I do this so codegen for recursive calls "just works"? *)
-        Symtable.addproc procscope pdecl.name procentry;
-        List.iter (fun param ->
-            Symtable.addvar procscope param.symname param) paramentries;
-        List.iter (fun pfield ->
-            Symtable.addvar procscope pfield.symname pfield) fieldentries;
-        Ok ({name=pdecl.name; params=pdecl.params;
-             rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
-            procentry)
+      match check_mutparams argtypes pdecl.params with
+      | Error err -> Error [err]
+      | Ok _ -> 
+         (* Build symbol table entries for params *)
+         let paramentries =
+           List.map2 (
+               fun (mut, paramname, _ (* typeExp, not needed*)) argtype ->
+               (* generate record field entries if any. similar to StmtDecl. *)
+               {symname = paramname; symtype=argtype;
+                var=false; mut=mut; addr=None}
+             ) pdecl.params argtypes
+         in
+         (* Build symbol table entries for all fields of all params, if any *)
+         let fieldentries =
+           List.concat (
+               paramentries
+               |> List.map (fun pentry -> 
+                      List.map (fun (finfo: fieldInfo) -> {
+                                    symname=pentry.symname ^ "."
+                                            ^ finfo.fieldname;
+                                    symtype=finfo.fieldtype;
+                                    var=false;
+                                    mut=finfo.mut && pentry.mut;
+                                    addr=None
+                                  } 
+                        ) pentry.symtype.tclass.fields ))
+         in
+         (* Typecheck return type *)
+         match check_typeExpr tenv pdecl.rettype with
+         | Error msg -> Error [{loc=pdecl.decor; value=msg}]
+         | Ok rttag -> (
+           (* Create procedure symtable entry.
+            * Don't add it to module symtable node here; caller does it. *)
+           let procentry =
+             (* Still using . instead of :: for procedures internally *)
+             {procname=(if not pdecl.export then modname ^ "." else "")
+                       ^ pdecl.name;
+              rettype=rttag; fparams=paramentries} in
+           (* create new inner scope under the procedure, and add args *)
+           (* Woops, it creates a "dangling" scope if proc isn't defined *)
+           let procscope = Symtable.new_proc_scope syms procentry in
+           (* Should I add the proc to its own symbol table? Don't see why. *)
+           (* Did I do this so codegen for recursive calls "just works"? *)
+           Symtable.addproc procscope pdecl.name procentry;
+           List.iter (fun param ->
+               Symtable.addvar procscope param.symname param) paramentries;
+           List.iter (fun pfield ->
+               Symtable.addvar procscope pfield.symname pfield) fieldentries;
+           Ok ({name=pdecl.name; params=pdecl.params;
+                rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
+               procentry)
   ))
 
 
@@ -745,13 +805,11 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
 
 (** From imported module specs, add types and global var/proc symbols. *)
 let add_imports syms tenv specs istmts = 
-  (* Should I make types global? No, let them be parameterized also *)
   (* Even if you open a module, you should remember which module the 
    * function came from, for error messages *)
-  (* In other words, as vars have in_proc, funcs should have in_module. 
-   * But wouldn't (global) variables need it too? *)
+  (* Wouldn't (global) variables need it too? *)
   (* Maybe vars can have a 'parent_struct' that could either be a 
-     proc or a type or a module. *) 
+     proc or a type or a module. *)
     (* Construct the right names to use from the statements. *)
     (* check type definitions and add to tenv. *)
     let rec check_importtypes modname modalias tdefs tenv_acc =
