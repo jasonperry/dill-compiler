@@ -1,11 +1,11 @@
-(* first attempt at mutating a parameter! *)
-module Mut01 =
+(* attempt to pass an immutable type as mutable *)
+module MutErr03 =
 
 open Stdio;
 
 type Complex = struct
-  mut i: Float,
-  mut j: Float;
+  i: Float,
+  j: Float;
 end Complex
 
 proc swapij(#c: Complex) : Void =
@@ -26,4 +26,4 @@ export proc main() : Void =
 
 end main
 
-end Mut01
+end MutErr03

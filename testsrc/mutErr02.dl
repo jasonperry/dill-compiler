@@ -1,5 +1,5 @@
-(* first attempt at mutating a parameter! *)
-module Mut01 =
+(* mismatch in passing *)
+module MutErr02 =
 
 open Stdio;
 
@@ -20,10 +20,10 @@ export proc main() : Void =
   var cpx: Complex = {i=2.0, j=1.111};
   printFloat(cpx.i);
   printFloat(cpx.j);
-  swapij(#cpx);
+  swapij(cpx);
   printFloat(cpx.i);
   printFloat(cpx.j);
 
 end main
 
-end Mut01
+end MutErr02

@@ -186,8 +186,11 @@ and typedef_to_string = function
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
   match e.e with
-  | ExpConst _ -> "CONSTEXP "
-  | ExpVar (v, _) -> "VAREXP(" ^ v ^ ",POSSIBLE DOT FIELDS)"
+  | ExpConst (FloatVal f) -> Float.to_string f
+  | ExpConst (IntVal i) -> Int.to_string i
+  | ExpConst (BoolVal b) -> if b then "True" else "False"
+  | ExpVar (v, flds) ->
+     v ^ if flds <> [] then String.concat "." flds else ""
   | ExpRecord fl ->
       "{" ^ String.concat ", "
               (List.map (fun (fname, ex) ->

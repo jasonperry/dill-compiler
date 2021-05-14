@@ -1,9 +1,19 @@
+(* procedure definition and call *)
+
+module Squarer =
+
+open Stdio;
+
 proc square (x: Int) : Int =
-begin
   var x2 = x * x;
   return x2;
 end square
 
+export proc main() : Void = 
+  var y = square(42);
+  printInt(y);
+  y = square(98);
+  printInt(y);
+end main
 
-var y = square(42);
-y = square(98);
+end Squarer

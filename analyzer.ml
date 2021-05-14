@@ -414,6 +414,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                           ^ " variable " ^ varstr ^ " of type " 
                           ^ typetag_to_string sym.symtype ^ " can't store "
                           ^ typetag_to_string ettag}]
+          (* only check var here, not mut, because lvalues have their own 
+           * symbol table entries with "var". *)
           else if sym.var = false then
             Error [{loc=stm.decor;
                     value="Assignment to immutable var/field " ^ varstr}]
@@ -653,7 +655,6 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
          let paramentries =
            List.map2 (
                fun (mut, paramname, _ (* typeExp, not needed*)) argtype ->
-               (* generate record field entries if any. similar to StmtDecl. *)
                {symname = paramname; symtype=argtype;
                 var=false; mut=mut; addr=None}
              ) pdecl.params argtypes
@@ -663,14 +664,19 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
            List.concat (
                paramentries
                |> List.map (fun pentry -> 
-                      List.map (fun (finfo: fieldInfo) -> {
-                                    symname=pentry.symname ^ "."
-                                            ^ finfo.fieldname;
-                                    symtype=finfo.fieldtype;
-                                    var=false;
-                                    mut=finfo.mut && pentry.mut;
-                                    addr=None
-                                  } 
+                      List.map (fun (finfo: fieldInfo) ->
+                          (*print_endline (
+                              "Adding param field entry: "
+                              ^ pentry.symname ^ "." ^ finfo.fieldname
+                              ^ ", mutable: "
+                              ^ Bool.to_string (finfo.mut && pentry.mut)); *)
+                          {
+                            symname=pentry.symname ^ "." ^ finfo.fieldname;
+                            symtype=finfo.fieldtype;
+                            var=finfo.mut && pentry.mut;
+                            mut=finfo.mut && pentry.mut; (* no diff for fields? *)
+                            addr=None
+                          } 
                         ) pentry.symtype.tclass.fields ))
          in
          (* Typecheck return type *)

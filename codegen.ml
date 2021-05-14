@@ -90,6 +90,8 @@ let ttag_to_llvmtype lltypes ttag =
 
 
 (** Generate LLVM allocation for a varexp, traversing fields *)
+(* Seems I need to do this once to get the load from the field offset. 
+ * BUT after that I could store the field alloca back in the symtable?! *)
 let gen_varexp_alloca varentry fieldlist lltypes builder =
   match varentry.addr with 
   | None -> failwith ("BUG gen_varexp_alloca: alloca address not present for "
@@ -201,7 +203,9 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      * (or at least the class name, so it can be generated.) *)
     | None -> failwith "BUG: unknown function name in codegen"
     | Some callee ->
-       let args = List.map (gen_expr the_module builder syms lltypes) params
+       (* TODO: handle mutable differently, pass reference? *)
+       let args = List.map (gen_expr the_module builder syms lltypes)
+                    (List.map snd params)
                   |> Array.of_list in
        build_call callee args "calltmp" builder
   )
@@ -376,7 +380,9 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
      * (or at least the class name, so it can be generated.) *)
     | None -> failwith "BUG: unknown function name in codegen"
     | Some callee ->
-       let args = List.map (gen_expr the_module builder syms lltypes) params
+       (* TODO: handle mutable by passing pointer (duplicated from ExpCall) *)
+       let args = List.map (gen_expr the_module builder syms lltypes)
+                    (List.map snd params)
                   |> Array.of_list in
        (* instructions returning void cannot have a name *)
        ignore (build_call callee args "" builder)
@@ -454,12 +460,15 @@ let gen_proc the_module builder lltypes proc =
      (* should I define_function here, not add to the existing decl? *)
      let entry_bb = append_block context "entry" func in
      position_at_end entry_bb builder;
-     (* create storage for all params (needed for uniformity in
-      * codegen for vars.) *)
-     List.iteri (fun i (varname, _) ->
+     (* set storage for all params in symbol table *)
+     (* I should never have been doing stores for anything! *)
+     (* Even if it's a value I can get the address? of it? *)
+     List.iteri (fun i (_, varname, _) ->
          let entrybuilder =
            builder_at context (instr_begin (entry_block func)) in
-         let alloca =
+         let alloca = (* param func i *)
+         (* if mut then param func i (* will work b/c it's a pointer? *)
+           else  *)
            build_alloca (type_of (param func i)) varname entrybuilder in
          ignore (build_store (param func i) alloca builder);
          Symtable.set_addr proc.decor varname alloca
