@@ -77,6 +77,7 @@ let st_node_to_string node =
   ts' "" node
 
 (** Values and functions for the st_node type. *)
+(* Had specificity problems with this, maybe don't need a signature. *)
 (* module type SYMTABLE = sig
   val make_empty : unit -> 'a st_node
   val addvar : 'a st_node -> 'a st_entry -> unit

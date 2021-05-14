@@ -51,7 +51,7 @@ type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
-  | ExpCall of string * (bool * 'ed expr) list (* function name, mut * value list *)
+  | ExpCall of string * (bool * 'ed expr) list (* proc name, mut * value list *)
   (* the bool is true if declaring a new var *)
   | ExpNullAssn of bool * string * typeExpr option * 'ed expr
 

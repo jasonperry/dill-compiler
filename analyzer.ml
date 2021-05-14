@@ -13,16 +13,6 @@ exception SemanticError of string
 
 (* Symbol table nodes are decorations for statements. *)
 
-(** Helper to match a formal with actual parameter list, for
-   typechecking procedure calls. *)
-let rec match_params (formal: 'a st_entry list) (actual: typetag list) =
-  match (formal, actual) with
-  | ([], []) -> true
-  | (_, []) | ([], _) -> false
-  | (fent::frest, atag::arest) ->
-     (* Later, this could inform code generation of template types *)
-     fent.symtype = atag && match_params frest arest
-
 (** make the type expr result return only the tag for now. 
  *  Hopefully there's no need for a rewritten typeExp in the AST. *)
 type typeExpr_result = (typetag, string) Stdlib.result
@@ -128,8 +118,27 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
      Error {loc=ex.decor;
             value="Null-check assignment not allowed in this context"}
 
+(** Helper for check_call to match a formal with actual parameter list *)
+(* Should I embed this in check_call? *)
+and match_params paramsyms (args: (bool * typetag expr) list) =
+  match (paramsyms, args) with
+  | ([], []) -> Ok ()
+  | (_, []) | ([], _) ->
+     Error "Argument number mismatch"
+  | (pentry::prest, (argmut, argexp)::arest) ->
+     (* Later, this could inform code generation of template types *)
+     if pentry.symtype <> argexp.decor
+     then Error ("Wrong argument type for parameter " ^ pentry.symname
+                 ^ "; expected " ^ typetag_to_string pentry.symtype
+                 ^ ", got " ^ typetag_to_string (argexp.decor))
+     else (
+       if pentry.mut <> argmut
+       then Error ("Mutability flag mismatch for parameter "
+                   ^ pentry.symname)
+       else match_params prest arest
+     )
 
-(** Procedure call check factored out; it's used for both exprs and stmts. *)
+(** Procedure call check, used for both exprs and stmts. *)
 and check_call syms tenv (fname, args) =
   (* recursively check argument exprs and store types in list. *)
   let args_res = List.map (check_expr syms tenv) (List.map snd args) in
@@ -146,55 +155,43 @@ and check_call syms tenv (fname, args) =
     Error err_strs
   else
     (* could construct these further down... *)
-    let args_typed = concat_ok args_res in
-    let argtypes = List.map (fun (ae: typetag expr) -> ae.decor)
-                     args_typed in 
-    (* find and match procedure *)
+    let args_typed = List.combine (List.map fst args) (concat_ok args_res) in
+    (* find the procedure entry (checking arg exprs first is eval order!) *)
     match Symtable.findproc_opt fname syms with
     | None -> Error ("Unknown procedure name: " ^ fname)
     | Some (proc, _) -> (
-      if not (match_params proc.fparams argtypes) then
-        (* TODO: make it print out the arg list (make it return a result type) *)
-        Error ("Argument match failure for " ^ fname)
-      else
+      (* stitch the mutability tags back in for checking. *)
+      match match_params proc.fparams args_typed with 
+      | Error estr -> 
+         Error ("Argument match failure for " ^ fname ^ ": " ^ estr)
+      | Ok () ->
         (* trying putting mutability checking here, after all other checks. *)
-        let rec check_mutability params args =
-          match (params, args) with
-          | (pentry::paramrest, (mut, argexp)::argsrest) -> (
-            (* First, check that formal & actual have the same mut flag. *)
-            (* Maybe put this in match_params (for the sake of keeping the 
-             * flag together as well. *)
-            if pentry.mut <> mut
-            then Error ("Mutability flag mismatch for argument "
-                        ^ exp_to_string argexp)
-            else (
-              if not mut
-              then check_mutability paramrest argsrest
+         let rec check_mutability = function
+           | (mut, argexp)::argsrest -> (
+             if not mut then check_mutability argsrest
               (* If mutable, make sure it's a var reference and mutable *)
-              else match argexp.e with
-                 (* can we pass a field as a mutable reference? Yes, it could be
-                  * a mutable type itself. *)
-                 | ExpVar _ -> 
-                    let varentry, _ =
-                      (* FIX: exp_to_string won't work with array element refs. *)
-                      Symtable.findvar (exp_to_string argexp) syms in
-                    if not (varentry.var && varentry.mut)
-                    then Error ("Variable expression "
-                                ^ exp_to_string argexp
-                                ^ "cannot be passed mutably")
-                    else
-                      check_mutability paramrest argsrest
-                 | _ ->
-                    Error ("Non-variable expression "
-                           ^ exp_to_string argexp ^ "cannot be passed mutably")
-          ))
-          | ([], []) -> Ok ()
-          | _ -> failwith "BUG: arg and param list length mismatch"
+             else match argexp.e with
+                  (* can we pass a field as a mutable reference? Yes, it could be
+                   * a mutable type itself. *)
+                  | ExpVar _ -> 
+                     let varentry, _ =
+                       (* FIX: exp_to_string won't work with array element refs. *)
+                       Symtable.findvar (exp_to_string argexp) syms in
+                     if not (varentry.var && varentry.mut)
+                     then Error ("Variable expression "
+                                 ^ exp_to_string argexp
+                                 ^ "cannot be passed mutably")
+                     else
+                       check_mutability argsrest
+                  | _ ->
+                     Error ("Non-variable expression "
+                            ^ exp_to_string argexp ^ "cannot be passed mutably")
+           )
+           | [] -> Ok ()
         in
-        match check_mutability proc.fparams args with
+        match check_mutability args with
         | Error err -> Error err
         | Ok _ ->
-           (* TODO: put the mut flags back together (see above) *)
            Ok {e=ExpCall (fname, args_typed); decor=proc.rettype}
     )
 
@@ -275,7 +272,8 @@ let check_condexp condsyms (tenv: typeenv) condexp =
         | None -> 
            (* Caller will hold the modified 'condsyms' node *) 
            Symtable.addvar condsyms varname
-             {symname=varname; symtype=ety; var=true; addr=None};
+             {symname=varname; symtype=ety; var=true;
+              mut=ety.tclass.muttype; addr=None};
            goodex
         | Some tyexp -> (
           match check_typeExpr tenv tyexp with
@@ -288,7 +286,8 @@ let check_condexp condsyms (tenv: typeenv) condexp =
                           ^ typetag_to_string ety}
           | Ok _ ->
              Symtable.addvar condsyms varname
-               {symname=varname; symtype=ety; var=true; addr=None};
+               {symname=varname; symtype=ety; var=true;
+                mut=ety.tclass.muttype; addr=None};
              goodex
         )
       else (
@@ -371,7 +370,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
         | Ok (e2opt, vty) -> (
           (* Everything is Ok, create symbol table structures. *)
           Symtable.addvar syms v
-            {symname=v; symtype=vty; var=true; addr=None};
+            {symname=v; symtype=vty; var=true;
+             mut=vty.tclass.muttype; addr=None};
           if Option.is_none e2opt then
             syms.uninit <- StrSet.add v syms.uninit;
           (* function to add symtable entries for a record fields *)
@@ -380,8 +380,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
              * we just add "var.field" symbols *)
             let varstr = v ^ "." ^ finfo.fieldname in
             Symtable.addvar syms varstr
-              {symname=varstr; symtype=finfo.fieldtype;
-               var=finfo.mut; addr=None};
+              {symname=varstr; symtype=finfo.fieldtype; var=finfo.mut;
+               mut=finfo.fieldtype.tclass.muttype; addr=None};
             (* It's enough to just check if there's an initializer, because 
              * a record expression will have to init every field. *)
             if Option.is_none e2opt then 
@@ -795,7 +795,8 @@ let check_typedef modname tenv (tydef: locinfo typedef) =
         {
           classname = sdecl.typename;
           in_module = modname;
-          muttype = List.exists (fun fdecl -> fdecl.mut) sdecl.fields;
+          muttype = List.exists (fun (fdecl: 'sd fieldDecl) -> fdecl.mut)
+                      sdecl.fields;
           params = [];
           implements = [];
           (* later can generate field info with same type variables as outer *)
@@ -843,7 +844,7 @@ let add_imports syms tenv specs istmts =
             | None ->
                let entry = {
                    symname = fullname; symtype = ttag; 
-                   var = true; addr = None
+                   var = true; mut=ttag.tclass.muttype; addr = None
                  } in
                (* wait, should we not add both? *)
                Symtable.addvar syms refname entry;
