@@ -26,15 +26,14 @@ let base_tenv =
 type 'addr st_entry = {
     symname: string;
     symtype: typetag;
-    (* For now, this also works for mutable record fields locally, since
-     * they have their own symbol table entries. *)
+    (* 'var' is what's checked for any local assignment (including to record 
+     * fields *)
     var: bool;
     (* However, function parameters are not vars, they can't be reassigned,
      * but they might be mutable, so we do need separate fields *)
     mut: bool;
     (* store an address (stack or heap) for code generation. *)
     addr: 'addr option
-    (* instead of an option, how about an "addr decorated" version *)
   }
 
 (** Symbol table entry type for a procedure. *)

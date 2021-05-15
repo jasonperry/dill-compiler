@@ -114,7 +114,7 @@ let gen_varexp_alloca varentry fieldlist lltypes builder =
           get_field_alloca rest fieldtype alloca
      in
      get_field_alloca fieldlist varentry.symtype alloca
-  
+
 
 (** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
@@ -195,22 +195,42 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
     else
       failwith "unknown type for binary operation"
   )
-  | ExpCall (fname, params) -> (
-    let (entry, _) = Symtable.findproc fname syms in
+  | ExpCall (fname, args) ->
+     let (callee, llargs) = 
+       gen_call the_module builder syms lltypes (fname, args) in
+     build_call callee llargs "calltmp" builder
+
+  | ExpNullAssn (_, _, _, _) ->
+     failwith "BUG: null assign found outside condition"
+
+
+(** Generate LLVM for a function call (used in both expr and stmt) *)
+and gen_call the_module builder syms lltypes (fname, args) =
+  let (entry, _) = Symtable.findproc fname syms in
     match lookup_function entry.procname the_module with
     (* assumes function names are unique. this may mean that
      * procedure entries will need to store a "canonicalized" proc name
      * (or at least the class name, so it can be generated.) *)
     | None -> failwith "BUG: unknown function name in codegen"
     | Some callee ->
-       (* TODO: handle mutable differently, pass reference? *)
-       let args = List.map (gen_expr the_module builder syms lltypes)
-                    (List.map snd params)
-                  |> Array.of_list in
-       build_call callee args "calltmp" builder
-  )
-  | ExpNullAssn (_, _, _, _) ->
-     failwith "BUG: null assign found outside condition"
+       let llargs =
+         List.map (fun (mut, argexpr) ->
+             (* mutable is pass-by-reference; get the variable expr's alloca *)
+             if mut then
+               match argexpr.e with
+               | ExpVar _ -> (   (* (v, vlds) *)
+                 let varentry, _ =
+                   Symtable.findvar (exp_to_string argexpr) syms in
+                 match varentry.addr with
+                 | Some alloca -> alloca (* Do I have to cast this? *)
+                 | None -> failwith "BUG: alloca not found for mutable arg"
+               )
+               | _ -> failwith "BUG: non-var mutable argument in codegen"
+             else
+               gen_expr the_module builder syms lltypes argexpr
+           ) args
+         |> Array.of_list in
+       (callee, llargs) (* actual build is different if expr or stmt *)
 
 
 let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
@@ -372,8 +392,11 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     ignore (build_cond_br condres loop_bb merge_bb builder);
     position_at_end merge_bb builder    
   )
-  | StmtCall {decor=_; e=ExpCall (fname, params)} -> (
-    let (entry, _) = Symtable.findproc fname syms in
+  | StmtCall {decor=_; e=ExpCall (fname, args)} ->
+     let (callee, llargs) = 
+       gen_call the_module builder syms lltypes (fname, args) in
+     ignore (build_call callee llargs "" builder)
+   (*let (entry, _) = Symtable.findproc fname syms in
     match lookup_function entry.procname the_module with
     (* assumes function names are unique. this may mean that
      * procedure entries will need to store a "canonicalized" proc name
@@ -386,7 +409,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
                   |> Array.of_list in
        (* instructions returning void cannot have a name *)
        ignore (build_call callee args "" builder)
-  )
+   ) *)
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
   | StmtBlock _ -> failwith "not implemented"
 
@@ -432,18 +455,22 @@ let gen_global_decl the_module (gdecl: ('ed, 'sd) globalstmt) =
   | None -> failwith "Shouldn't happen, global checked for initializer"
 
 
-(** Generate llvm function decls for a set of procs from the AST. *)
-(* Could this work for both local and imported functions? *)
+(** Generate llvm function decls for a set of proc symtable entries. *)
+(* Used for both locals and imported functions. *)
 let gen_fdecls the_module lltypes fsyms =
-  StrMap.iter (fun _ procentry ->
-      let rtype = ttag_to_llvmtype lltypes procentry.rettype in
-      let params = List.map (fun entry -> ttag_to_llvmtype lltypes entry.symtype)
-                     procentry.fparams
-                   |> Array.of_list in
+  StrMap.iter (fun _ procentry ->  (* don't need map keys *)
+      let rettype = ttag_to_llvmtype lltypes procentry.rettype in
+      let paramtypes =
+        List.map (fun entry ->
+            let ptype = ttag_to_llvmtype lltypes entry.symtype in
+            (* make it the pointer type if it's passed mutable *)
+            if entry.mut then pointer_type ptype else ptype
+          ) procentry.fparams
+        |> Array.of_list in
       (* print_string ("Declaring function " ^ procentry.procname ^ "\n"); *)
       (* This is the qualified version (or not, if exported) *)
       ignore (declare_function procentry.procname
-                (function_type (rtype) params) the_module)
+                (function_type rettype paramtypes) the_module)
     (* We could set names for arguments here. *)
     ) fsyms  (* returns () *)
 
@@ -460,17 +487,17 @@ let gen_proc the_module builder lltypes proc =
      (* should I define_function here, not add to the existing decl? *)
      let entry_bb = append_block context "entry" func in
      position_at_end entry_bb builder;
-     (* set storage for all params in symbol table *)
-     (* I should never have been doing stores for anything! *)
-     (* Even if it's a value I can get the address? of it? *)
-     List.iteri (fun i (_, varname, _) ->
+     (* set address of all arguments in symbol table, creating a new 
+      * alloca for things passed by value (currently everything non-mut) *)
+     List.iteri (fun i (mut, varname, _) ->
          let entrybuilder =
            builder_at context (instr_begin (entry_block func)) in
          let alloca = (* param func i *)
-         (* if mut then param func i (* will work b/c it's a pointer? *)
-           else  *)
-           build_alloca (type_of (param func i)) varname entrybuilder in
-         ignore (build_store (param func i) alloca builder);
+           if mut then param func i (* will work b/c it's a pointer? *)
+           else  (build_alloca (type_of (param func i)) varname entrybuilder)
+         in
+         if not mut then 
+           ignore (build_store (param func i) alloca builder);
          Symtable.set_addr proc.decor varname alloca
        ) proc.decl.params;
      List.iter (gen_stmt the_module builder lltypes) (proc.body);

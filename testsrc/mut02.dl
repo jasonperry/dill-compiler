@@ -31,8 +31,8 @@ export proc main() : Void =
 
   bumpem(#tc);
 
-  printFloat(tc.foist.i);
-  printFloat(tc.secint.i);
+  printFloat(tc.foist.i);   (* 3.5 *)
+  printFloat(tc.secint.i);  (* 4.5 *)
 end main
 
 end Mut02
