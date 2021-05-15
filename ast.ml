@@ -120,7 +120,7 @@ type 'sd fieldDecl = {
     mut: bool;
     (* Create 'typevar' field matching the struct later *)
     fieldtype: typeExpr;
-    decor: 'sd
+    decor: 'sd (* to be a typetag *)
   }
 
 (** A struct type definition. *)
@@ -190,7 +190,7 @@ let rec exp_to_string (e: 'a expr) =
   | ExpConst (IntVal i) -> Int.to_string i
   | ExpConst (BoolVal b) -> if b then "True" else "False"
   | ExpVar (v, flds) ->
-     v ^ if flds <> [] then String.concat "." flds else ""
+     v ^ if flds <> [] then "." ^ String.concat "." flds else ""
   | ExpRecord fl ->
       "{" ^ String.concat ", "
               (List.map (fun (fname, ex) ->

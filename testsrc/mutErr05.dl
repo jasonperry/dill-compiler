@@ -1,0 +1,28 @@
+(* try to mutably pass a "mut" field that's an immutable value *)
+(* Oh, it's handled by the type. duh. *)
+module MutErr05 =
+
+open Stdio;
+
+type Complex = struct
+  mut i: Float,
+  j: Float;
+end Complex
+
+proc tweakit(#ci: Float) : Void =
+  ci = ci + 4.0;
+  return;
+end tweakit
+
+export proc main() : Void = 
+
+  var cpx: Complex = {i=2.0, j=1.111};
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+  tweakit(#cpx.i);
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+
+end main
+
+end MutErr05
