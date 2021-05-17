@@ -19,6 +19,7 @@ let base_tenv =
   |> TypeMap.add ("", int_ttag.typename) int_class
   |> TypeMap.add ("", float_ttag.typename) float_class
   |> TypeMap.add ("", bool_ttag.typename) bool_class
+  |> TypeMap.add ("", null_ttag.typename) null_class
 
 (* Symtable concept: a map for current scope, parent and children nodes *)
 

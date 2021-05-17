@@ -122,7 +122,8 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
-  (* stmtDecl will create new symtable entry ,this will get it. *)
+  | ExpConst NullVal -> const_pointer_null int_type (* cast it later? *)
+  (* stmtDecl will create new symtable entry, this will get it. *)
   | ExpVar (varname, fields) -> (
     (* let varstr = String.concat "." (varname::fields) in *)
     let (entry, _) = Symtable.findvar varname (*varstr*) syms in
@@ -241,7 +242,10 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
      * But we don't care in codegen, right, it's all correct? *)
     print_string ("looking up " ^ varname ^ " for decl codegen\n");
     let (entry, _) = Symtable.findvar varname syms in
-    let allocatype = ttag_to_llvmtype lltypes entry.symtype in 
+    let allocatype =
+      let basetype = ttag_to_llvmtype lltypes entry.symtype in
+      if entry.symtype.nullable then pointer_type basetype
+      else basetype in
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
@@ -273,8 +277,23 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* normal single-value assignment: generate the expression. *)
     | _ -> (
       let expval = gen_expr the_module builder syms lltypes ex in
-      let alloca = gen_varexp_alloca entry flds lltypes builder in
-         ignore (build_store expval alloca builder)
+      let alloca =
+        gen_varexp_alloca entry flds lltypes builder in
+      if entry.symtype.nullable = ex.decor.nullable then
+        (* indirection level is the same, so just directly assign the pointer
+         * or value  *)
+        ignore (build_store expval alloca builder)
+      else
+        if ex.decor = null_ttag then
+          (* special case of null constant, just make a null pointer *)
+          let nullval = const_null (pointer_type (type_of (expval))) in
+          ignore (build_store nullval alloca builder)
+        else
+          (* the expval is the value type; load address from pointer 
+           * variable, then store in that. *)
+          (* if I fix the decl will the value be a pointer like we need? *)
+          let valaddr = build_load alloca "nullableptr" builder in
+          ignore (build_store expval valaddr builder)
   (* print_string (string_of_llvalue store) *)
   ))
 

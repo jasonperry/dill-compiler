@@ -62,6 +62,7 @@ rule token = parse  (* funny that it's called parse *)
   | "||"    { OR }
   | '!'     { NOT }
   | '#'     { HASH }
+  | '?'     { QMARK }
   | '='	    { ASSIGN }
   | "?="    { NULLASSIGN }
   | ','	    { COMMA }
@@ -95,6 +96,7 @@ rule token = parse  (* funny that it's called parse *)
   | "mut"     { MUT }
   | "True"    { TRUE }    (* Is this the place to put built-in names? *)
   | "False"   { FALSE }   (* Even if not, bools might be special. *)
+  | "Null"    { NULL }
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
   | eof     { EOF }

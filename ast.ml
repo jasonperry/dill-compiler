@@ -6,6 +6,7 @@ type consttype =
   | FloatVal of float
   | IntVal of int  (* TODO: make int32 to avoid OCaml 31-bit ints *)
   | BoolVal of bool
+  | NullVal
 
 type unary_op =
   | OpNeg
@@ -42,6 +43,7 @@ type typeExpr = {
     modname: string option; (* TODO: may be easier to just use empty strings *)
     classname: string;
     (* module, params, array, null *)
+    nullable: bool;
   }
 
 type 'ed raw_expr = (* should really probably change to inline records *)
@@ -170,6 +172,7 @@ let rec typeExpr_to_string te =
    | Some mn -> mn ^ "::"
    | None -> "")
   ^ te.classname
+  ^ if te.nullable then "?" else ""
 
 and fieldDecl_to_string fd =
   (if fd.priv then "private " else "")
@@ -189,6 +192,7 @@ let rec exp_to_string (e: 'a expr) =
   | ExpConst (FloatVal f) -> Float.to_string f
   | ExpConst (IntVal i) -> Int.to_string i
   | ExpConst (BoolVal b) -> if b then "True" else "False"
+  | ExpConst NullVal -> "Null"
   | ExpVar (v, flds) ->
      v ^ if flds <> [] then "." ^ String.concat "." flds else ""
   | ExpRecord fl ->

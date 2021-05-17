@@ -29,11 +29,12 @@ and classData = {
     (* also need all method signatures. *)
   }
 
-(** Unique specification of a concrete type. *)
+(** Unique specification of a concrete type. It's what's checked for
+  * a match with other types. *)
 and typetag = {
     (* what to do for function type? *)
     modulename: string;
-    typename: string;
+    typename: string;  (* TODO: check if this will include ? *)
     tclass: classData;
     (* Will I need an "unresolved" typetag for generics? *)
     paramtypes: typetag list; (* resolved generics. *)
@@ -79,6 +80,10 @@ let rec typetag_to_string (tt: typetag) =
 
 
 (* Class definitions for built-in types, and tags for convenience. *)
+let null_class = { classname="NullType"; in_module = "";
+                   muttype=false; params=[]; implements=[]; fields=[] }
+let null_ttag = gen_ttag null_class []
+(* NOTE: void is not a type! *)
 let void_class =  { classname="Void"; in_module = "";
                     muttype=false; params=[]; implements=[]; fields=[] }
 let void_ttag = gen_ttag void_class []

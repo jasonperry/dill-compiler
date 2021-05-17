@@ -23,7 +23,9 @@ let check_typeExpr tenv texp : (typetag, string) result =
   (* Types should be in the typeenv keyed by the name used locally. *)
   match TypeMap.find_opt (Option.value texp.modname ~default:"", texp.classname)
           tenv with
-  | Some cdata -> Ok (gen_ttag cdata [])
+  | Some cdata ->
+     (* Generate the base ttag for the class, then add nullable marker *)
+     Ok ({(gen_ttag cdata []) with nullable = texp.nullable})
   | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
 
 
@@ -41,6 +43,8 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
      Ok {e=ExpConst (FloatVal f); decor=float_ttag}
   | ExpConst (BoolVal b) ->
      Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
+  | ExpConst NullVal ->
+     Ok {e=ExpConst NullVal; decor=null_ttag}
   | ExpVar (varname, fields) -> (
     (* a funny little bit of unparsing here... *)
     let varstr = String.concat "." (varname::fields) in
@@ -354,8 +358,12 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
             | Ok ({e=_; decor=ettag} as e2) -> (
                 match ttagopt with
                 | Some ttag -> 
-                  (* May need a more sophisticated comparison here later. *)
-                  if ttag = ettag then Ok (Some e2, ttag)
+                   (* Allow storing null or value type in a nullable var. *)
+                   if ttag = ettag
+                      || ttag.nullable &&
+                           (ettag.tclass = null_class
+                            || ettag.tclass = ttag.tclass) then
+                     Ok (Some e2, ttag)
                   else
                     Error [{loc=stm.decor;
                             value="Declared type: " ^ typetag_to_string ttag
@@ -407,8 +415,11 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
       match check_expr syms tenv ~thint:(Some sym.symtype) e with
        | Error err -> Error [err]
        | Ok ({e=_; decor=ettag} as te) -> 
-          (* How about object field assignment? Should just work now *)
-          if sym.symtype <> ettag then
+          (* Allow assignment of null or base type to nullable vars *)
+          if sym.symtype <> ettag 
+             && not (sym.symtype.nullable &&
+                       (ettag.tclass = null_class
+                        || ettag.tclass = sym.symtype.tclass)) then
             Error [{loc=stm.decor;
                     value="Assignment type mismatch: "
                           ^ " variable " ^ varstr ^ " of type " 
@@ -1011,7 +1022,8 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
               let vttag =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
               { modname = Some (vttag.modulename);
-                classname = vttag.typename }
+                classname = vttag.typename;
+                nullable = false } (* TODO: fix for nullable *)
           }
         ) the_mod.globals;
     procdecls =

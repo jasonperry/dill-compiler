@@ -1,0 +1,26 @@
+(* first nullable types test *)
+module Null01 =
+
+open Stdio;
+
+export proc main() : Void =
+  var maybeInt: Int?;
+  maybeInt = Null;
+  maybeInt = 5;
+
+  var maybe2 : Int? = Null;
+  maybe2 = maybeInt;  (* oh wait now they are aliases? anything goes, locally! *)
+
+  (* Is it too implicit to assign an int to a nullable one? *)
+
+  (* next, change maybeInt and print it out. *)
+
+  var intRes : Int;
+  (* if intRes ?= maybeInt then
+    printInt(intRes); 
+  (* ?printInt(maybeInt) (* just a whim *) *)
+  (* else do nothing *)
+  endif *)
+end main
+
+end Null01

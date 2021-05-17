@@ -8,8 +8,8 @@
 %token BITAND BITOR BITXOR BITNOT
 %token EQ NE LT GT LE GE
 %token AND OR NOT
-%token TRUE FALSE
-%token COLON DCOLON SEMI COMMA HASH
+%token TRUE FALSE NULL
+%token COLON DCOLON SEMI COMMA HASH QMARK
 %token ASSIGN NULLASSIGN
 %token VAR
 %token BEGIN END
@@ -254,10 +254,12 @@ whileStmt:
 
 typeExp:
   (* This will be elaborated to include array, null, type variables,... *)
-  | mn=moduleName DCOLON tn=IDENT_UC
-    { { modname=Some mn; classname=tn } }
-  | tn=IDENT_UC
-    { { modname=None; classname=tn } }
+  | mn=moduleName DCOLON tn=IDENT_UC qm=option(QMARK)
+    { { modname=Some mn; classname=tn;
+        nullable=Option.is_some qm } }
+  | tn=IDENT_UC qm=option(QMARK)
+    { { modname=None; classname=tn;
+        nullable=Option.is_some qm } }
 
 (* Expressions are what evaluates to a value. *)
 expr:
@@ -282,6 +284,8 @@ constExp:
     { ExpConst (BoolVal true) }
   | FALSE
     { ExpConst (BoolVal false) }
+  | NULL
+    { ExpConst (NullVal) }
 (* | STRCONST | *)
 
 varExp:
