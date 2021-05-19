@@ -16,11 +16,11 @@ export proc main() : Void =
   (* next, change maybeInt and print it out. *)
 
   var intRes : Int;
-  (* if intRes ?= maybeInt then
+  if intRes ?= maybeInt then
     printInt(intRes); 
   (* ?printInt(maybeInt) (* just a whim *) *)
   (* else do nothing *)
-  endif *)
+  endif 
 end main
 
 end Null01

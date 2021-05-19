@@ -13,7 +13,8 @@ let context = global_context()
 let float_type = double_type context
 let int_type = i32_type context
 let bool_type = i1_type context
-let void_type = void_type context
+let void_type = void_type context (* may end up not using these. *)
+let tag_type = i8_type context
 
 (* dressed-up type environment to store field offsets as well. *)
 module Lltenv = struct
@@ -122,7 +123,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
-  | ExpConst NullVal -> const_pointer_null int_type (* cast it later? *)
+  | ExpConst NullVal -> const_pointer_null int_type (* not used *)
   (* stmtDecl will create new symtable entry, this will get it. *)
   | ExpVar (varname, fields) -> (
     (* let varstr = String.concat "." (varname::fields) in *)
@@ -240,22 +241,22 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtDecl (varname, _, eopt) -> (
     (* technically, decl should only lookup in this scope. 
      * But we don't care in codegen, right, it's all correct? *)
-    print_string ("looking up " ^ varname ^ " for decl codegen\n");
+    (* print_string ("looking up " ^ varname ^ " for decl codegen\n"); *)
     let (entry, _) = Symtable.findvar varname syms in
     let allocatype =
       let basetype = ttag_to_llvmtype lltypes entry.symtype in
-      if entry.symtype.nullable then pointer_type basetype
+      if entry.symtype.nullable then
+        (* Unnamed struct types seem to make sense for nullable. Is it right? *)
+        struct_type context [|tag_type; basetype|]
       else basetype in
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
+      (* TODO If in a function, will need to build it in entry block,
+       * so it goes in the stack frame *)
       builder_at context (instr_begin (insertion_block builder)) in
     let alloca = build_alloca allocatype varname blockstart in 
     Symtable.set_addr syms varname alloca;
-      (* TODO If in a function, will need to build it in entry block,
-       * so it goes in the stack frame *)
-      (* BUT, let's just try to alloca it wherever we are? 
-       * No, let's do it in the entry block. shadowing will just work? *)
     match eopt with
     | None -> ()
     | Some initexp ->
@@ -280,19 +281,20 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       let alloca =
         gen_varexp_alloca entry flds lltypes builder in
       if entry.symtype.nullable = ex.decor.nullable then
-        (* indirection level is the same, so just directly assign the pointer
-         * or value  *)
+        (* indirection level is the same, so just directly assign the value *)
         ignore (build_store expval alloca builder)
       else
         if ex.decor = null_ttag then
-          (* special case of null constant, just make a null pointer *)
-          let nullval = const_null (pointer_type (type_of (expval))) in
-          ignore (build_store nullval alloca builder)
+          (* special case of null constant, just make a null tag *)
+          let nullval = const_int tag_type 0 in
+          let tagaddr = build_struct_gep alloca 0 "tagtmp" builder in
+          ignore (build_store nullval tagaddr builder);
         else
-          (* the expval is the value type; load address from pointer 
-           * variable, then store in that. *)
-          (* if I fix the decl will the value be a pointer like we need? *)
-          let valaddr = build_load alloca "nullableptr" builder in
+          (* the expval is the value type; create the full record. *)
+          let tagval = const_int tag_type 1 in
+          let tagaddr = build_struct_gep alloca 0 "tagtmp" builder in
+          let valaddr = build_struct_gep alloca 1 "valtmp" builder in
+          ignore (build_store tagval tagaddr builder);
           ignore (build_store expval valaddr builder)
   (* print_string (string_of_llvalue store) *)
   ))

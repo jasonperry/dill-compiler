@@ -1,0 +1,14 @@
+(* error: assign nullable variable to non-null *)
+module NullErr01 =
+
+open Stdio;
+
+export proc main() : Void =
+  var maybeInt: Int? = Null;
+  var myInt: Int;
+  myInt = maybeInt; (* ERR *)
+  printInt(myInt);
+
+end main
+
+end NullErr01

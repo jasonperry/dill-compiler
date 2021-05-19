@@ -1,0 +1,17 @@
+(* make sure local variable shadowing works *)
+module Shadow01 =
+
+open Stdio;
+
+export proc main() : Void =
+  var i: Int = 27;
+  var j: Int = 0;
+  while j < 10 loop
+    var i: Int = j*2; (* can llvm "lift" the allocation? *)
+    printInt(i);
+    j = j + 1;
+  endloop
+  printInt(i); (* 27 *)
+end main
+
+end Shadow01

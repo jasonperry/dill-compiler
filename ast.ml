@@ -203,10 +203,11 @@ let rec exp_to_string (e: 'a expr) =
   | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
   | ExpCall (procname, args) ->
-     procname ^ "(" ^ String.concat ", "
-                        (List.map (fun (mut, ex) ->
-                             (if mut then "#" else "")
-                             ^ exp_to_string ex) args) ^ ")"
+     procname ^ "("
+     ^ String.concat ", "
+         (List.map (fun (mut, ex) ->
+              (if mut then "#" else "") ^ exp_to_string ex) args)
+     ^ ")"
   | ExpNullAssn (decl, v, tyopt, e) ->
      (if decl then "var " else "")
      ^ v ^ Option.fold ~none:"" ~some:typeExpr_to_string tyopt
