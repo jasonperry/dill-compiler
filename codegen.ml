@@ -14,7 +14,7 @@ let float_type = double_type context
 let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context (* may end up not using these. *)
-let tag_type = i8_type context
+let nulltag_type = i1_type context
 
 (* dressed-up type environment to store field offsets as well. *)
 module Lltenv = struct
@@ -247,7 +247,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       let basetype = ttag_to_llvmtype lltypes entry.symtype in
       if entry.symtype.nullable then
         (* Unnamed struct types seem to make sense for nullable. Is it right? *)
-        struct_type context [|tag_type; basetype|]
+        struct_type context [|nulltag_type; basetype|]
       else basetype in
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
@@ -286,12 +286,12 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       else
         if ex.decor = null_ttag then
           (* special case of null constant, just make a null tag *)
-          let nullval = const_int tag_type 0 in
+          let nullval = const_int nulltag_type 0 in
           let tagaddr = build_struct_gep alloca 0 "tagtmp" builder in
           ignore (build_store nullval tagaddr builder);
         else
           (* the expval is the value type; create the full record. *)
-          let tagval = const_int tag_type 1 in
+          let tagval = const_int nulltag_type 1 in
           let tagaddr = build_struct_gep alloca 0 "tagtmp" builder in
           let valaddr = build_struct_gep alloca 1 "valtmp" builder in
           ignore (build_store tagval tagaddr builder);
@@ -322,7 +322,12 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
          (* if it's a null-assignment, set the var's addr in thenblock's syms *)
          failwith "Null assignment not implemented yet"
-      | _ -> gen_expr the_module builder syms lltypes cond
+      | _ ->
+         let condval = gen_expr the_module builder syms lltypes cond in
+         if cond.decor <> bool_ttag then
+           (* load the nullable tag as the conditional result *)
+           build_extractvalue condval 0 "nulltag" builder
+         else condval
     in
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in

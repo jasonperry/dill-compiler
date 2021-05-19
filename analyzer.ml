@@ -267,19 +267,23 @@ let check_condexp condsyms (tenv: typeenv) condexp =
   | ExpNullAssn (decl, varname, tyopt, ex) -> (
     match check_expr condsyms tenv ex with
     | Error err -> Error err
-    (* TODO: check that expression has option type. *)
-    | Ok {e=_; decor=ety} as goodex -> (
-      (* if a var, add it to the symbol table. 
-       * It can't be a redeclaration, it's the first thing in the scope! *)
-      if decl then
+    (* TODO: check that expression has nullable type. *)
+    | Ok ({e=_; decor=ety} as goodex) -> (
+      if not ety.nullable then
+        Error { loc=condexp.decor;
+                value="Nullable assignment '?=' requires a nullable value" }
+      else if decl then
+        (* if a var, add it to the symbol table. 
+         * It can't be a redeclaration, it's the first thing in the scope! *)
         match tyopt with
         | None -> 
            (* Caller will hold the modified 'condsyms' node *) 
            Symtable.addvar condsyms varname
              {symname=varname; symtype=ety; var=true;
               mut=ety.tclass.muttype; addr=None};
-           goodex
-        | Some tyexp -> (
+           Ok { e=ExpNullAssn (decl, varname, tyopt, goodex);
+                decor=bool_ttag }
+        | Some tyexp -> ( (* could check this as a Decl *)
           match check_typeExpr tenv tyexp with
           | Error msg -> Error {loc=condexp.decor; value=msg}
           | Ok dty when dty <> ety ->
@@ -292,12 +296,15 @@ let check_condexp condsyms (tenv: typeenv) condexp =
              Symtable.addvar condsyms varname
                {symname=varname; symtype=ety; var=true;
                 mut=ety.tclass.muttype; addr=None};
-             goodex
+             Ok { e=ExpNullAssn (decl, varname, tyopt, goodex);
+                  decor=bool_ttag }
         )
       else (
+        (* Oops! still have to check that type of var matches! *)
         (* remove assigned variable from uninit'ed set. *)
         condsyms.uninit <- StrSet.remove varname condsyms.uninit;
-        goodex
+        Ok { e=ExpNullAssn (decl, varname, tyopt, goodex);
+             decor=bool_ttag }
       )
   ))
   | _ -> (
@@ -305,10 +312,12 @@ let check_condexp condsyms (tenv: typeenv) condexp =
      match check_expr condsyms tenv condexp with
      | Error err -> Error err
      | Ok {e=_; decor=ety} as goodex ->
-        if ety <> bool_ttag then
-          Error {loc=condexp.decor;
-                 value=("Conditional expression must have type bool, found"
-                        ^ typetag_to_string ety)}
+        if ety <> bool_ttag && not ety.nullable then
+          Error {
+              loc=condexp.decor;
+              value=("Conditional must have Boolean or nullable type, found: "
+                     ^ typetag_to_string ety)
+            }
         else
           goodex
   )

@@ -6,21 +6,26 @@ open Stdio;
 export proc main() : Void =
   var maybeInt: Int?;
   maybeInt = Null;
-  maybeInt = 5;
+  (* maybeInt = 5; *)
 
   var maybe2 : Int? = Null;
-  maybe2 = maybeInt;  (* oh wait now they are aliases? anything goes, locally! *)
+  maybe2 = maybeInt;  (* value types, it's a copy (whew) *)
 
-  (* Is it too implicit to assign an int to a nullable one? *)
+  (* Is it too implicit to assign an int to a nullable variable? 
+   * That was kinda my whole point, to make nullables more usable *)
+  var intRes : Int = 43;
 
-  (* next, change maybeInt and print it out. *)
+  if maybeInt then
+    printInt(1);
+  else
+    printInt(0);
+  endif
 
-  var intRes : Int;
-  if intRes ?= maybeInt then
+  (* if intRes ?= maybeInt then
     printInt(intRes); 
   (* ?printInt(maybeInt) (* just a whim *) *)
   (* else do nothing *)
-  endif 
+  endif  *)
 end main
 
 end Null01

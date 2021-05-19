@@ -1,0 +1,27 @@
+(* attempt to do a null assignment from a non-null expr *)
+module NullErr02 =
+
+open Stdio;
+
+export proc main() : Void =
+  var maybeInt: Int?;
+  maybeInt = Null;
+  maybeInt = 5;
+
+  var maybe2 : Int? = Null;
+  maybe2 = maybeInt;  (* oh wait now they are aliases? anything goes, locally! *)
+
+  (* Is it too implicit to assign an int to a nullable one? *)
+
+  (* next, change maybeInt and print it out. *)
+  var realInt: Int = 7;
+  var intRes : Int;
+  var floatRes: Float;
+  if floatRes ?= maybe2 then
+    printInt(intRes); 
+  (* ?printInt(maybeInt) (* just a whim *) *)
+  (* else do nothing *)
+  endif 
+end main
+
+end NullErr02
