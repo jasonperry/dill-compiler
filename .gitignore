@@ -6,3 +6,5 @@ out/
 parser.ml
 testsrc/*.o
 testsrc/*.ll
+testsrc/*.dms
+testsrc/*.exe
