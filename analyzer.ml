@@ -46,7 +46,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
   | ExpConst NullVal ->
      Ok {e=ExpConst NullVal; decor=null_ttag}
   | ExpVar (varname, fields) -> (
-    (* a funny little bit of unparsing here...TODO: fix to work with var_expr *)
+    (* TODO: fix this to be consistent (maybe Symtable.get_exp_type) *)
     let varstr = String.concat "." (varname::fields) in
     match Symtable.findvar_opt varstr syms with
     | Some (ent, _) ->
@@ -261,10 +261,10 @@ let is_redecl varname syms =
   | Some (_, scope) -> scope = syms.scopedepth
 
 
-(** Conditional exprs can have an assignment, so handle it specially. *)
+(** Conditionals can include an assignment, so handle them specially. *)
 let check_condexp condsyms (tenv: typeenv) condexp =
   match condexp.e with
-  | ExpNullAssn (decl, ((varname,_) as varexp), tyopt, ex) -> (
+  | ExpNullAssn (decl, ((varname, flds) as varexp), tyopt, ex) -> (
     match check_expr condsyms tenv ex with
     | Error err -> Error err
     (* TODO: check that expression has nullable type. *)
@@ -302,11 +302,21 @@ let check_condexp condsyms (tenv: typeenv) condexp =
         )
       else (
         (* Oops! still have to check that type of var matches! *)
-        (* let vartype = (* concat thing *) *)
-        (* remove assigned variable from uninit'ed set. *)
-        condsyms.uninit <- StrSet.remove varname condsyms.uninit;
-        Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
-             decor=bool_ttag }
+        (* TODO: fix this to be consistent (maybe Symtable.get_exp_type) *)
+        let varstr = String.concat "." (varname::flds) in
+        match Symtable.findvar_opt varstr condsyms with
+        | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
+        | Some (ent, _) ->
+           if ent.symtype <> {ety with nullable=false} then
+             Error { loc=condexp.decor;
+                     value="Type mismatch in nullable assignment ("
+                           ^ typetag_to_string ent.symtype ^ ", "
+                           ^ typetag_to_string ety ^ ")" }
+           else (
+             (* remove assigned variable from uninit'ed set. *)
+             condsyms.uninit <- StrSet.remove varname condsyms.uninit;
+             Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
+                  decor=bool_ttag })
       )
   ))
   | _ -> (

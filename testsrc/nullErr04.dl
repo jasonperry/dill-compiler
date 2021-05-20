@@ -1,5 +1,5 @@
-(* nullable type with conditional assignment *)
-module Null02 =
+(* try accessing defined variable in wrong block *)
+module NullErr04 =
 
 open Stdio;
 
@@ -23,8 +23,10 @@ export proc main() : Void =
   (* try again with a declaration *)
   if var res2 ?= maybeInt then
     printInt(res2);
+  else
+    printInt(res2);  (* should be undefined, not uninitialized *)
   endif
 
 end main
 
-end Null02
+end NullErr04
