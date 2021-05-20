@@ -46,23 +46,26 @@ type typeExpr = {
     nullable: bool;
   }
 
+(** Type alias for an lvalue *)
+type var_expr = string * string list  (* field specifiers *)
+
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
   (* is the module name already concatted in the var name? *)
-  | ExpVar of string * string list (* field specifiers *)
+  | ExpVar of var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * (bool * 'ed expr) list (* proc name, mut * value list *)
   (* the bool is true if declaring a new var *)
-  | ExpNullAssn of bool * string * typeExpr option * 'ed expr
+  | ExpNullAssn of bool * var_expr * typeExpr option * 'ed expr
 
 (** Decorated expression type *)
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
 type ('ed,'sd) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'ed expr option
-  | StmtAssign of (string * string list) * 'ed expr
+  | StmtAssign of var_expr * 'ed expr
   | StmtNop
   | StmtReturn of 'ed expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
@@ -208,9 +211,11 @@ let rec exp_to_string (e: 'a expr) =
          (List.map (fun (mut, ex) ->
               (if mut then "#" else "") ^ exp_to_string ex) args)
      ^ ")"
-  | ExpNullAssn (decl, v, tyopt, e) ->
+  | ExpNullAssn (decl, (v,fl), tyopt, e) ->
      (if decl then "var " else "")
-     ^ v ^ Option.fold ~none:"" ~some:typeExpr_to_string tyopt
+     ^ v ^ String.concat "." (v::fl)
+     ^ Option.fold ~none:""
+         ~some:(fun ty -> ": " ^ typeExpr_to_string ty) tyopt
      ^ " ?= " ^ exp_to_string e
 
 let rec stmt_to_string st = 

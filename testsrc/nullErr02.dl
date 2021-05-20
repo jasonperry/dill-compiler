@@ -1,4 +1,4 @@
-(* attempt to do a null assignment from a non-null expr *)
+(* attempt to do a null assignment of wrong type *)
 module NullErr02 =
 
 open Stdio;
@@ -18,7 +18,7 @@ export proc main() : Void =
   var intRes : Int;
   var floatRes: Float;
   if floatRes ?= maybe2 then
-    printInt(intRes); 
+    printFloat(floatRes); 
   (* ?printInt(maybeInt) (* just a whim *) *)
   (* else do nothing *)
   endif 

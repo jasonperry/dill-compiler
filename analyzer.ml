@@ -46,7 +46,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
   | ExpConst NullVal ->
      Ok {e=ExpConst NullVal; decor=null_ttag}
   | ExpVar (varname, fields) -> (
-    (* a funny little bit of unparsing here... *)
+    (* a funny little bit of unparsing here...TODO: fix to work with var_expr *)
     let varstr = String.concat "." (varname::fields) in
     match Symtable.findvar_opt varstr syms with
     | Some (ent, _) ->
@@ -264,7 +264,7 @@ let is_redecl varname syms =
 (** Conditional exprs can have an assignment, so handle it specially. *)
 let check_condexp condsyms (tenv: typeenv) condexp =
   match condexp.e with
-  | ExpNullAssn (decl, varname, tyopt, ex) -> (
+  | ExpNullAssn (decl, ((varname,_) as varexp), tyopt, ex) -> (
     match check_expr condsyms tenv ex with
     | Error err -> Error err
     (* TODO: check that expression has nullable type. *)
@@ -276,34 +276,36 @@ let check_condexp condsyms (tenv: typeenv) condexp =
         (* if a var, add it to the symbol table. 
          * It can't be a redeclaration, it's the first thing in the scope! *)
         match tyopt with
-        | None -> 
+        | None ->
            (* Caller will hold the modified 'condsyms' node *) 
            Symtable.addvar condsyms varname
-             {symname=varname; symtype=ety; var=true;
+             {symname=varname; symtype={ety with nullable=false}; var=true;
               mut=ety.tclass.muttype; addr=None};
-           Ok { e=ExpNullAssn (decl, varname, tyopt, goodex);
+           Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
                 decor=bool_ttag }
         | Some tyexp -> ( (* could check this as a Decl *)
+          print_endline "Yes type expression for null assignment";
           match check_typeExpr tenv tyexp with
           | Error msg -> Error {loc=condexp.decor; value=msg}
-          | Ok dty when dty <> ety ->
+          | Ok dty when dty <> {ety with nullable=false} ->
              Error {loc=condexp.decor;
-                    value="Declared type: " ^ typetag_to_string dty
+                    value="Declared type " ^ typetag_to_string dty
                           ^ " for variable " ^ varname
-                          ^ " does not match initializer type: "
+                          ^ " does not match nullable initializer type "
                           ^ typetag_to_string ety}
           | Ok _ ->
              Symtable.addvar condsyms varname
-               {symname=varname; symtype=ety; var=true;
+               {symname=varname; symtype={ety with nullable=false}; var=true;
                 mut=ety.tclass.muttype; addr=None};
-             Ok { e=ExpNullAssn (decl, varname, tyopt, goodex);
+             Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
                   decor=bool_ttag }
         )
       else (
         (* Oops! still have to check that type of var matches! *)
+        (* let vartype = (* concat thing *) *)
         (* remove assigned variable from uninit'ed set. *)
         condsyms.uninit <- StrSet.remove varname condsyms.uninit;
-        Ok { e=ExpNullAssn (decl, varname, tyopt, goodex);
+        Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
              decor=bool_ttag }
       )
   ))
@@ -489,18 +491,18 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
   )))
 
   | StmtIf (condexp, thenbody, elsifs, elseopt) -> (
-     let condsyms = Symtable.new_scope syms in 
-     match check_condexp condsyms tenv condexp with
+     let thensyms = Symtable.new_scope syms in 
+     match check_condexp thensyms (* condsyms *) tenv condexp with
      | Error err -> Error [err]
      | Ok newcond -> (
-       let thensyms = Symtable.new_scope condsyms in
+       (* let thensyms = Symtable.new_scope condsyms in *)
        match check_stmt_seq thensyms tenv thenbody with
        | Error errs -> Error errs
        | Ok newthen -> (
          let elsifs_result = (* this will be a big concat. *)
            let allres =
              List.map (fun (elsifcond, blk) ->
-                 let elsifsyms = Symtable.new_scope condsyms in
+                 let elsifsyms = Symtable.new_scope syms (*condsyms*) in
                  match check_condexp elsifsyms tenv elsifcond with
                  | Error err -> Error [err]
                  | Ok newelsifcond -> (
@@ -525,7 +527,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
            | None -> Ok {st=StmtIf (newcond, newthen, newelsifs, None);
                          decor=thensyms}
            | Some elsebody -> 
-              let elsesyms = Symtable.new_scope condsyms in
+              let elsesyms = Symtable.new_scope (* condsyms *) syms in
               match check_stmt_seq elsesyms tenv elsebody with
               | Error errs -> Error errs
               | Ok newelse -> 
@@ -549,14 +551,14 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
   ))))
 
   | StmtWhile (cond, body) -> (
-    let condsyms = Symtable.new_scope syms in 
-    match check_condexp condsyms tenv cond with
+    let whilesyms = Symtable.new_scope syms in 
+    match check_condexp whilesyms tenv cond with
     | Error err -> Error [err]
     | Ok newcond -> (
-      let bodysyms = Symtable.new_scope condsyms in
-      match check_stmt_seq bodysyms tenv body with
+      (* let bodysyms = Symtable.new_scope condsyms in *)
+      match check_stmt_seq whilesyms tenv body with
       | Error errs -> Error errs
-      | Ok newbody -> Ok {st=StmtWhile (newcond, newbody); decor=bodysyms}
+      | Ok newbody -> Ok {st=StmtWhile (newcond, newbody); decor=whilesyms}
   ))
 
   | StmtCall ex -> (
@@ -991,7 +993,6 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
          else
            let newpdecls = 
              List.map (fun ((pd: 'a st_node procdecl), pentry) ->
-                 print_endline (Symtable1.st_node_to_string pd.decor);
                  Symtable.addproc syms pd.name pentry;
                  pd) 
                (concat_ok pdeclsrlist) in

@@ -117,8 +117,9 @@ module Symtable (* : SYMTABLE *) = struct
       StrMap.update varname
         (function
          | Some entry -> Some { entry with addr=Some addr }
-         | None -> failwith ("BUG: Varname " ^ " not found for addr"))
-        nd.syms     
+         | None ->
+            failwith ("BUG: Varname " ^ varname ^ " not found for set_addr"))
+        nd.syms
   
   (** Add procedure to current scope of a node. *)
   let addproc nd pname entry =

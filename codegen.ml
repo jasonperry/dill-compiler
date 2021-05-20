@@ -136,7 +136,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      (* Do I need the type hint here, like I do in the analyzer? *)
      (* look up each field in symtable to get its address, 
       * put in a list, sort by the index, remove the index? *)
-     failwith "Record codegen not implemented yet"
+     failwith "BUG Record codegen not implemented in non-assignment context"
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
@@ -283,20 +283,26 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       if entry.symtype.nullable = ex.decor.nullable then
         (* indirection level is the same, so just directly assign the value *)
         ignore (build_store expval alloca builder)
-      else
-        if ex.decor = null_ttag then
-          (* special case of null constant, just make a null tag *)
-          let nullval = const_int nulltag_type 0 in
-          let tagaddr = build_struct_gep alloca 0 "tagtmp" builder in
-          ignore (build_store nullval tagaddr builder);
-        else
-          (* the expval is the value type; create the full record. *)
-          let tagval = const_int nulltag_type 1 in
-          let tagaddr = build_struct_gep alloca 0 "tagtmp" builder in
-          let valaddr = build_struct_gep alloca 1 "valtmp" builder in
-          ignore (build_store tagval tagaddr builder);
-          ignore (build_store expval valaddr builder)
-  (* print_string (string_of_llvalue store) *)
+      else if ex.decor = null_ttag then
+        (* special case of null constant, just make a null tag *)
+        let nullval = const_int nulltag_type 0 in
+        let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
+        ignore (build_store nullval tagaddr builder)
+      else if entry.symtype.nullable then (
+        print_endline "generating non-null to null store";
+        (* the expval is the value type; create the full record. *)
+        let tagval = const_int nulltag_type 1 in
+        let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
+        let valaddr = build_struct_gep alloca 1 "valaddr" builder in
+        ignore (build_store tagval tagaddr builder);
+        ignore (build_store expval valaddr builder))
+      else ( (* special case of conditional null assignment: non-null <- null *)
+        print_endline "generating load/store for null assignment";
+        (* the expr is a struct? a pointer? gen_expr is never a pointer? *)
+        (* let valaddr = build_struct_gep expval 1 "valaddr" builder in *)
+        let realval = build_extractvalue expval 1 "realval" builder in
+        (* build_load valaddr "realval" builder in *)
+        ignore (build_store realval alloca builder))
   ))
 
   | StmtNop -> () (* will I need to generate so labels work? *)
@@ -317,81 +323,102 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   )
 
   | StmtIf (cond, thenblock, elsifs, elsopt) -> (
-    let condres = 
-      match cond.e with
-      | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
-         (* if it's a null-assignment, set the var's addr in thenblock's syms *)
-         failwith "Null assignment not implemented yet"
-      | _ ->
-         let condval = gen_expr the_module builder syms lltypes cond in
-         if cond.decor <> bool_ttag then
-           (* load the nullable tag as the conditional result *)
-           build_extractvalue condval 0 "nulltag" builder
-         else condval
-    in
-    let start_bb = insertion_block builder in
-    let the_function = block_parent start_bb in
-    let then_bb = append_block context "then" the_function in
-    position_at_end then_bb builder;
-    List.iter (gen_stmt the_module builder lltypes) thenblock;
-    let new_then_bb = insertion_block builder in
-    (* elsif generating code *)
-    let gen_elsif (cond, block) =
-      (* however, need to insert conditional jump and jump-to-merge later *)
-      let cond_bb = append_block context "elsifcond" the_function in
-      position_at_end cond_bb builder;
+    match cond.e with
+    (* TODO: put this in while loops as well (factor out) *)
+    | ExpNullAssn (isdecl, ((v, _) as varexp), _, nullexp) ->
+       (* construct a new StmtIf where the cond is nullexp, and add 
+        * assignment and possibly decl statements to the thenblock. *)
+       (* TODO: consistent approach to looking up var_exprs (analyzer too) *)
+       (* let varstr = String.concat "." (v::fl) in
+        * let vartype = (fst (Symtable.findvar varstr syms)).symtype in *)
+       gen_stmt the_module builder lltypes
+         { st=(
+             StmtIf (
+                 nullexp,
+                 (if isdecl then
+                    (* oh, this is technically not legal, assigning a nullable
+                     * value to a non-nullable variable. *)
+                    (* this is a double-desugar! *)
+                    { st=StmtDecl (v, None, Some nullexp); 
+                      decor=syms }
+                  else
+                    { st=StmtAssign (varexp, nullexp);
+                      decor=syms }
+                 ) :: thenblock,
+                 elsifs, elsopt));
+           decor=stmt.decor
+         }
+    | _ -> (
       let condres = 
-        match cond.e with
-        | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
-           (* if it's a null-assignment, set the var addr in thenblock's syms *)
-           failwith "Null assignment not implemented yet"
-        | _ -> gen_expr the_module builder syms lltypes cond in
-      let then_bb = append_block context "elsifthen" the_function in
+       let condval = gen_expr the_module builder syms lltypes cond in
+       if cond.decor <> bool_ttag then
+         (* load the nullable tag as the conditional result *)
+         build_extractvalue condval 0 "nulltag" builder
+       else condval
+      in
+      let start_bb = insertion_block builder in
+      let the_function = block_parent start_bb in
+      let then_bb = append_block context "then" the_function in
       position_at_end then_bb builder;
-      List.iter (gen_stmt the_module builder lltypes) block;
-      (condres, cond_bb, then_bb, insertion_block builder) (* for jumps *)
-    in
-    let elsif_blocks = List.map gen_elsif elsifs in
-    (* generating dummy else block regardless. *)
-    let else_bb = append_block context "else" the_function in
-    position_at_end else_bb builder;
-    (match elsopt with
-     | Some elseblock ->
-        List.iter (gen_stmt the_module builder lltypes) elseblock
-     | None -> ());
-    let new_else_bb = insertion_block builder in
-    let merge_bb = append_block context "ifcont" the_function in
-    (* kaleidoscope inserts the phi here *)
-    (* position_at_end merge_bb builder; *)
-    position_at_end start_bb builder;
-    (* Still loop to the /original/ then block! *)
-    let firstelse =
-      match elsif_blocks with
-      | [] -> else_bb
-      | (_, condblk, _, _) :: _ -> condblk in
-    ignore (build_cond_br condres then_bb firstelse builder);
-    position_at_end new_then_bb builder;
-    ignore (build_br merge_bb builder);
-    (* add conditional and unconditional jumps between elsif blocks *)
-    let rec add_elsif_jumps = function
-      | [] -> ()
-      | (condres, condblk, thenblk, endblk) :: rest ->
-         position_at_end condblk builder;
-         (match rest with
-          | [] ->
-             ignore (build_cond_br condres thenblk else_bb builder);
-          | (_, nextblk, _, _) :: _ -> 
-             ignore (build_cond_br condres thenblk nextblk builder);
-         );
-         position_at_end endblk builder;
-         ignore (build_br merge_bb builder);
-         add_elsif_jumps rest
-    in
-    add_elsif_jumps elsif_blocks;
-    position_at_end new_else_bb builder;
-    ignore (build_br merge_bb builder);
-    position_at_end merge_bb builder
-  )
+      List.iter (gen_stmt the_module builder lltypes) thenblock;
+      let new_then_bb = insertion_block builder in
+      (* elsif generating code *)
+      let gen_elsif (cond, block) =
+        (* however, need to insert conditional jump and jump-to-merge later *)
+        let cond_bb = append_block context "elsifcond" the_function in
+        position_at_end cond_bb builder;
+        let condres = 
+          match cond.e with
+          | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
+             (* if it's a null-assignment, set the var addr in thenblock's syms *)
+             failwith "Null assignment not implemented yet"
+          | _ -> gen_expr the_module builder syms lltypes cond in
+        let then_bb = append_block context "elsifthen" the_function in
+        position_at_end then_bb builder;
+        List.iter (gen_stmt the_module builder lltypes) block;
+        (condres, cond_bb, then_bb, insertion_block builder) (* for jumps *)
+      in
+      let elsif_blocks = List.map gen_elsif elsifs in
+      (* generating dummy else block regardless. *)
+      let else_bb = append_block context "else" the_function in
+      position_at_end else_bb builder;
+      (match elsopt with
+       | Some elseblock ->
+          List.iter (gen_stmt the_module builder lltypes) elseblock
+       | None -> ());
+      let new_else_bb = insertion_block builder in
+      let merge_bb = append_block context "ifcont" the_function in
+      (* kaleidoscope inserts the phi here *)
+      (* position_at_end merge_bb builder; *)
+      position_at_end start_bb builder;
+      (* Still loop to the /original/ then block! *)
+      let firstelse =
+        match elsif_blocks with
+        | [] -> else_bb
+        | (_, condblk, _, _) :: _ -> condblk in
+      ignore (build_cond_br condres then_bb firstelse builder);
+      position_at_end new_then_bb builder;
+      ignore (build_br merge_bb builder);
+      (* add conditional and unconditional jumps between elsif blocks *)
+      let rec add_elsif_jumps = function
+        | [] -> ()
+        | (condres, condblk, thenblk, endblk) :: rest ->
+           position_at_end condblk builder;
+           (match rest with
+            | [] ->
+               ignore (build_cond_br condres thenblk else_bb builder);
+            | (_, nextblk, _, _) :: _ -> 
+               ignore (build_cond_br condres thenblk nextblk builder);
+           );
+           position_at_end endblk builder;
+           ignore (build_br merge_bb builder);
+           add_elsif_jumps rest
+      in
+      add_elsif_jumps elsif_blocks;
+      position_at_end new_else_bb builder;
+      ignore (build_br merge_bb builder);
+      position_at_end merge_bb builder
+  ))
 
   | StmtWhile (cond, body) -> (
     (* test block, loop block, afterloop block. *)

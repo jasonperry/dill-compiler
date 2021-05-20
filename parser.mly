@@ -212,10 +212,11 @@ declInitStmt:
 
 assignStmt:
   | ve=varExp ASSIGN e=expr SEMI
-    { match ve with
+    { StmtAssign (ve, e) }
+(*    { match ve with
       | ExpVar (v, fl) -> StmtAssign ((v, fl), e)
       | _ -> $syntaxerror (* not possible. Maybe change expr *)
-    }
+    } *)
 
 nopStmt:
   | NOP SEMI
@@ -266,12 +267,13 @@ expr:
   | LPAREN ex=expr RPAREN
     { ex }
   | ex=constExp
-  | ex=varExp
   | ex=recordExp
   | ex=opExp
   | ex=callExp
   | ex=nullAssnExp
     { {decor=$loc; e=ex} }
+  | ve=varExp
+    { {decor=$loc; e=ExpVar ve} }
 
 (* objexp to replace varexp *)
 
@@ -291,7 +293,8 @@ constExp:
 varExp:
   (* a method call could be preceded by this. *)
   | v=varName fl=list(preceded(DOT, varName))
-    { ExpVar (v, fl) }
+    { (v, fl) }
+    (* { ExpVar (v, fl) } *)
 
 varName:
   vn=IDENT_LC { vn }
@@ -366,11 +369,11 @@ argList:
 
 nullAssnExp:  (* This needs lookahead, will it work? *)
   | VAR v=varName COLON ty=typeExp NULLASSIGN e=expr
-    { ExpNullAssn (true, v, Some ty, e) }
+    { ExpNullAssn (true, (v,[]), Some ty, e) }
   | VAR v=varName NULLASSIGN e=expr
-    { ExpNullAssn (true, v, None, e) }
-  | v=varName NULLASSIGN e=expr
-    { ExpNullAssn (false, v, None, e) }
+    { ExpNullAssn (true, (v,[]), None, e) }
+  | ve=varExp NULLASSIGN e=expr
+    { ExpNullAssn (false, ve, None, e) }
 (*  | dec=option(VAR) v=varName NULLASSIGN e=expr
     { ExpNullAssn ( Option.is_some dec, v, e) } *)
 

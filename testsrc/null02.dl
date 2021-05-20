@@ -1,31 +1,25 @@
-(* first nullable types test *)
-module Null01 =
+(* nullable type with conditional assignment *)
+module Null02 =
 
 open Stdio;
 
 export proc main() : Void =
   var maybeInt: Int?;
   maybeInt = Null;
-  maybeInt = 5;     (* test both kinds of store *)
+  maybeInt = 5;
 
   var maybe2 : Int? = Null;
   maybe2 = maybeInt;  (* value types, it's a copy (whew) *)
 
   (* Is it too implicit to assign an int to a nullable variable? 
    * That was kinda my whole point, to make nullables more usable *)
-  var intRes : Int = 43;
 
-  if maybeInt then
-    printInt(1);
-  else
-    printInt(0);
-  endif
-
-  (* if intRes ?= maybeInt then
+  var intRes : Int;
+  if intRes ?= maybeInt then
     printInt(intRes); 
   (* ?printInt(maybeInt) (* just a whim *) *)
-  (* else do nothing *)
-  endif  *)
+  (* else do nothing. TODO: try error with using intRes in the else block *)
+  endif  
 end main
 
-end Null01
+end Null02

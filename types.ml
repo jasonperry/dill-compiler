@@ -47,9 +47,11 @@ and typetag = {
 let is_record_type ttag =
   ttag.tclass.fields <> []
 
+(*
 (** Should only need this for printing out, not internally. *)
 let typename (ttag: typetag) =
   ttag.modulename ^ "::" ^ ttag.typename
+ *)
 
 (** Generate a type for a typetag for a class (and later, specify generics *)
 let gen_ttag (classdata: classData) _ (* mapping to type vars *) =
@@ -74,7 +76,7 @@ let rec typetag_to_string (tt: typetag) =
         (List.map (fun pt -> typetag_to_string pt) tt.paramtypes)
     ^ ">"
   else ""
-       ^ tt.modulename ^ "." ^ tt.typename
+       ^ tt.modulename ^ "::" ^ tt.typename
        ^ (if tt.array then "[]" else "")
        ^ if tt.nullable then "?" else ""
 

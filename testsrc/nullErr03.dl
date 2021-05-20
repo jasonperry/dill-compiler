@@ -1,0 +1,22 @@
+(* declaring a variable in a null assignment with field separators. *)
+module NullErr03 =
+
+open Stdio;
+
+export proc main() : Void =
+  var maybeInt: Int?;
+  maybeInt = Null;
+  maybeInt = 5;
+
+  var maybe2 : Int? = Null;
+  maybe2 = maybeInt; 
+
+  var intRes : Int;
+  if var newRes.thing: Int ?= maybe2 then (* syntax error *)
+    printInt(newRes.thing); 
+  (* ?printInt(maybeInt) (* just a whim *) *)
+  (* else do nothing *)
+  endif 
+end main
+
+end NullErr03
