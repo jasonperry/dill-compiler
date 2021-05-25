@@ -15,7 +15,7 @@ export proc main() : Void =
    * That was kinda my whole point, to make nullables more usable *)
 
   var intRes : Int;
-  if intRes ?= maybeInt then
+  if intRes =? maybeInt then
     printInt(intRes); 
   (* ?printInt(maybeInt) (* just a whim *) *)
   endif

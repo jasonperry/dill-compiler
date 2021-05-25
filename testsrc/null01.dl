@@ -1,9 +1,9 @@
 (* first nullable types test *)
-module Null01 =
+module Null01 :=
 
 open Stdio;
 
-export proc main() : Void =
+export proc main() : Void :=
   var maybeInt: Int?;
   maybeInt = Null;
   maybeInt = 5;     (* test both kinds of store *)
@@ -13,6 +13,8 @@ export proc main() : Void =
 
   (* Is it too implicit to assign an int to a nullable variable? 
    * That was kinda my whole point, to make nullables more usable *)
+  (* "You can put in whatever you want, but you can't assume it's one or 
+   * the other type when you pull a value out." *)
   var intRes : Int = 43;
 
   if maybeInt then

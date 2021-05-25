@@ -1,5 +1,6 @@
 %token <int> ICONST  (* TODO: change to int32 *)
 %token <float> FCONST
+%token <string> STRCONST
 %token <string> IDENT_LC
 %token <string> IDENT_UC
 %token LPAREN RPAREN LBRACE RBRACE

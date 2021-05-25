@@ -33,6 +33,8 @@ rule token = parse  (* funny that it's called parse *)
     { new_line lexbuf; token lexbuf }
   | "(*"
     { comment 0 lexbuf }
+  | "\""
+    { string (Buffer.create 80) lexbuf }  
   | iconst as i
     (* TODO: checking for 32-bit fit. Maybe bigints later! *)
     { ICONST (int_of_string i) }
@@ -110,3 +112,15 @@ and comment depth = parse
   | eof { raise (Error "Unterminated comment at end of file") }
   | _ { comment depth lexbuf }
   
+and string acc = parse
+  | '"' { STRCONST (Buffer.contents acc) }
+  | "\\n" { Buffer.add_char acc '\n'; string acc lexbuf }
+  | "\\t" { Buffer.add_char acc '\t'; string acc lexbuf }
+  (* TODO: \x, maybe \f and \b also (whatever they mean) *)
+  | "\\\\" { Buffer.add_char acc '\\'; string acc lexbuf }
+  | [^ '"' '\\']+ { Buffer.add_string acc (Lexing.lexeme lexbuf);
+                    string acc lexbuf }
+  (* it seems to not be catching this *)
+  | '\n' { raise (Error "String not terminated at newline") }
+  | eof { raise (Error "Unterminated string constant at end of file") }
+  | _ { raise (Error ("Illegal string character: " ^ Lexing.lexeme lexbuf)) }
