@@ -37,14 +37,16 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
           (ex: locinfo expr) : expr_result = 
   match ex.e with
   (* The type info in constants is already there...ok I guess *)
+  | ExpConst NullVal ->
+     Ok {e=ExpConst NullVal; decor=null_ttag}
+  | ExpConst (BoolVal b) ->
+     Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
   | ExpConst (IntVal i) ->
      Ok {e=ExpConst (IntVal i); decor=int_ttag}
   | ExpConst (FloatVal f) ->
      Ok {e=ExpConst (FloatVal f); decor=float_ttag}
-  | ExpConst (BoolVal b) ->
-     Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
-  | ExpConst NullVal ->
-     Ok {e=ExpConst NullVal; decor=null_ttag}
+  | ExpConst (StringVal s) ->
+     Ok {e=ExpConst (StringVal s); decor=string_ttag}
   | ExpVar (varname, fields) -> (
     (* TODO: fix this to be consistent (maybe Symtable.get_exp_type) *)
     let varstr = String.concat "." (varname::fields) in

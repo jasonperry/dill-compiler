@@ -101,4 +101,8 @@ let bool_ttag = gen_ttag bool_class []
 let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
                     implements=[]; fields=[]}
 let float_ttag = gen_ttag float_class []
+
+let string_class = { classname="String"; in_module=""; muttype=false;
+                     params=[]; implements=[]; fields=[] }
+let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)

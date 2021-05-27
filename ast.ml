@@ -6,6 +6,7 @@ type consttype =
   | FloatVal of float
   | IntVal of int  (* TODO: make int32 to avoid OCaml 31-bit ints *)
   | BoolVal of bool
+  | StringVal of string
   | NullVal
 
 type unary_op =
@@ -195,6 +196,7 @@ let rec exp_to_string (e: 'a expr) =
   | ExpConst (FloatVal f) -> Float.to_string f
   | ExpConst (IntVal i) -> Int.to_string i
   | ExpConst (BoolVal b) -> if b then "True" else "False"
+  | ExpConst (StringVal s) -> "\"" ^ String.escaped s ^ "\""
   | ExpConst NullVal -> "Null"
   | ExpVar (v, flds) ->
      v ^ if flds <> [] then "." ^ String.concat "." flds else ""

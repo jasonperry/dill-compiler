@@ -1,0 +1,12 @@
+(* test of declaration and setting a constant string *)
+
+module String01 =
+
+open Stdio;
+
+export proc main() : Void =
+  var s: String = "Hello Dill World.";
+  var p: String = s;
+end main
+
+end String01

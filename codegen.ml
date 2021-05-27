@@ -39,9 +39,10 @@ let rec gen_lltype context
   (* need special case for primitive types. Should handle this with some
    * data structure, so it's consistent among modules *)
   | ("", "Void") -> void_type, StrMap.empty
+  | ("", "Bool") -> bool_type, StrMap.empty
   | ("", "Int") -> int_type, StrMap.empty
   | ("", "Float") -> float_type, StrMap.empty
-  | ("", "Bool") -> bool_type, StrMap.empty
+  | ("", "String") -> pointer_type (i8_type context), StrMap.empty
   | _ ->
      (* Must be record type. Generate list of types from record fields *)
      let tlist =
@@ -120,10 +121,11 @@ let gen_varexp_alloca varentry fieldlist lltypes builder =
 (** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
+  | ExpConst NullVal -> const_pointer_null int_type (* not used *)
+  | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
-  | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
-  | ExpConst NullVal -> const_pointer_null int_type (* not used *)
+  | ExpConst (StringVal s) -> const_string context s
   (* stmtDecl will create new symtable entry, this will get it. *)
   | ExpVar (varname, fields) -> (
     (* let varstr = String.concat "." (varname::fields) in *)
@@ -277,9 +279,17 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
                decor=stmt.decor }) fieldlist
     (* normal single-value assignment: generate the expression. *)
     | _ -> (
-      let expval = gen_expr the_module builder syms lltypes ex in
+      let expval = (
+          match ex.e with
+          (* special case for strings *)
+          | ExpConst (StringVal s) ->
+             (* It will build the instruction /and/ return the ptr value *)
+             build_global_stringptr s "sconst" builder
+          | _ -> gen_expr the_module builder syms lltypes ex) in
       let alloca =
         gen_varexp_alloca entry flds lltypes builder in
+      (* handle string type specially (for now) *)
+      (* cases to handle nullable types *)
       if entry.symtype.nullable = ex.decor.nullable then
         (* indirection level is the same, so just directly assign the value *)
         ignore (build_store expval alloca builder)

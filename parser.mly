@@ -279,14 +279,16 @@ expr:
 (* objexp to replace varexp *)
 
 constExp:
-  | i = ICONST
+  | i=ICONST
     { ExpConst (IntVal i) }
-  | f = FCONST
+  | f=FCONST
     { ExpConst (FloatVal f) }
   | TRUE
     { ExpConst (BoolVal true) }
   | FALSE
     { ExpConst (BoolVal false) }
+  | s=STRCONST
+    { ExpConst (StringVal s) }
   | NULL
     { ExpConst (NullVal) }
 (* | STRCONST | *)

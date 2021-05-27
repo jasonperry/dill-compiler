@@ -113,7 +113,8 @@ and comment depth = parse
   | _ { comment depth lexbuf }
   
 and string acc = parse
-  | '"' { STRCONST (Buffer.contents acc) }
+               | '"' { STRCONST (Buffer.contents acc) }
+  | '\\' '\"' { Buffer.add_char acc '\"'; string acc lexbuf }
   | "\\n" { Buffer.add_char acc '\n'; string acc lexbuf }
   | "\\t" { Buffer.add_char acc '\t'; string acc lexbuf }
   (* TODO: \x, maybe \f and \b also (whatever they mean) *)
