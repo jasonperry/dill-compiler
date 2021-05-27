@@ -1,3 +1,9 @@
-begin
+module Print02 =
+
+open Stdio;
+
+export proc main() : Void = 
   printFloat(42.1);
-end
+end main
+
+end Print02

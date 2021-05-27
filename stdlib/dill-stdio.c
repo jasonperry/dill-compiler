@@ -19,3 +19,8 @@ void printBool(int b) {
   return;
 }
 */
+
+void printString(char* s) {
+  puts(s);
+  return;
+}

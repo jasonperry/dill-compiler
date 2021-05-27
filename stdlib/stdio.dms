@@ -2,5 +2,6 @@ modspec Stdio =
 
 proc printInt(n: Int): Void;
 proc printFloat(n: Float): Void;
+proc printString(s: String): Void;
 
 end Stdio

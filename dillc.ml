@@ -160,11 +160,13 @@ let write_module_native filename modcode =
   let machine = Llvm_target.TargetMachine.create
                   ~triple:ttriple
                   ~cpu:"generic"
-                  ~features:"" target in
+                  (* got these features from the clang llvm output. *)
+                  (* TODO: figure out how to add pie feature. *)
+                  ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" target in
   let dlstring = DataLayout.as_string
                    (TargetMachine.data_layout machine) in
   Llvm.set_data_layout dlstring modcode; 
-  (* let passmgr = Llvm.PassManager.create () in (* for optim only? *) *)
+  (* let passmgr = Llvm.PassManager.create () in (* for optimize only? *) *)
   let outfilename =
     Filename.chop_extension (Filename.basename filename) ^ ".o" in
   TargetMachine.emit_to_file
