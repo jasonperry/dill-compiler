@@ -125,7 +125,9 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
-  | ExpConst (StringVal s) -> const_string context s
+  | ExpConst (StringVal s) ->
+     (* It will build the instruction /and/ return the ptr value *)
+     build_global_stringptr s "sconst" builder
   (* stmtDecl will create new symtable entry, this will get it. *)
   | ExpVar (varname, fields) -> (
     (* let varstr = String.concat "." (varname::fields) in *)
@@ -279,13 +281,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
                decor=stmt.decor }) fieldlist
     (* normal single-value assignment: generate the expression. *)
     | _ -> (
-      let expval = (
-          match ex.e with
-          (* special case for strings *)
-          | ExpConst (StringVal s) ->
-             (* It will build the instruction /and/ return the ptr value *)
-             build_global_stringptr s "sconst" builder
-          | _ -> gen_expr the_module builder syms lltypes ex) in
+      let expval = gen_expr the_module builder syms lltypes ex in
       let alloca =
         gen_varexp_alloca entry flds lltypes builder in
       (* handle string type specially (for now) *)

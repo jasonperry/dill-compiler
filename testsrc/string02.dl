@@ -8,7 +8,7 @@ export proc main() : Void =
   var s: String = "Hello Dill World.";
   var p: String = s;
   Stdio::printString(p);
-  Stdio::printString("try again...");
+  Stdio::printString("Hello again...");
 end main
 
 end String02
