@@ -3,5 +3,6 @@ modspec Stdio =
 proc printInt(n: Int): Void;
 proc printFloat(n: Float): Void;
 proc printString(s: String): Void;
+proc getLine(n: Int): String?;
 
 end Stdio

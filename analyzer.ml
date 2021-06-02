@@ -29,6 +29,15 @@ let check_typeExpr tenv texp : (typetag, string) result =
   | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
 
 
+(** Ensure first argument is of equal or more specific type than second. *)
+let subtype_match (spectag: typetag) (gentag: typetag) =
+  (* To be expanded; currently only deals with nullable case. *)
+  spectag = gentag
+  || gentag.nullable &&
+       (spectag.tclass = null_class
+        || spectag.tclass = gentag.tclass)
+
+
 (** Expression result type (remember that exprs have a type field) *)
 type expr_result = (typetag expr, string located) Stdlib.result
 
@@ -133,10 +142,10 @@ and match_params paramsyms (args: (bool * typetag expr) list) =
      Error "Argument number mismatch"
   | (pentry::prest, (argmut, argexp)::arest) ->
      (* Later, this could inform code generation of template types *)
-     if pentry.symtype <> argexp.decor
-     then Error ("Wrong argument type for parameter " ^ pentry.symname
+     if not (subtype_match argexp.decor pentry.symtype)
+     then Error ("type mismatch for " ^ pentry.symname
                  ^ "; expected " ^ typetag_to_string pentry.symtype
-                 ^ ", got " ^ typetag_to_string (argexp.decor))
+                 ^ ", found " ^ typetag_to_string (argexp.decor))
      else (
        if pentry.mut <> argmut
        then Error ("Mutability flag mismatch for parameter "
@@ -438,11 +447,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
       match check_expr syms tenv ~thint:(Some sym.symtype) e with
        | Error err -> Error [err]
        | Ok ({e=_; decor=ettag} as te) -> 
-          (* Allow assignment of null or base type to nullable vars *)
-          if sym.symtype <> ettag 
-             && not (sym.symtype.nullable &&
-                       (ettag.tclass = null_class
-                        || ettag.tclass = sym.symtype.tclass)) then
+          (* Typecheck is here *)
+          if not (subtype_match ettag sym.symtype) then
             Error [{loc=stm.decor;
                     value="Assignment type mismatch: "
                           ^ " variable " ^ varstr ^ " of type " 
@@ -478,6 +484,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
      * so check_proc only needs to make sure all paths return. *)
     match syms.in_proc with
     | None ->
+       (* 2021-06: is this obsolete? Only globalstmts are outside procs. *)
        Error [{loc=stm.decor;
                value="Return statement not allowed "
                      ^ "outside of procedure context"}]
@@ -494,11 +501,11 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
          match check_expr syms tenv ~thint:(Some inproc.rettype) e with
          | Error err -> Error [err]
          | Ok ({e=_; decor=ettag} as te) -> (
-           if ettag <> inproc.rettype then
+           if not (subtype_match ettag inproc.rettype) then
              Error [{loc=stm.decor;
-                     value="Wrong return type: "
-                           ^ typetag_to_string ettag ^ ", needed "
-                           ^ typetag_to_string inproc.rettype}]
+                     value="Return type mismatch: needed "
+                           ^ typetag_to_string inproc.rettype
+                           ^ ", found " ^ typetag_to_string ettag}]
            else Ok {st=StmtReturn (Some te); decor=syms}
   )))
 

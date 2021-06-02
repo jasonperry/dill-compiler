@@ -1,0 +1,17 @@
+(* test string input with getLine *)
+module Input01 =
+
+open Stdio;
+
+export proc main() : Void =
+  printString("Type some input.");
+  var sres: String? = getLine(80);
+  printString("ok.");
+  (* if var sres ?= getLine(80) then
+    printString(sres);
+  else
+    printString("String input failed.");
+  endif *)
+end main
+
+end Input01

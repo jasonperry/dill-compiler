@@ -2,6 +2,7 @@
 // later, have a stdlib module that's always opened.
 
 #include <stdio.h>
+#include <stdbool.h>
 
 void printInt(int n) {
   printf("%d\n", n);
@@ -24,3 +25,28 @@ void printString(char* s) {
   puts(s);
   return;
 }
+
+/** Closest match to LLVM String? type. */
+typedef struct {
+  bool tag;
+  char* s;
+} nullstr;
+  
+
+nullstr Stdio_getLine() {
+  char* s;
+  size_t n = 0;
+  nullstr result;
+  result.s = NULL;
+  ssize_t bytes_read = getline(&(result.s), &n, stdin);
+  if (bytes_read == -1) {
+    result.tag = 0;
+  }
+  // should check errno as well to be fully robust.
+  else {
+    // later, if Dill strings store their size, will need to set that.
+    result.tag = 1;
+  }
+  return result;
+}
+  
