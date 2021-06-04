@@ -1,13 +1,10 @@
-(* passing nullable values *)
-module Null03 =
+(* passing and returning nullable values *)
+module Null04 =
 
-open Stdio;
-
-proc maybeInt(n: Int) : Int? =
-
+proc maybeInt(n: Int, i: Int?) : Int? =
   if n > 5 then
     (* should be able to return either subtype of a nullable. *)
-    return n-1;
+    return n;
   else
     return Null;
   endif
@@ -16,10 +13,7 @@ end maybeInt
 
 export proc main (): Void =
   (* should be able to pass either subtype of a nullable. *)
-  var mi: Int? = maybeInt(8);
-  if (var i ?= mi) then
-    printInt(i);
-  endif
+  var mi: Int? = maybeInt(8, Null);
 end main
 
-end Null03
+end Null04

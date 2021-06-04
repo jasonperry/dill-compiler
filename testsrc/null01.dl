@@ -1,9 +1,9 @@
 (* first nullable types test *)
-module Null01 :=
+module Null01 =
 
 open Stdio;
 
-export proc main() : Void :=
+export proc main() : Void =
   var maybeInt: Int?;
   maybeInt = Null;
   maybeInt = 5;     (* test both kinds of store *)

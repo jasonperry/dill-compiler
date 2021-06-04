@@ -24,6 +24,8 @@ module Lltenv = struct
   let add = TypeMap.add
   (* Return just the LLVM type for a given type name. *)
   let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
+  let find_class_lltype tclass tmap =
+    fst (TypeMap.find (tclass.in_module, tclass.classname) tmap)
   let find_lltype_opt tkey tmap =
     Option.map fst (TypeMap.find_opt tkey tmap)
   (* Get the offset of a record field. *)
@@ -82,13 +84,17 @@ let ttag_to_llvmtype lltypes ttag =
   (* find_opt only for debugging. *)
   (* I think we will look up the field offsets elsewhere *)
   match Lltenv.find_lltype_opt (ttag.modulename, ttag.typename) lltypes with
-  | None -> failwith ("no lltype found for " ^ ttag.modulename
+  | None -> failwith ("BUG: no lltype found for " ^ ttag.modulename
                       ^ "::" ^ ttag.typename)
-  | Some basetype -> 
+  | Some basetype ->
+     let with_null =
+       if ttag.nullable then
+         struct_type context [| nulltag_type; basetype |]
+       else basetype in
      if ttag.array then
-       array_type basetype 0  (* a stub for now, to give the idea. *)
+       array_type with_null 0  (* a stub for now, to give the idea. *)
      else
-       basetype
+       with_null
 
 
 (** Generate LLVM allocation for a varexp, traversing fields *)
@@ -96,7 +102,7 @@ let ttag_to_llvmtype lltypes ttag =
  * BUT after that I could store the field alloca back in the symtable?! *)
 let gen_varexp_alloca varentry fieldlist lltypes builder =
   match varentry.addr with 
-  | None -> failwith ("BUG gen_varexp_alloca: alloca address not present for "
+  | None -> failwith ("BUG: gen_varexp_alloca: alloca address not present for "
                       ^ varentry.symname)
   | Some alloca ->
      (* traverse record fields to generate final alloca for store. *)
@@ -239,6 +245,37 @@ and gen_call the_module builder syms lltypes (fname, args) =
        (callee, llargs) (* actual build is different if expr or stmt *)
 
 
+(** Wrap a value in an outer type. Used for passing a specific case of a 
+  * union type (just nullable at first) *)
+let promote_value the_val (* valtype *) outertype builder lltypes =
+  (* for now, just assume the outer type is nullable version. *)
+  if not (outertype.nullable) then
+    failwith "BUG: can only promote value to nullable type for now"
+  else
+    let alloca = build_alloca
+                   (ttag_to_llvmtype lltypes outertype)
+                   "promotedaddr" builder in
+    let tagval = const_int nulltag_type 1 in
+    let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
+    ignore (build_store tagval tagaddr builder);
+    let valaddr = build_struct_gep alloca 1 "valaddr" builder in
+    ignore (build_store the_val valaddr builder);
+    build_load alloca "promotedval" builder
+
+    (*let structval =
+      if valtype.tclass = null_class then
+        const_struct context [|
+            const_int nulltag_type 0;
+            (* the outer type's class is the value type when nullable. *)
+            const_null (Lltenv.find_class_lltype outertype.tclass lltypes)
+          |]
+      else
+        const_struct context [| const_int bool_type 1; the_val |]
+    in
+    print_endline (string_of_llvalue structval);
+    structval *)
+
+
 let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   let syms = stmt.decor in
   match stmt.st with
@@ -247,12 +284,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
      * But we don't care in codegen, right, it's all correct? *)
     (* print_string ("looking up " ^ varname ^ " for decl codegen\n"); *)
     let (entry, _) = Symtable.findvar varname syms in
-    let allocatype =
-      let basetype = ttag_to_llvmtype lltypes entry.symtype in
-      if entry.symtype.nullable then
-        (* Unnamed struct types seem to make sense for nullable. Is it right? *)
-        struct_type context [|nulltag_type; basetype|]
-      else basetype in
+    let allocatype = ttag_to_llvmtype lltypes entry.symtype in
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
@@ -273,7 +305,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* let varname = String.concat "." (v::flds) in *)
     let (entry, _) = Symtable.findvar varname syms in
     match ex.e with
-    (* for full-record assignment: desugar to individual assignments *)
+    (* For full-record assignment: desugar to individual assignments.
+     * Could we just build a const_struct value instead? *)
     | ExpRecord fieldlist ->
        List.iter (fun (fname, fexp) ->
            gen_stmt the_module builder lltypes
@@ -284,23 +317,25 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       let expval = gen_expr the_module builder syms lltypes ex in
       let alloca =
         gen_varexp_alloca entry flds lltypes builder in
+      print_endline (Llvm.string_of_llvalue alloca);
       (* handle string type specially (for now) *)
       (* cases to handle nullable types *)
       if entry.symtype.nullable = ex.decor.nullable then
         (* indirection level is the same, so just directly assign the value *)
         ignore (build_store expval alloca builder)
-      else if ex.decor = null_ttag then
+      else if ex.decor = null_ttag then (
         (* special case of null constant, just make a null tag *)
+        print_endline "storing null value in nullable type";
         let nullval = const_int nulltag_type 0 in
         let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
-        ignore (build_store nullval tagaddr builder)
+        ignore (build_store nullval tagaddr builder))
       else if entry.symtype.nullable then (
         print_endline "generating non-null to null store";
         (* the expval is the value type; create the full record. *)
         let tagval = const_int nulltag_type 1 in
         let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
-        let valaddr = build_struct_gep alloca 1 "valaddr" builder in
         ignore (build_store tagval tagaddr builder);
+        let valaddr = build_struct_gep alloca 1 "valaddr" builder in
         ignore (build_store expval valaddr builder))
       else ( (* special case of conditional null assignment: non-null <- null *)
         print_endline "generating load/store for null assignment";
@@ -317,7 +352,18 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (match eopt with
      | None -> ignore (build_ret_void builder)
      | Some rexp -> 
-        let expval = gen_expr the_module builder syms lltypes rexp in
+        let expval =
+          let rettype =
+            (Option.get stmt.decor.in_proc).rettype in
+          let ev = gen_expr the_module builder syms lltypes rexp in
+          if rexp.decor = rettype then ev
+          (* need to wrap the value if it's a subtype. *)
+          else (
+            print_endline ("Calling promote_value for "
+                           ^ Llvm.string_of_llvalue ev);
+            promote_value ev rettype builder lltypes )
+        in
+        print_endline("got up to build_ret");
         ignore (build_ret expval builder)
     );
     (* Add a basic block after in case a break is added afterwards. *)
@@ -473,15 +519,16 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtBlock _ -> failwith "not implemented"
 
 
-(** Get a default value for a type. Hopefully not to be used anymore. *)
-(* and maybe for unreachable returns *)
+(** Get a default value for a type. Seems to be needed for unreachable 
+  * returns and empty union (nullable) fields. *)
 let default_value ttag =
   (* I'll need some kind of ttag->llvm type mapping eventually. *)
   if ttag = int_ttag then const_int int_type 0
   else if ttag = float_ttag then const_float float_type 0.0
   else if ttag = bool_ttag then const_int bool_type 0
-  else failwith ("Cannot generate default value for type "
-                 ^ typetag_to_string ttag)
+  else const_int int_type 0 (* Could we use this for all? *)
+  (* else failwith ("Cannot generate default value for type "
+                 ^ typetag_to_string ttag) *)
 
 
 (** Generate value of a constant expression for a global var initializer. *)
@@ -569,8 +616,12 @@ let gen_proc the_module builder lltypes proc =
          Llvm_analysis.assert_valid_function func
        )
        else (
-         (* dummy return, should be unreachable *)
-         ignore (build_ret (default_value fentry.rettype) builder);
+         (* dummy return, for unreachable code such as after ifs where all
+          * branches return *)
+         ignore (build_ret
+                   (const_null (ttag_to_llvmtype lltypes fentry.rettype))
+                   builder);
+           (* ignore (build_ret (default_value fentry.rettype) builder); *)
          Llvm_analysis.assert_valid_function func
        )
 

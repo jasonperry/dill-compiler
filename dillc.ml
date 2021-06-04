@@ -241,7 +241,7 @@ let () =
             exit 1
          | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
            if not cconfig.typecheck_only then (
-             print_endline "going ahead with codegen";
+             print_endline "* codegen stage reached";
              let modcode, header = codegen cconfig tenv syms typedmod in 
              (* print_string (st_node_to_string topsyms); *)
              write_header cconfig.source_dir header;
