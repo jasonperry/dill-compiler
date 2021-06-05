@@ -1,6 +1,8 @@
 (* passing and returning nullable values *)
 module Null04 =
 
+open Stdio;
+
 proc maybeInt(n: Int, i: Int?) : Int? =
   if n > 5 then
     (* should be able to return either subtype of a nullable. *)
@@ -13,7 +15,11 @@ end maybeInt
 
 export proc main (): Void =
   (* should be able to pass either subtype of a nullable. *)
-  var mi: Int? = maybeInt(8, Null);
+  if var i ?= maybeInt(4, Null) then
+    printInt(i);
+  (* else
+    printString("nope"); *)
+  endif
 end main
 
 end Null04

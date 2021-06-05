@@ -124,6 +124,40 @@ let gen_varexp_alloca varentry fieldlist lltypes builder =
      get_field_alloca fieldlist varentry.symtype alloca
 
 
+(** Wrap a value in an outer type. Used for passing a specific case of a 
+  * union type (just nullable at first) *)
+let promote_value the_val (* valtype *) outertype builder lltypes =
+  (* for now, just assume the outer type is nullable version. *)
+  if not (outertype.nullable) then
+    failwith "BUG: can only promote value to nullable type for now"
+  else
+    let alloca = build_alloca
+                   (ttag_to_llvmtype lltypes outertype)
+                   "promotedaddr" builder in
+    let tagval =
+      (* It seems I can get away with checking just the LLVM type here. *)
+      if is_null the_val then const_int nulltag_type 0
+      else const_int nulltag_type 1 in
+    let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
+    ignore (build_store tagval tagaddr builder);
+    let valaddr = build_struct_gep alloca 1 "valaddr" builder in
+    ignore (build_store the_val valaddr builder);
+    build_load alloca "promotedval" builder
+    (* failed first attempt, generating a constant struct. It wasn't const. *)
+    (*let structval =
+      if valtype.tclass = null_class then
+        const_struct context [|
+            const_int nulltag_type 0;
+            (* the outer type's class is the value type when nullable. *)
+            const_null (Lltenv.find_class_lltype outertype.tclass lltypes)
+          |]
+      else
+        const_struct context [| const_int bool_type 1; the_val |]
+    in
+    print_endline (string_of_llvalue structval);
+    structval *)
+
+
 (** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
@@ -218,15 +252,13 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
 
 (** Generate LLVM for a function call (used in both expr and stmt) *)
 and gen_call the_module builder syms lltypes (fname, args) =
-  let (entry, _) = Symtable.findproc fname syms in
-    match lookup_function entry.procname the_module with
-    (* assumes function names are unique. this may mean that
-     * procedure entries will need to store a "canonicalized" proc name
-     * (or at least the class name, so it can be generated.) *)
+  let (fentry, _) = Symtable.findproc fname syms in
+    match lookup_function fentry.procname the_module with
+    (* lookup assumes procedure names are unique, which is how I intended *)
     | None -> failwith "BUG: unknown function name in codegen"
-    | Some callee ->
+    | Some llfunc ->
        let llargs =
-         List.map (fun (mut, argexpr) ->
+         List.map2 (fun (mut, argexpr) fparam ->
              (* mutable is pass-by-reference; get the variable expr's alloca *)
              if mut then
                match argexpr.e with
@@ -234,46 +266,26 @@ and gen_call the_module builder syms lltypes (fname, args) =
                  let varentry, _ =
                    Symtable.findvar (exp_to_string argexpr) syms in
                  match varentry.addr with
-                 | Some alloca -> alloca (* Do I have to cast this? *)
+                 | Some alloca ->
+                    (* I think this is where I promote. *)
+                    (* if varentry.symtype.nullable <> argexpr.decor.nullable then *)
+                    if argexpr.decor.nullable then
+                      failwith "Not yet supporting mutable nullable args"
+                    else 
+                      alloca
                  | None -> failwith "BUG: alloca not found for mutable arg"
                )
                | _ -> failwith "BUG: non-var mutable argument in codegen"
              else
-               gen_expr the_module builder syms lltypes argexpr
-           ) args
+               let argval = gen_expr the_module builder syms lltypes argexpr in
+               (* Need to wrap value if passing into a union (nullable) type *)
+               if argexpr.decor = fparam.symtype then
+                 argval
+               else
+                 promote_value argval fparam.symtype builder lltypes
+           ) args fentry.fparams
          |> Array.of_list in
-       (callee, llargs) (* actual build is different if expr or stmt *)
-
-
-(** Wrap a value in an outer type. Used for passing a specific case of a 
-  * union type (just nullable at first) *)
-let promote_value the_val (* valtype *) outertype builder lltypes =
-  (* for now, just assume the outer type is nullable version. *)
-  if not (outertype.nullable) then
-    failwith "BUG: can only promote value to nullable type for now"
-  else
-    let alloca = build_alloca
-                   (ttag_to_llvmtype lltypes outertype)
-                   "promotedaddr" builder in
-    let tagval = const_int nulltag_type 1 in
-    let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
-    ignore (build_store tagval tagaddr builder);
-    let valaddr = build_struct_gep alloca 1 "valaddr" builder in
-    ignore (build_store the_val valaddr builder);
-    build_load alloca "promotedval" builder
-
-    (*let structval =
-      if valtype.tclass = null_class then
-        const_struct context [|
-            const_int nulltag_type 0;
-            (* the outer type's class is the value type when nullable. *)
-            const_null (Lltenv.find_class_lltype outertype.tclass lltypes)
-          |]
-      else
-        const_struct context [| const_int bool_type 1; the_val |]
-    in
-    print_endline (string_of_llvalue structval);
-    structval *)
+       (llfunc, llargs) (* actual build is different if expr or stmt *)
 
 
 let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
@@ -375,60 +387,50 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   )
 
   | StmtIf (cond, thenblock, elsifs, elsopt) -> (
-    match cond.e with
-    (* TODO: put this in while loops as well (factor out) *)
-    | ExpNullAssn (isdecl, ((v, _) as varexp), _, nullexp) ->
-       (* construct a new StmtIf where the cond is nullexp, and add 
-        * assignment and possibly decl statements to the thenblock. *)
-       (* TODO: consistent approach to looking up var_exprs (analyzer too) *)
-       (* let varstr = String.concat "." (v::fl) in
-        * let vartype = (fst (Symtable.findvar varstr syms)).symtype in *)
-       gen_stmt the_module builder lltypes
-         { st=(
-             StmtIf (
-                 nullexp,
-                 (if isdecl then
-                    (* oh, this is technically not legal, assigning a nullable
-                     * value to a non-nullable variable. *)
-                    (* this is a double-desugar! *)
-                    { st=StmtDecl (v, None, Some nullexp); 
-                      decor=syms }
-                  else
-                    { st=StmtAssign (varexp, nullexp);
-                      decor=syms }
-                 ) :: thenblock,
-                 elsifs, elsopt));
-           decor=stmt.decor
-         }
-    | _ -> (
-      let condres = 
-       let condval = gen_expr the_module builder syms lltypes cond in
-       if cond.decor <> bool_ttag then
-         (* load the nullable tag as the conditional result *)
-         build_extractvalue condval 0 "nulltag" builder
-       else condval
-      in
-      let start_bb = insertion_block builder in
-      let the_function = block_parent start_bb in
-      let then_bb = append_block context "then" the_function in
-      position_at_end then_bb builder;
-      List.iter (gen_stmt the_module builder lltypes) thenblock;
-      let new_then_bb = insertion_block builder in
-      (* elsif generating code *)
-      let gen_elsif (cond, block) =
+    (* Evaluate a condition, possibly inserting declaration and value store 
+     * in the then block for conditional-null assignments. *)
+    (* TODO: factor this out to use in while loops too *)
+    let gen_cond cond thenbb thensyms =
+      match cond.e with
+      | ExpNullAssn (isdecl, (varname, flds), _, nullexp) ->
+         let condval = gen_expr the_module builder syms lltypes nullexp in
+         let condres = build_extractvalue condval 0 "nulltag" builder in
+         (* construct a new declaration if needed, then generate code
+          * to store the non-null condition result value *)
+         position_at_end thenbb builder;
+         if isdecl then
+           gen_stmt the_module builder lltypes 
+             { st=StmtDecl (varname, None, None); decor=thensyms };
+         let (entry, _) = Symtable.findvar varname thensyms in
+         let alloca =
+           gen_varexp_alloca entry flds lltypes builder in
+         print_endline ("generating load/store for null assignment to "
+                        ^ Llvm.string_of_llvalue alloca);
+         let realval = build_extractvalue condval 1 "condval" builder in
+         (* build_load valaddr "realval" builder in *)
+         ignore (build_store realval alloca builder);
+         condres
+      | _ -> gen_expr the_module builder syms lltypes cond
+    in
+    let start_bb = insertion_block builder in
+    let the_function = block_parent start_bb in
+    let then_bb = append_block context "then" the_function in
+    let thensyms = (List.hd thenblock).decor in
+    let condval = gen_cond cond then_bb thensyms in
+    position_at_end then_bb builder;
+    List.iter (gen_stmt the_module builder lltypes) thenblock;
+    let new_then_bb = insertion_block builder in
+    (* elsif generating code *)
+    let gen_elsif (cond, (block: (typetag, 'b) stmt list)) =
         (* however, need to insert conditional jump and jump-to-merge later *)
         let cond_bb = append_block context "elsifcond" the_function in
         position_at_end cond_bb builder;
-        let condres = 
-          match cond.e with
-          | ExpNullAssn (_,_,_,_) (* (isDecl, varname, _, ex) *) ->
-             (* if it's a null-assignment, set the var addr in thenblock's syms *)
-             failwith "Null assignment not implemented yet"
-          | _ -> gen_expr the_module builder syms lltypes cond in
         let then_bb = append_block context "elsifthen" the_function in
+        let thensyms = (List.hd block).decor in
+        let condval = gen_cond cond then_bb thensyms in
         position_at_end then_bb builder;
         List.iter (gen_stmt the_module builder lltypes) block;
-        (condres, cond_bb, then_bb, insertion_block builder) (* for jumps *)
+        (condval, cond_bb, then_bb, insertion_block builder) (* for jumps *)
       in
       let elsif_blocks = List.map gen_elsif elsifs in
       (* generating dummy else block regardless. *)
@@ -448,19 +450,20 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
         match elsif_blocks with
         | [] -> else_bb
         | (_, condblk, _, _) :: _ -> condblk in
-      ignore (build_cond_br condres then_bb firstelse builder);
+      (* This is where we build the first conditional! *)
+      ignore (build_cond_br condval then_bb firstelse builder);
       position_at_end new_then_bb builder;
       ignore (build_br merge_bb builder);
       (* add conditional and unconditional jumps between elsif blocks *)
       let rec add_elsif_jumps = function
         | [] -> ()
-        | (condres, condblk, thenblk, endblk) :: rest ->
+        | (condval, condblk, thenblk, endblk) :: rest ->
            position_at_end condblk builder;
            (match rest with
             | [] ->
-               ignore (build_cond_br condres thenblk else_bb builder);
+               ignore (build_cond_br condval thenblk else_bb builder);
             | (_, nextblk, _, _) :: _ -> 
-               ignore (build_cond_br condres thenblk nextblk builder);
+               ignore (build_cond_br condval thenblk nextblk builder);
            );
            position_at_end endblk builder;
            ignore (build_br merge_bb builder);
@@ -470,7 +473,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       position_at_end new_else_bb builder;
       ignore (build_br merge_bb builder);
       position_at_end merge_bb builder
-  ))
+  )
 
   | StmtWhile (cond, body) -> (
     (* test block, loop block, afterloop block. *)
@@ -480,7 +483,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     ignore (build_br test_bb builder);
     (* insert code in test block to compute condition (put test in later) *)
     position_at_end test_bb builder;
-    let condres = match cond.e with
+    let condval = match cond.e with
       | ExpNullAssn (_,_,_,_) -> failwith "null assign not yet implemented"
       | _ -> gen_expr the_module builder syms lltypes cond in
     (* Create loop block and fill it in *)
@@ -494,27 +497,13 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let merge_bb = append_block context "afterloop" the_function in
     (* Now, add the conditional branch in the test block. *)
     position_at_end test_bb builder;
-    ignore (build_cond_br condres loop_bb merge_bb builder);
+    ignore (build_cond_br condval loop_bb merge_bb builder);
     position_at_end merge_bb builder    
   )
   | StmtCall {decor=_; e=ExpCall (fname, args)} ->
      let (callee, llargs) = 
        gen_call the_module builder syms lltypes (fname, args) in
      ignore (build_call callee llargs "" builder)
-   (*let (entry, _) = Symtable.findproc fname syms in
-    match lookup_function entry.procname the_module with
-    (* assumes function names are unique. this may mean that
-     * procedure entries will need to store a "canonicalized" proc name
-     * (or at least the class name, so it can be generated.) *)
-    | None -> failwith "BUG: unknown function name in codegen"
-    | Some callee ->
-       (* TODO: handle mutable by passing pointer (duplicated from ExpCall) *)
-       let args = List.map (gen_expr the_module builder syms lltypes)
-                    (List.map snd params)
-                  |> Array.of_list in
-       (* instructions returning void cannot have a name *)
-       ignore (build_call callee args "" builder)
-   ) *)
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
   | StmtBlock _ -> failwith "not implemented"
 
@@ -570,13 +559,23 @@ let gen_fdecls the_module lltypes fsyms =
         List.map (fun entry ->
             let ptype = ttag_to_llvmtype lltypes entry.symtype in
             (* make it the pointer type if it's passed mutable *)
-            if entry.mut then pointer_type ptype else ptype
+            if entry.mut then
+              if entry.symtype.nullable then
+                (* If nullable we want a nullable pointer to the inner type. *)
+                struct_type context [|
+                    nulltag_type;
+                    pointer_type (Lltenv.find_class_lltype
+                                    entry.symtype.tclass lltypes)
+                  |]
+              else pointer_type ptype
+            else ptype
           ) procentry.fparams
         |> Array.of_list in
       (* print_string ("Declaring function " ^ procentry.procname ^ "\n"); *)
       (* This is the qualified version (or not, if exported) *)
-      ignore (declare_function procentry.procname
-                (function_type rettype paramtypes) the_module)
+      let llfunc = (declare_function procentry.procname
+                      (function_type rettype paramtypes) the_module) in
+      print_endline (string_of_llvalue llfunc)
     (* We could set names for arguments here. *)
     ) fsyms  (* returns () *)
 
@@ -589,40 +588,45 @@ let gen_proc the_module builder lltypes proc =
   let fentry = Symtable.getproc fname proc.decor in 
   match lookup_function fentry.procname the_module with
   | None -> failwith "BUG: llvm function lookup failed"
-  | Some func -> 
+  | Some llfunc -> 
      (* should I define_function here, not add to the existing decl? *)
-     let entry_bb = append_block context "entry" func in
+     let entry_bb = append_block context "entry" llfunc in
      position_at_end entry_bb builder;
-     (* set address of all arguments in symbol table, creating a new 
-      * alloca for things passed by value (currently everything non-mut) *)
-     List.iteri (fun i (mut, varname, _) ->
+     (* Set address of all arguments in symbol table, creating a new 
+      * alloca for things passed by value *)
+     List.iteri (fun i (_, varname, _) ->
          let entrybuilder =
-           builder_at context (instr_begin (entry_block func)) in
-         let alloca = (* param func i *)
-           if mut then param func i (* will work b/c it's a pointer? *)
-           else  (build_alloca (type_of (param func i)) varname entrybuilder)
+           builder_at context (instr_begin (entry_block llfunc)) in
+         let is_pointer_arg =
+           classify_type (type_of (param llfunc i)) = TypeKind.Pointer in
+         let alloca =
+           (* trying to lower this to just "is pointer" *)
+           if is_pointer_arg then param llfunc i
+           else (build_alloca (type_of (param llfunc i)) varname entrybuilder)
          in
-         if not mut then 
-           ignore (build_store (param func i) alloca builder);
+         if not is_pointer_arg then 
+           ignore (build_store (param llfunc i) alloca builder);
          Symtable.set_addr proc.decor varname alloca
        ) proc.decl.params;
      List.iter (gen_stmt the_module builder lltypes) (proc.body);
-     (* If it doesn't end in a terminator, add either a void return or a 
-      * dummy branch. *)
+     (* If procecure doesn't end in a terminator, add a void or dummy return *)
      if Option.is_none (block_terminator (insertion_block builder)) then
-       (* if return_type (type_of func) = void_type then *)
-       if fentry.rettype = void_ttag then (
+       (* Checking the LLVM type didn't work, why? *)
+       (* if return_type (type_of llfunc) = void_type then ( *)
+       if fentry.rettype = void_ttag then ( 
          ignore (build_ret_void builder);
-         Llvm_analysis.assert_valid_function func
+         Llvm_analysis.assert_valid_function llfunc
        )
        else (
          (* dummy return, for unreachable code such as after ifs where all
           * branches return *)
          ignore (build_ret
+                   (* at the LLVM level doesn't work here either. Why? *)
+                   (* (const_null (return_type (type_of llfunc))) *)
                    (const_null (ttag_to_llvmtype lltypes fentry.rettype))
                    builder);
            (* ignore (build_ret (default_value fentry.rettype) builder); *)
-         Llvm_analysis.assert_valid_function func
+         Llvm_analysis.assert_valid_function llfunc
        )
 
 
