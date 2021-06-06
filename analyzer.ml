@@ -272,48 +272,66 @@ let is_redecl varname syms =
   | Some (_, scope) -> scope = syms.scopedepth
 
 
+(** Recursively add record fields to a symbol table. Used by both 
+    StmtDecl and ExpNullAssn. *)
+let rec add_field_sym syms v initted (finfo: fieldInfo) =
+  (* instead of adding nested scope for record fields,
+   * we just add "var.field" symbols *)
+  let varstr = v ^ "." ^ finfo.fieldname in
+  Symtable.addvar syms varstr
+    {symname=varstr; symtype=finfo.fieldtype; var=finfo.mut;
+     mut=finfo.fieldtype.tclass.muttype; addr=None};
+  (* It's enough to just check if there's an initializer, because 
+   * a record expression will have to init every field. *)
+  if not initted then 
+    syms.uninit <- StrSet.add varstr syms.uninit;
+  (* recursively add fields-of-fields *)
+  let cdata = finfo.fieldtype.tclass in
+  List.iter (add_field_sym syms varstr initted) cdata.fields
+
+
 (** Conditionals can include an assignment, so handle them specially. *)
 let check_condexp condsyms (tenv: typeenv) condexp =
   match condexp.e with
   | ExpNullAssn (decl, ((varname, flds) as varexp), tyopt, ex) -> (
     match check_expr condsyms tenv ex with
     | Error err -> Error err
-    (* TODO: check that expression has nullable type. *)
     | Ok ({e=_; decor=ety} as goodex) -> (
       if not ety.nullable then
         Error { loc=condexp.decor;
                 value="Nullable assignment '?=' requires a nullable value" }
       else if decl then
-        (* if a var, add it to the symbol table. 
+        (* if a var, add it to the symbol table (down below). 
          * It can't be a redeclaration, it's the first thing in the scope! *)
-        match tyopt with
-        | None ->
-           (* Caller will hold the modified 'condsyms' node *) 
+        let tycheck = 
+          match tyopt with
+          | None -> Ok ()
+          | Some tyexp -> ( (* could check this as a Decl *)
+            print_endline "Yes type expression for null assignment";
+            match check_typeExpr tenv tyexp with
+            | Error msg -> Error {loc=condexp.decor; value=msg}
+            | Ok dty when dty <> {ety with nullable=false} ->
+               Error {loc=condexp.decor;
+                      value="Declared type " ^ typetag_to_string dty
+                            ^ " for variable " ^ varname
+                            ^ " does not match nullable initializer type "
+                            ^ typetag_to_string ety}
+            | Ok _ -> Ok ()
+          ) in
+        match tycheck with
+        | Error e -> Error e
+        | Ok _ -> 
+           (* add the variable (and its fields recursively to symbols. *)
+           (* Caller will hold the modified 'condsyms' node *)
            Symtable.addvar condsyms varname
              {symname=varname; symtype={ety with nullable=false}; var=true;
               mut=ety.tclass.muttype; addr=None};
+           print_endline ("Adding field symbols for " ^ varname);
+           List.iter (add_field_sym condsyms varname true) ety.tclass.fields;
            Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
                 decor=bool_ttag }
-        | Some tyexp -> ( (* could check this as a Decl *)
-          print_endline "Yes type expression for null assignment";
-          match check_typeExpr tenv tyexp with
-          | Error msg -> Error {loc=condexp.decor; value=msg}
-          | Ok dty when dty <> {ety with nullable=false} ->
-             Error {loc=condexp.decor;
-                    value="Declared type " ^ typetag_to_string dty
-                          ^ " for variable " ^ varname
-                          ^ " does not match nullable initializer type "
-                          ^ typetag_to_string ety}
-          | Ok _ ->
-             Symtable.addvar condsyms varname
-               {symname=varname; symtype={ety with nullable=false}; var=true;
-                mut=ety.tclass.muttype; addr=None};
-             Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
-                  decor=bool_ttag }
-        )
       else (
-        (* Oops! still have to check that type of var matches! *)
-        (* TODO: fix this to be consistent (maybe Symtable.get_exp_type) *)
+        (* TODO: fix this concat to be consistent (maybe Symtable.get_exp_type) *)
         let varstr = String.concat "." (varname::flds) in
         match Symtable.findvar_opt varstr condsyms with
         | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
@@ -414,25 +432,10 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
              mut=vty.tclass.muttype; addr=None};
           if Option.is_none e2opt then
             syms.uninit <- StrSet.add v syms.uninit;
-          (* function to add symtable entries for a record fields *)
-          let rec add_field_sym v (finfo: fieldInfo) =
-            (* instead of adding nested scope for record fields,
-             * we just add "var.field" symbols *)
-            let varstr = v ^ "." ^ finfo.fieldname in
-            Symtable.addvar syms varstr
-              {symname=varstr; symtype=finfo.fieldtype; var=finfo.mut;
-               mut=finfo.fieldtype.tclass.muttype; addr=None};
-            (* It's enough to just check if there's an initializer, because 
-             * a record expression will have to init every field. *)
-            if Option.is_none e2opt then 
-              syms.uninit <- StrSet.add varstr syms.uninit;
-            (* recursively add fields-of-fields *)
-            let cdata = finfo.fieldtype.tclass in
-            List.iter (add_field_sym varstr) cdata.fields
-          in
           let the_classdata = vty.tclass in
           (* add symtable info for record fields, if any. *)
-          List.iter (add_field_sym v) the_classdata.fields;
+          List.iter (add_field_sym syms v (Option.is_some e2opt))
+            the_classdata.fields;
           Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
   ))))
 

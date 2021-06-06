@@ -349,7 +349,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
         ignore (build_store tagval tagaddr builder);
         let valaddr = build_struct_gep alloca 1 "valaddr" builder in
         ignore (build_store expval valaddr builder))
-      else ( (* special case of conditional null assignment: non-null <- null *)
+      else ( (* THINK THIS IS NOT USED HERE ANYMORE *)
         print_endline "generating load/store for null assignment";
         (* the expr is a struct? a pointer? gen_expr is never a pointer? *)
         (* let valaddr = build_struct_gep expval 1 "valaddr" builder in *)
