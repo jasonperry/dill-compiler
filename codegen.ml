@@ -19,7 +19,8 @@ let nulltag_type = i1_type context
 (* dressed-up type environment to store field offsets as well. *)
 module Lltenv = struct
   type fieldmap = (int * typetag) StrMap.t
-  type t = (lltype * fieldmap) TypeMap.t  (* TypeMap.t maps string pairs -> value *)
+  (* TypeMap.t: (module, typename) -> value *)
+  type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
   let add = TypeMap.add
   (* Return just the LLVM type for a given type name. *)
@@ -144,18 +145,6 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
     ignore (build_store the_val valaddr builder);
     build_load alloca "promotedval" builder
     (* failed first attempt, generating a constant struct. It wasn't const. *)
-    (*let structval =
-      if valtype.tclass = null_class then
-        const_struct context [|
-            const_int nulltag_type 0;
-            (* the outer type's class is the value type when nullable. *)
-            const_null (Lltenv.find_class_lltype outertype.tclass lltypes)
-          |]
-      else
-        const_struct context [| const_int bool_type 1; the_val |]
-    in
-    print_endline (string_of_llvalue structval);
-    structval *)
 
 
 (** Generate LLVM code for an expression *)
@@ -318,12 +307,29 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let (entry, _) = Symtable.findvar varname syms in
     match ex.e with
     (* For full-record assignment: desugar to individual assignments.
-     * Could we just build a const_struct value instead? *)
+     * Could we just build a const_struct value instead? I think it has to
+     * really be const *)
     | ExpRecord fieldlist ->
+       let recaddr =
+         let varaddr = gen_varexp_alloca entry flds lltypes builder in
+         (* seemingly proper way: get the alloca to wherever the
+            actual struct body is and do all the stores here. *)
+         if entry.symtype.nullable then
+           let tagaddr = build_struct_gep varaddr 0 "tagaddr" builder in
+           ignore (build_store (const_int nulltag_type 1) tagaddr builder);
+           build_struct_gep varaddr 1 "recaddr" builder
+         else varaddr
+       in 
        List.iter (fun (fname, fexp) ->
-           gen_stmt the_module builder lltypes
-             { st=StmtAssign ((varname, flds @ [fname]), fexp);
-               decor=stmt.decor }) fieldlist
+           (* have to use the map. from fields to nums *)
+           let fexpval = gen_expr the_module builder syms lltypes fexp in
+           let fieldaddr =
+             build_struct_gep recaddr
+               (fst (Lltenv.find_field (entry.symtype.tclass.in_module,
+                                        entry.symtype.tclass.classname)
+                       fname lltypes)) "fieldaddr" builder in
+           ignore (build_store fexpval fieldaddr builder)
+         ) fieldlist
     (* normal single-value assignment: generate the expression. *)
     | _ -> (
       let expval = gen_expr the_module builder syms lltypes ex in

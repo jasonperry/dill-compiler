@@ -1,0 +1,50 @@
+(* passing mutable nullable values *)
+module Nullmut01 =
+
+open Stdio;
+
+type ComplexMut = struct
+  mut i: Float,
+  mut j: Float;
+end ComplexMut
+
+proc changeIf(copt: ComplexMut?) : Void =
+  if var cval ?= copt then
+    (* doesn't need to give error, it's changing a copy *)
+    cval.i = cval.i + 1.0;
+    cval.j = cval.j + 1.0;
+  else
+    printString("It's null, not changing\n");
+  endif
+end changeIf
+
+export proc main (): Void =
+
+  var cnull: ComplexMut? = Null;
+  changeIf(cnull);
+
+  var myc: ComplexMut = { i=2.2, j=3.3 };
+
+  (* this is a difficult case, the assignment does multiple copies. 
+   * I guess I have to do the save-load-save? *)
+  var ccrash: ComplexMut? = { i=3.0, j=4.0 };
+  if var cval ?= ccrash then
+    printFloat(cval.i);
+    printFloat(cval.j);
+  endif
+  
+  var copt: ComplexMut? = myc;  (* careful with syntax of ? = and ?= *)
+  if var cval ?= copt then
+    printFloat(cval.i);
+    printFloat(cval.j);
+  endif
+  
+  changeIf(copt);
+  if var cval: ComplexMut ?= copt then
+    printFloat(cval.i);
+    printFloat(cval.j);
+  endif
+
+end main
+
+end Nullmut01
