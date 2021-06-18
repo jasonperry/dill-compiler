@@ -33,6 +33,7 @@ typedef struct {
 } nullstr;
   
 
+/** Not working yet, maybe after change tag type to i8. */
 nullstr Stdio_getLine() {
   char* s;
   size_t n = 0;

@@ -85,7 +85,8 @@ let rec typetag_to_string (tt: typetag) =
 let null_class = { classname="NullType"; in_module = "";
                    muttype=false; params=[]; implements=[]; fields=[] }
 let null_ttag = gen_ttag null_class []
-(* NOTE: void is not a type! *)
+(* NOTE: void is not a type! Maybe it shouldn't be one in Dill, just have
+ * procs that return nothing. *)
 let void_class =  { classname="Void"; in_module = "";
                     muttype=false; params=[]; implements=[]; fields=[] }
 let void_ttag = gen_ttag void_class []

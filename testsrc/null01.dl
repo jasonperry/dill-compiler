@@ -23,6 +23,13 @@ export proc main() : Void =
     printInt(0);
   endif
 
+  var maybe3: Int? = Null;
+  if maybe3 then
+    printInt(1);
+  else
+    printInt(0);
+  endif
+
 end main
 
 end Null01

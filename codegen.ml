@@ -14,12 +14,15 @@ let float_type = double_type context
 let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context (* may end up not using these. *)
-let nulltag_type = i1_type context
+let nulltag_type = i8_type context
 
 (* dressed-up type environment to store field offsets as well. *)
 module Lltenv = struct
   type fieldmap = (int * typetag) StrMap.t
   (* TypeMap.t: (module, typename) -> value *)
+  (* Can I just take a typetag and pull in_module and classname out of
+     that, so I don't have to awkwardly pass pairs? Should be okay as
+     long as this is used only for looking up classes? *)
   type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
   let add = TypeMap.add
@@ -48,14 +51,14 @@ let rec gen_lltype context
   | ("", "String") -> pointer_type (i8_type context), StrMap.empty
   | _ ->
      (* Must be record type. Generate list of types from record fields *)
+     (* Can union types be handled as records also? How about space? casting? *)
      let tlist =
        List.mapi (fun i fi ->
            let mname, tname = fi.fieldtype.modulename, fi.fieldtype.typename in
            let basetype = match Lltenv.find_lltype_opt
                                   (mname, tname) lltypes with
              | Some basetype -> basetype
-             (* what happens if this recursively generated type's field 
-              * offsets need to be added too?  
+             (* what happens if the type is recursive?  
               * I believe its type will be generated and added separately.
               * I hope it doesn't confuse LLVM if the same named type is
               * generated twice. *)
@@ -141,16 +144,18 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
       else const_int nulltag_type 1 in
     let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
     ignore (build_store tagval tagaddr builder);
-    let valaddr = build_struct_gep alloca 1 "valaddr" builder in
-    ignore (build_store the_val valaddr builder);
+    (* Only build a store for the value if it's not null. *)
+    if not (is_null the_val) then ( 
+      let valaddr = build_struct_gep alloca 1 "valaddr" builder in
+      ignore (build_store the_val valaddr builder));
+    (* Now reload the whole thing for the result. *)
     build_load alloca "promotedval" builder
-    (* failed first attempt, generating a constant struct. It wasn't const. *)
 
 
 (** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
-  | ExpConst NullVal -> const_pointer_null int_type (* not used *)
+  | ExpConst NullVal -> const_int nulltag_type 0 (* maybe used now *)
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
   | ExpConst (IntVal i) -> const_int int_type i
   | ExpConst (FloatVal f) -> const_float float_type f
@@ -321,12 +326,12 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          else varaddr
        in 
        List.iter (fun (fname, fexp) ->
-           (* have to use the map. from fields to nums *)
+           (* have to use the map from fields to nums *)
            let fexpval = gen_expr the_module builder syms lltypes fexp in
            let fieldaddr =
              build_struct_gep recaddr
-               (fst (Lltenv.find_field (entry.symtype.tclass.in_module,
-                                        entry.symtype.tclass.classname)
+               (fst (Lltenv.find_field (entry.symtype.modulename,
+                                        entry.symtype.typename)
                        fname lltypes)) "fieldaddr" builder in
            ignore (build_store fexpval fieldaddr builder)
          ) fieldlist
@@ -400,7 +405,11 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       match cond.e with
       | ExpNullAssn (isdecl, (varname, flds), _, nullexp) ->
          let condval = gen_expr the_module builder syms lltypes nullexp in
-         let condres = build_extractvalue condval 0 "nulltag" builder in
+         let nulltag = build_extractvalue condval 0 "nulltag" builder in
+         (* Need an icmp instruction because tag value isn't i1 anymore. *)
+         let condres =
+           build_icmp Icmp.Ne
+             nulltag (const_int nulltag_type 0) "condres" builder in
          (* construct a new declaration if needed, then generate code
           * to store the non-null condition result value *)
          position_at_end thenbb builder;
@@ -416,7 +425,14 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          (* build_load valaddr "realval" builder in *)
          ignore (build_store realval alloca builder);
          condres
-      | _ -> gen_expr the_module builder syms lltypes cond
+      | _ ->
+         let condval = gen_expr the_module builder syms lltypes cond in
+         (* need to handle nullable case here too *)
+         if cond.decor.nullable then
+           let nulltag = build_extractvalue condval 0 "nulltag" builder in
+           build_icmp Icmp.Ne
+             nulltag (const_int nulltag_type 0) "condres" builder
+         else condval
     in
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
@@ -641,15 +657,16 @@ let gen_module tenv topsyms (modtree: (typetag, 'a st_node) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   let builder = builder context in
   (* Generate dict of llvm types for the type definitions. TODO: imports) *)
-  let lltypes = TypeMap.fold (fun _ cdata lltenv ->
-                    (* fully-qualified typename now *)
-                    let newkey = (cdata.in_module, cdata.classname) in
-                    (* note that lltydata is a pair type. *)
-                    let lltydata = gen_lltype context tenv lltenv cdata in
-                    print_string ("adding type " ^ (fst newkey) ^ "::"
-                                  ^ (snd newkey) ^ " to lltenv\n");
-                    Lltenv.add newkey lltydata lltenv
-                  ) tenv Lltenv.empty in
+  let lltypes =
+    TypeMap.fold (fun _ cdata lltenv ->
+        (* fully-qualified typename now *)
+        let newkey = (cdata.in_module, cdata.classname) in
+        (* note that lltydata is a pair type. *)
+        let lltydata = gen_lltype context tenv lltenv cdata in
+        print_string ("adding type " ^ (fst newkey) ^ "::"
+                      ^ (snd newkey) ^ " to lltenv\n");
+        Lltenv.add newkey lltydata lltenv
+      ) tenv Lltenv.empty in
   (* Generate decls for imports (already in the top symbol table node.) *)
   gen_fdecls the_module lltypes topsyms.fsyms;
   (* The next symtable node underneath has this module's proc declarations *)

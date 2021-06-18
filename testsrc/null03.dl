@@ -19,12 +19,12 @@ export proc main (): Void =
   (* should be able to pass either subtype of a nullable. *)
   (* var mi = maybeInt(8); *)
   if var i ?= maybeInt(8) then
-    printInt(i);
+    printInt(i); (* prints 7 *)
   endif
 
   var i: Int;
   if i ?= maybeInt(4) then
-    printInt(i);
+    printInt(i); (* Nothing printed *)
   endif
   (* printInt(i); (* got uninit error, yay! *) *)
 

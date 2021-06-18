@@ -17,8 +17,8 @@ export proc main (): Void =
   (* should be able to pass either subtype of a nullable. *)
   if var i ?= maybeInt(4, Null) then
     printInt(i);
-  (* else
-    printString("nope"); *)
+  else
+    printString("nope");
   endif
 end main
 

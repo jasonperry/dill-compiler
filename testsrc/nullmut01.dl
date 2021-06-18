@@ -9,6 +9,12 @@ type ComplexMut = struct
 end ComplexMut
 
 proc changeIf(copt: ComplexMut?) : Void =
+  (* I could pass it mutable and think I fixed the code, but the
+   * conditional assignment creates a new variable, so the original
+   * will never be changed. I think the right solution is to just 
+   * implement the case statement. We might even get rid of null
+   * assignment because it has this corner case, and cases are another
+   * way to do the same thing. *)
   if var cval ?= copt then
     (* doesn't need to give error, it's changing a copy *)
     cval.i = cval.i + 1.0;
