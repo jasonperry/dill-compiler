@@ -807,56 +807,53 @@ let check_globdecl syms tenv gstmt =
 let check_typedef modname tenv (tydef: locinfo typedef) = 
   (* TODO: handle recursive type declarations *)
   match tydef with
-  | Struct sdecl ->
-     (* check for nonexistent types, field redeclaration *)
-     let rec check_fields flist acc = match flist with
-       | [] -> Ok (List.rev acc)
-       | fdecl :: rest ->
-          match check_typeExpr tenv fdecl.fieldtype with
-          | Error e ->
-             Error [{loc=fdecl.decor; (* Maybe don't need this prefix *)
-                     value="Field type error: " ^ e}]
-          | Ok ttag -> 
-          (* match StrMap.find_opt fdecl.fieldtype.classname tenv with
-          | None ->
-             if fdecl.fieldtype.classname = sdecl.typename then
-               Error [{ loc=fdecl.decor;
-                        value="Recursively defined types not implemented: "
-                              ^ typeExpr_to_string fdecl.fieldtype }]
-             else
-               Error [{ loc=fdecl.decor;
-                      value="Undeclared field type " ^
-                              typeExpr_to_string fdecl.fieldtype }]
-          | Some fclass -> *)
-             if List.exists (fun (fi : fieldInfo) ->
-                    fi.fieldname = fdecl.fieldname) acc then
-               Error [{ loc=fdecl.decor;
-                        value="Field redeclaration " ^ fdecl.fieldname }]
-             else 
-               let finfo =
-                 {fieldname=fdecl.fieldname; priv=fdecl.priv;
-                  mut=fdecl.mut;
-                  fieldtype = ttag
-                 }
-               in check_fields rest (finfo::acc)
-     in
-     match check_fields sdecl.fields [] with
-     | Error e -> Error e
-     | Ok flist -> Ok
-        {
-          classname = sdecl.typename;
-          in_module = modname;
-          muttype = List.exists (fun (finfo: fieldInfo) ->
-                        finfo.mut || finfo.fieldtype.tclass.muttype)
-                      flist;
-          (* Think it's better overall to use the checked structure. *)
-                      (* List.exists (fun (fdecl: 'sd fieldDecl) -> fdecl.mut)
-                      sdecl.fields; *)
-          params = [];
-          implements = [];
-          (* later can generate field info with same type variables as outer *)
-          fields = flist
-        }
+  | Struct sdecl -> (
+    (* check for typename redeclaration *)
+    match TypeMap.find_opt ("", sdecl.typename) tenv with
+    | Some _ ->
+       Error [{ loc=sdecl.decor;
+                value="Type redeclaration: " ^ sdecl.typename }]
+    | None -> (
+      (* check for nonexistent types, field redeclaration *)
+      let rec check_fields flist acc = match flist with
+        | [] -> Ok (List.rev acc)
+        | fdecl :: rest ->
+           match check_typeExpr tenv fdecl.fieldtype with
+           | Error e ->
+              Error [{loc=fdecl.decor; (* Maybe don't need this prefix *)
+                      value="Field type error: " ^ e}]
+           | Ok ttag -> 
+              if List.exists (fun (fi : fieldInfo) ->
+                     fi.fieldname = fdecl.fieldname) acc then
+                Error [{ loc=fdecl.decor;
+                         value="Field redeclaration " ^ fdecl.fieldname }]
+              else 
+                let finfo =
+                  {fieldname=fdecl.fieldname; priv=fdecl.priv;
+                   mut=fdecl.mut;
+                   fieldtype = ttag
+                  }
+                in check_fields rest (finfo::acc)
+      in
+      match check_fields sdecl.fields [] with
+      | Error e -> Error e
+      | Ok flist ->
+         Ok {
+             classname = sdecl.typename;
+             in_module = modname;
+           muttype = List.exists (fun (finfo: fieldInfo) ->
+                         finfo.mut || finfo.fieldtype.tclass.muttype)
+                       flist;
+           (* Think it's better overall to use the checked structure. *)
+           (* List.exists (fun (fdecl: 'sd fieldDecl) -> fdecl.mut)
+              sdecl.fields; *)    
+           params = [];
+           implements = [];
+           (* later can generate field info with same type variables as outer *)
+           fields = flist
+  }))
+  | Union _ -> failwith "working on it."
+(* where is the typename itself checked for redeclaration? It's not! *)
 
 
 (** From imported module specs, add types and global var/proc symbols. *)
@@ -962,7 +959,7 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
     (* print_typekeys tenv; *)
     (* Add new scope so imports will be topmost in the module scope. *)
     let syms = Symtable.new_scope syms in
-    (* create tenv entries (classdata) for struct declarations *)
+    (* create tenv entries (classdata) for type definitions *)
     (* I was feeling salty to write this fold, but it may have some redundancies *)
     let typesres =
       List.fold_left (fun tenvres td ->
@@ -978,28 +975,20 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
     match typesres with
     | Error e -> Error e
     | Ok tenv -> 
-    (*let tdefsrlist = List.map (check_typedef dmod.name tenv) dmod.typedefs in
-    (* fold typedefs into new type environment. *)
-    if List.exists Result.is_error tdefsrlist then
-      Error (concat_errors tdefsrlist)
-    else 
-      let tenv = List.fold_left
-                   (fun m (cdata: classData) ->
-                     (* Changed: not indexed by module name locally. *)
-                     TypeMap.add ("", cdata.classname) cdata m)
-                     (* TypeMap.add (cdata.in_module, cdata.classname) cdata m) *)
-                   tenv (concat_ok tdefsrlist) in
-      (* spam syms into the decor of the AST typedefs, not that it will
-         be needed...maybe delete typedefs from the second AST
-         and turn the methods into just functions? *) *)
-       let newtypedefs = List.map (fun td ->
-                             match td with
-                             | Struct sdecl ->
-                                let newfields = List.map (fun fd ->
-                                                    {fd with decor=syms})
-                                                  sdecl.fields in
-                                Struct {sdecl with fields=newfields})
-                           dmod.typedefs in
+       (* spam syms into the decor of the AST typedefs to update the decor type.
+        * Not needed? maybe delete typedefs from the second AST
+        * and turn the methods into just functions? *)
+       let newtypedefs =
+         List.map (fun td ->
+             match td with
+             | Struct sdecl ->
+                let newfields = List.map (fun (fd: locinfo fieldDecl) ->
+                                    {fd with decor=syms})
+                                  sdecl.fields in
+                Struct {sdecl with fields=newfields;
+                                   decor=syms}
+             | Union udecl -> Union {udecl with decor=syms}
+           ) dmod.typedefs in
        (* Check global declarations *)
        let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in
        if List.exists Result.is_error globalsrlist then

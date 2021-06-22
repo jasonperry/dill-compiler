@@ -10,7 +10,7 @@
 %token EQ NE LT GT LE GE
 %token AND OR NOT
 %token TRUE FALSE NULL
-%token COLON DCOLON SEMI COMMA HASH QMARK
+%token COLON DCOLON SEMI DOT COMMA HASH QMARK
 %token ASSIGN NULLASSIGN
 %token VAR
 %token BEGIN END
@@ -18,8 +18,9 @@
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
 %token MODULE MODSPEC
-%token IMPORT AS OPEN EXPORT
-%token PRIVATE DOT TYPE STRUCT MUT
+%token IMPORT AS OPEN 
+%token PRIVATE EXPORT
+%token TYPE STRUCT UNION MUT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -51,6 +52,8 @@
 
 %%
 
+(* Why the heck did I make it consist of a modspec *and* a module instead
+ * of one or (a list of) the other? *)
 main: specopt=option(modspec) modopt=option(dillmodule) EOF
     { (specopt, modopt) }
 
@@ -121,11 +124,21 @@ openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 typedef:
   | sd=structTypedef { Struct sd }
+  | ud=unionTypedef { Union ud }
 
 structTypedef:
   | TYPE tn=IDENT_UC ASSIGN STRUCT fl=fieldList SEMI END tn2=IDENT_UC
     { if tn2 = tn then
-	{typename=tn; fields=fl}
+	{typename=tn; fields=fl; decor=$loc}
+      else
+	$syntaxerror
+    }
+
+unionTypedef:
+  | TYPE tn=IDENT_UC ASSIGN UNION
+      tys=separated_list(COMMA, typeExp) SEMI END tn2=IDENT_UC
+    { if tn2 = tn then
+	{typename=tn; subtypes=tys; decor=$loc}
       else
 	$syntaxerror
     }
@@ -255,7 +268,7 @@ whileStmt:
     { StmtWhile (cond, body) }
 
 typeExp:
-  (* This will be elaborated to include array, null, type variables,... *)
+  (* typename plus possibly array, null markers *)
   | mn=moduleName DCOLON tn=IDENT_UC qm=option(QMARK)
     { { modname=Some mn; classname=tn;
         nullable=Option.is_some qm } }

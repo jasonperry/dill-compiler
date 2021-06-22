@@ -1,0 +1,25 @@
+(* first example of union types *)
+
+module Union01 =
+
+open Stdio;
+
+type Num = union
+  Float,
+  Int;
+end Num
+
+export proc main() : Void =
+  var u1: Num = 4;
+  var u2: Num = 5.5;
+
+  case u1
+    of i: Int =>
+      printInt(i);
+    of f: Float =>
+      printFloat(f);
+  endcase
+
+end main
+
+end Union01

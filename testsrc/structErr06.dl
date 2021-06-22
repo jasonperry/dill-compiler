@@ -1,0 +1,24 @@
+(* redeclaration of type with same name *)
+module StructErr06 =
+
+open Stdio;
+
+type Complex = struct
+  mut i: Float,
+  mut j: Float;
+end Complex
+
+type Complex = struct
+  mut i: Float,
+  mut j: Float;
+end Complex
+
+export proc main() : Void = 
+
+  var cpx: Complex = {i=2.0, j=1.111};
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+
+end main
+
+end StructErr06

@@ -39,7 +39,7 @@ type locinfo = Lexing.position * Lexing.position
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
-(** Syntactic type expression. Needs to be expanded *)
+(** Syntactic type expression. Needs to be decorated with loc? *)
 type typeExpr = {
     modname: string option; (* TODO: may be easier to just use empty strings *)
     classname: string;
@@ -131,15 +131,24 @@ type 'sd fieldDecl = {
 
 (** A struct type definition. *)
 type 'sd structTypedef = {
-    (* Do I need the module name in here? *)
+    (* module name is added at higher context. *)
     typename: string;
     (* actually need a fieldDecl for this *)
-    fields: 'sd fieldDecl list (* should also be decorated with loc *)
+    fields: 'sd fieldDecl list;
+    decor: 'sd
+  }
+
+(** A union type definition. *)
+type 'sd unionTypedef = {
+    typename: string;
+    subtypes: typeExpr list;
+    decor: 'sd  (* since individual typeExprs aren't decorated *)
   }
 
 (* It needs the symbol table decoration for the methods, I think. *)
 type 'sd typedef =
   | Struct of 'sd structTypedef
+  | Union of 'sd unionTypedef
 
 
 (** Import statements occur separately, so it seems no need to include in 
@@ -189,6 +198,7 @@ and typedef_to_string = function
      "type " ^ std.typename ^ " = struct\n  "
      ^ String.concat ",\n  " (List.map fieldDecl_to_string std.fields)
      ^ ";\nend " ^ std.typename ^ "\n"
+  | Union _ -> "please write code to print union types in ast.ml."
 
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
@@ -281,12 +291,7 @@ let proc_to_string (proc: ('ed, 'sd) proc) =
 
 let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   "module " ^ dmod.name ^ " = \n"
-  ^ List.fold_left (
-        fun s -> function
-              | Struct tdef -> 
-                 s ^ "type " ^ tdef.typename ^ " = struct\n"
-                 ^ "(some fields)\n end " ^ tdef.typename ^ "\n"
-      ) "" dmod.typedefs
+  ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
         fun s gstmt ->
         s ^ "var " ^ gstmt.varname
