@@ -119,6 +119,8 @@ type ('ed,'sd) proc = {
     decor: 'sd
   }
 
+(* Type definition syntax begins here *)
+
 (** Single field declaration of a struct type. *)
 type 'sd fieldDecl = {
     fieldname: string;
@@ -129,27 +131,21 @@ type 'sd fieldDecl = {
     decor: 'sd (* to be a typetag *)
   }
 
-(** A struct type definition. *)
-type 'sd structTypedef = {
+(** Type decl info that's different for structs/unions/enums. *)
+type 'sd subtypeInfo =
+  | Fields of 'sd fieldDecl list
+  | Subtypes of typeExpr list
+
+(** struct for definition of any type. *)
+type 'sd typedef = {
     (* module name is added at higher context. *)
     typename: string;
-    (* actually need a fieldDecl for this *)
-    fields: 'sd fieldDecl list;
+    subinfo: 'sd subtypeInfo;
     decor: 'sd
   }
 
-(** A union type definition. *)
-type 'sd unionTypedef = {
-    typename: string;
-    subtypes: typeExpr list;
-    decor: 'sd  (* since individual typeExprs aren't decorated *)
-  }
 
-(* It needs the symbol table decoration for the methods, I think. *)
-type 'sd typedef =
-  | Struct of 'sd structTypedef
-  | Union of 'sd unionTypedef
-
+(* import and full module syntax begins here *)
 
 (** Import statements occur separately, so it seems no need to include in 
  * the stmt type. Also, no decoration needed?
@@ -193,12 +189,16 @@ and fieldDecl_to_string fd =
   ^ fd.fieldname ^ ": "
   ^ typeExpr_to_string fd.fieldtype
 
-and typedef_to_string = function
-  | Struct std -> 
-     "type " ^ std.typename ^ " = struct\n  "
-     ^ String.concat ",\n  " (List.map fieldDecl_to_string std.fields)
-     ^ ";\nend " ^ std.typename ^ "\n"
-  | Union _ -> "please write code to print union types in ast.ml."
+and typedef_to_string tdef = 
+  "type " ^ tdef.typename ^ " = "
+  ^ (match tdef.subinfo with
+     | Fields fields ->
+        "struct\n  "
+        ^ String.concat ",\n  " (List.map fieldDecl_to_string fields)
+     | Subtypes _ ->
+        "CODE TO PRINT UNION TYPES NOT WRITTEN YET"
+    )
+  ^ ";\nend " ^ tdef.typename ^ "\n"
 
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =

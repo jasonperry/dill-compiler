@@ -123,25 +123,18 @@ importStmt:
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 typedef:
-  | sd=structTypedef { Struct sd }
-  | ud=unionTypedef { Union ud }
-
-structTypedef:
-  | TYPE tn=IDENT_UC ASSIGN STRUCT fl=fieldList SEMI END tn2=IDENT_UC
-    { if tn2 = tn then
-	{typename=tn; fields=fl; decor=$loc}
+  | TYPE tname=IDENT_UC ASSIGN tdi=typedefInfo tname2=IDENT_UC
+    { if tname2 = tname then
+	{typename=tname; subinfo=tdi; decor=$loc}
       else
 	$syntaxerror
     }
 
-unionTypedef:
-  | TYPE tn=IDENT_UC ASSIGN UNION
-      tys=separated_list(COMMA, typeExp) SEMI END tn2=IDENT_UC
-    { if tn2 = tn then
-	{typename=tn; subtypes=tys; decor=$loc}
-      else
-	$syntaxerror
-    }
+typedefInfo:
+  | STRUCT fl=fieldList SEMI
+    { Fields fl }
+  | UNION tys=separated_list(COMMA, typeExp) SEMI
+    { Subtypes tys }
 
 fieldList:
   | fl=separated_list(COMMA, fieldDecl) { fl }

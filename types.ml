@@ -25,7 +25,8 @@ and classData = {
     implements: string list; (* interfaces *)
     (* When we do generics, need to link the field type parameters. 
        (possibly just by varname) *)
-    fields: fieldInfo list
+    fields: fieldInfo list;
+    subtypes: typetag list
     (* also need all method signatures. *)
   }
 
@@ -83,27 +84,33 @@ let rec typetag_to_string (tt: typetag) =
 
 (* Class definitions for built-in types, and tags for convenience. *)
 let null_class = { classname="NullType"; in_module = "";
-                   muttype=false; params=[]; implements=[]; fields=[] }
+                   muttype=false; params=[]; implements=[]; fields=[];
+                   subtypes=[] }
 let null_ttag = gen_ttag null_class []
 (* NOTE: void is not a type! Maybe it shouldn't be one in Dill, just have
  * procs that return nothing. *)
 let void_class =  { classname="Void"; in_module = "";
-                    muttype=false; params=[]; implements=[]; fields=[] }
+                    muttype=false; params=[]; implements=[]; fields=[];
+                    subtypes=[] }
 let void_ttag = gen_ttag void_class []
 
 let int_class = { classname="Int"; in_module = ""; muttype=false; params=[];
-                  implements=[]; fields=[] } (* later: "Arith" *)
+                  implements=[]; fields=[];
+                  subtypes=[] } (* later: "Arith" *)
 let int_ttag = gen_ttag int_class []
 
 let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
-                   implements=[]; fields=[] }
+                   implements=[]; fields=[];
+                   subtypes=[] }
 let bool_ttag = gen_ttag bool_class []
 
 let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
-                    implements=[]; fields=[]}
+                    implements=[]; fields=[];
+                    subtypes=[] }
 let float_ttag = gen_ttag float_class []
 
 let string_class = { classname="String"; in_module=""; muttype=false;
-                     params=[]; implements=[]; fields=[] }
+                     params=[]; implements=[]; fields=[];
+                   subtypes=[] }
 let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)
