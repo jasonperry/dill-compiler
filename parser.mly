@@ -123,7 +123,7 @@ importStmt:
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 typedef:
-  | TYPE tname=IDENT_UC ASSIGN tdi=typedefInfo tname2=IDENT_UC
+  | TYPE tname=IDENT_UC ASSIGN tdi=typedefInfo END tname2=IDENT_UC
     { if tname2 = tname then
 	{typename=tname; subinfo=tdi; decor=$loc}
       else

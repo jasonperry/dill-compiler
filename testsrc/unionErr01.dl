@@ -1,17 +1,20 @@
-(* first example of union types *)
+(* assigning wrong nullable subtype to a union *)
 
-module Union01 =
+module UnionErr01 =
 
 open Stdio;
 
 type Num = union
-  Float,
+  Float?,
   Int;
 end Num
 
 export proc main() : Void =
   var u1: Num = 4;
   var u2: Num = 5.5;
+
+  (* should probably be able to do this. *)
+  (* var u2: Num = (5.5: Float?); *)
 
   (* case u1
     of i: Int =>
@@ -22,4 +25,4 @@ export proc main() : Void =
 
 end main
 
-end Union01
+end UnionErr01

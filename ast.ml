@@ -195,8 +195,9 @@ and typedef_to_string tdef =
      | Fields fields ->
         "struct\n  "
         ^ String.concat ",\n  " (List.map fieldDecl_to_string fields)
-     | Subtypes _ ->
-        "CODE TO PRINT UNION TYPES NOT WRITTEN YET"
+     | Subtypes stypes ->
+        "union\n  "
+        ^ String.concat ",\n  " (List.map typeExpr_to_string stypes)
     )
   ^ ";\nend " ^ tdef.typename ^ "\n"
 

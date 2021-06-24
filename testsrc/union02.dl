@@ -1,0 +1,31 @@
+(* union with nullable type *)
+
+module Union02 =
+
+open Stdio;
+
+type Num = union
+  Float?,
+  Int;
+end Num
+
+export proc main() : Void =
+  var u1: Num = 4;
+  var fm: Float? = 5.5;
+  var u2: Num = fm;
+
+  var u3: Num? = Null;
+
+  (* should probably be able to do this. *)
+  (* var u2: Num = (5.5: Float?); *)
+
+  (* case u1
+    of i: Int =>
+      printInt(i);
+    of f: Float =>
+      printFloat(f);
+  endcase *)
+
+end main
+
+end Union02

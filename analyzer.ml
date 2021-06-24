@@ -31,11 +31,12 @@ let check_typeExpr tenv texp : (typetag, string) result =
 
 (** Ensure first argument is of equal or more specific type than second. *)
 let subtype_match (spectag: typetag) (gentag: typetag) =
-  (* To be expanded; currently only deals with nullable case. *)
   spectag = gentag
   || gentag.nullable &&
-       (spectag.tclass = null_class
-        || spectag.tclass = gentag.tclass)
+       (spectag.tclass = null_class || spectag.tclass = gentag.tclass)
+  (* Specific type is one of the types in a union *)
+  (* Could do it recursively? *)
+  || List.exists ((=) spectag) gentag.tclass.subtypes
 
 
 (** Expression result type (remember that exprs have a type field) *)
@@ -376,7 +377,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
     (* Declaration: check for redeclaration, check the exp, make sure
      * types match if declared. *)
   | StmtDecl (v, tyopt, initopt) -> (
-    (* Should I factor this logic into a try_add symtable method *)
+    (* Should I factor this logic into a try_add symtable method? *)
     match Symtable.findvar_opt v syms with
     | Some (_, scope) when scope = syms.scopedepth ->
        Error [{loc=stm.decor; value="Redeclaration of variable " ^ v}]
@@ -400,25 +401,21 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
              | None ->
                 Error [{loc=stm.decor;
                         value="Var declaration must have type or initializer"}]
-             | Some ttag -> 
-                Ok (None, ttag) )
+             | Some decltype -> 
+                Ok (None, decltype) )
           | Some initexp -> (
             match check_expr syms tenv ~thint:ttagopt initexp with
             | Error err -> Error [err]
             | Ok ({e=_; decor=ettag} as e2) -> (
                 match ttagopt with
-                | Some ttag -> 
-                   (* Allow storing null or value type in a nullable var. *)
-                   if ttag = ettag
-                      || ttag.nullable &&
-                           (ettag.tclass = null_class
-                            || ettag.tclass = ttag.tclass) then
+                | Some ttag ->
+                   if subtype_match ettag ttag then
                      Ok (Some e2, ttag)
                   else
                     Error [{loc=stm.decor;
-                            value="Declared type: " ^ typetag_to_string ttag
+                            value="Declared type " ^ typetag_to_string ttag
                                   ^ " for variable " ^ v
-                                  ^ " does not match initializer type: "
+                                  ^ " does not match initializer type "
                                   ^ typetag_to_string ettag}] 
                 | None -> Ok (Some e2, ettag)
             ))
@@ -843,12 +840,13 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               classname = tdef.typename;
               in_module = modname;
               muttype = List.exists (fun (finfo: fieldInfo) ->
+                            (* Yes, there are two ways a field can be changed! *)
                             finfo.mut || finfo.fieldtype.tclass.muttype)
                           flist;
               params = [];
               implements = [];
               (* for generics: generate field info with same type
-                variables as    outer *)
+                variables as outer *)
               fields = flist;
               subtypes = [];
             }
