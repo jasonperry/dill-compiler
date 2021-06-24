@@ -1,0 +1,22 @@
+I'm working on a statically typed programming language that captures how
+I want to write imperative code, with nice safety features and good
+not-too-abstract abstractions. Notable features:
+- Immutable-by-default datatypes, with all procedure arguments passed
+  immutably by default. Passing a mutable reference has to be indicated
+  at the function definition and call site.
+- Method call syntax that differentiates mutating from non-mutating
+  methods (not implemented yet)
+- Keyword-based block syntax instead of curly braces; semicolons. "As
+  readable as possible, as verbose as necessary"
+- Clear and consistent value and reference semantics. One should be be
+  able to write natural-looking code, but not at the cost of obscuring
+  memory semantics. Okay, this is more of a principle than a feature.
+- Null-safety with convenient syntax for nullable (option) types.
+- Record types
+- Safe union types (not full variant types)
+- Every code unit is a module with an auto-generated signature, allowing
+  separate compilation
+- Eventually: generics with interface constraints
+  
+We'll see how far I get. The initial backend is LLVM, with a current
+target of x86_64.
