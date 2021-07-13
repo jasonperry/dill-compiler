@@ -49,10 +49,10 @@ rule token = parse  (* funny that it's called parse *)
   | '%'     { MOD }
   | '+'     { PLUS }
   | '-'     { MINUS }
-  | '&'     { BITAND }
-  | '|'     { BITOR }
-  | '^'     { BITXOR }
-  | '~'     { BITNOT }
+  | '&'     { AMP }
+  | '|'     { PIPE }
+  | '^'     { CARAT }
+  | '~'     { TILDE }
   (* | "++"   { CONCAT } *)
   | "=="    { EQ }
   | "!="    { NE }
@@ -95,7 +95,7 @@ rule token = parse  (* funny that it's called parse *)
   | '.'       { DOT }
   | "type"    { TYPE }
   | "struct"  { STRUCT }
-  | "union"   { UNION }
+  | "variant" { VARIANT }
   | "mut"     { MUT }
   | "True"    { TRUE }    (* Is this the place to put built-in names? *)
   | "False"   { FALSE }   (* Even if not, bools might be special. *)

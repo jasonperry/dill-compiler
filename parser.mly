@@ -6,7 +6,7 @@
 %token LPAREN RPAREN LBRACE RBRACE
 %token PLUS MINUS TIMES DIV MOD
 %token UMINUS (* not lexed *)
-%token BITAND BITOR BITXOR BITNOT
+%token AMP PIPE CARAT TILDE
 %token EQ NE LT GT LE GE
 %token AND OR NOT
 %token TRUE FALSE NULL
@@ -20,18 +20,18 @@
 %token MODULE MODSPEC
 %token IMPORT AS OPEN 
 %token PRIVATE EXPORT
-%token TYPE STRUCT UNION MUT
+%token TYPE STRUCT VARIANT MUT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
 %left OR
 %left AND
 %left EQ NE LT LE GE
-%left BITAND BITOR BITXOR
+%left AMP PIPE CARAT  (* Only makes a difference in exprs, right? *)
 %left PLUS MINUS
 %left TIMES DIV MOD
 %nonassoc UMINUS
-%nonassoc BITNOT
+%nonassoc TILDE
 %nonassoc NOT
 
 %{
@@ -43,6 +43,7 @@
 %type <(Ast.locinfo, Ast.locinfo) Ast.stmt> stmt
 %type <Ast.locinfo Ast.procdecl> procHeader
 %type <(Ast.locinfo, Ast.locinfo) Ast.proc> proc
+%type <Ast.locinfo Ast.variantDecl> variantDecl
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
 %type <(Ast.locinfo) Ast.module_spec> modspec
@@ -133,11 +134,12 @@ typedef:
 typedefInfo:
   | STRUCT fl=fieldList SEMI
     { Fields fl }
-  | UNION tys=separated_list(COMMA, typeExp) SEMI
-    { Subtypes tys }
+  | VARIANT vl=variantList SEMI
+    { Variants vl }
 
 fieldList:
-  | fl=separated_list(COMMA, fieldDecl) { fl }
+  | fl=separated_nonempty_list(COMMA, fieldDecl)
+    { fl }
 
 fieldDecl:
   | priv=option(PRIVATE) mut=option(MUT) fn=IDENT_LC COLON fty=typeExp
@@ -147,6 +149,14 @@ fieldDecl:
        fieldtype=fty;
        decor=$loc
     } }
+
+variantList:
+  | option(PIPE) vl=separated_nonempty_list(PIPE, variantDecl)
+    { vl }
+
+variantDecl:
+  | vname=IDENT_LC COLON vty=typeExp
+    { {variantName=vname; variantType=vty; decor=$loc} }
 
 proc:
   | pd=procHeader ASSIGN sb=stmtSeq END en=IDENT_LC 
@@ -331,11 +341,11 @@ opExp:
     { ExpBinop (e1, OpPlus, e2) }
   | e1=expr MINUS e2=expr
     { ExpBinop (e1, OpMinus, e2) }
-  | e1=expr BITAND e2=expr
+  | e1=expr AMP e2=expr
     { ExpBinop (e1, OpBitAnd, e2) }
-  | e1=expr BITOR e2=expr
+  | e1=expr PIPE e2=expr
     { ExpBinop (e1, OpBitOr, e2) }
-  | e1=expr BITXOR e2=expr
+  | e1=expr CARAT e2=expr
     { ExpBinop (e1, OpBitXor, e2) }
   | e1=expr EQ e2=expr
     { ExpBinop (e1, OpEq, e2) }
@@ -355,7 +365,7 @@ opExp:
     { ExpBinop (e1, OpOr, e2) }
   | MINUS e=expr %prec UMINUS  (* apply unary minus precedence *)
     { ExpUnop (OpNeg, e) }
-  | BITNOT e=expr
+  | TILDE e=expr
     { ExpUnop (OpBitNot, e) }
   | NOT e=expr
     { ExpUnop (OpNot, e) }

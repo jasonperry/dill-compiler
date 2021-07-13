@@ -1,12 +1,12 @@
 module Import01 =
 
-using Collatz;
+import Collatz;
 open Stdio;
 
-begin
+export proc main() : Void = 
 
-printInt(Collatz.collatz(6171)); (* 261 steps *)
+  printInt(Collatz::collatz(6171)); (* 261 steps *)
 
-end
+end main
 
 end Import01

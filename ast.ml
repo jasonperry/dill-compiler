@@ -131,10 +131,17 @@ type 'sd fieldDecl = {
     decor: 'sd (* to be a typetag *)
   }
 
+(** A single named option for a variant type. *)
+type 'sd variantDecl = {
+    variantName: string;
+    variantType: typeExpr;
+    decor: 'sd
+  }
+
 (** Type decl info that's different for structs/unions/enums. *)
 type 'sd subtypeInfo =
   | Fields of 'sd fieldDecl list
-  | Subtypes of typeExpr list
+  | Variants of 'sd variantDecl list
 
 (** struct for definition of any type. *)
 type 'sd typedef = {
@@ -195,9 +202,12 @@ and typedef_to_string tdef =
      | Fields fields ->
         "struct\n  "
         ^ String.concat ",\n  " (List.map fieldDecl_to_string fields)
-     | Subtypes stypes ->
-        "union\n  "
-        ^ String.concat ",\n  " (List.map typeExpr_to_string stypes)
+     | Variants variants ->
+        "variant\n  | "
+        ^ String.concat "| \n  "
+            (List.map (fun vdec ->
+                 vdec.variantName ^ ": " ^ typeExpr_to_string vdec.variantType)
+               variants)
     )
   ^ ";\nend " ^ tdef.typename ^ "\n"
 

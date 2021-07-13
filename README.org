@@ -6,8 +6,6 @@ not-too-abstract abstractions. Notable features:
   at the function definition and call site.
 - Method call syntax that differentiates mutating from non-mutating
   methods (not implemented yet)
-- Keyword-based block syntax instead of curly braces; semicolons. "As
-  readable as possible, as verbose as necessary"
 - Clear and consistent value and reference semantics. One should be be
   able to write natural-looking code, but not at the cost of obscuring
   memory semantics. Okay, this is more of a principle than a feature.
@@ -16,6 +14,8 @@ not-too-abstract abstractions. Notable features:
 - Safe union types (not full variant types)
 - Every code unit is a module with an auto-generated signature, allowing
   separate compilation
+- Keyword-based block syntax instead of curly braces; semicolons. "As
+  readable as possible, as verbose as necessary"
 - Eventually: generics with interface constraints
   
 We'll see how far I get. The initial backend is LLVM, with a current

@@ -35,7 +35,7 @@ let subtype_match (spectag: typetag) (gentag: typetag) =
   || gentag.nullable &&
        (spectag.tclass = null_class || spectag.tclass = gentag.tclass)
   (* Specific type is one of the types in a union *)
-  (* Could do it recursively? *)
+  (* Could do it recursively? Wait and see if it's better not to. *)
   || List.exists ((=) spectag) gentag.tclass.subtypes
 
 
@@ -899,8 +899,6 @@ let add_imports syms tenv specs istmts =
       | td::rest ->
          match check_typedef modname tenv_acc td with
          | Ok cdata ->
-            print_endline ("adding imported type " ^ modalias ^ "::"
-                           ^ cdata.classname);
             let newtenv =
               TypeMap.add (modalias, cdata.classname) cdata tenv_acc in
             check_importtypes modname modalias rest newtenv
@@ -941,7 +939,6 @@ let add_imports syms tenv specs istmts =
              match check_pdecl syms tenv modname pdecl 
              (* { pdecl with name=(prefix ^ pdecl.name) } *) with
              | Ok (_, entry) ->
-                print_string ("Adding imported proc symbol: " ^ refname ^ "\n");
                 Symtable.addproc syms refname entry;
                 if refname <> fullname then 
                   Symtable.addproc syms fullname entry;

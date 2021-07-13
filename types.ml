@@ -14,7 +14,7 @@ and fieldInfo = {
     fieldtype: typetag (* classData, formerly *)
   }
 
-(** The specification for a class of types, as defined by a record or etc. *)
+(** The specification for a class of types, given by a type declaration *)
 and classData = {
     classname: string; (* do I even need it? It's the dict key *)
     in_module: string; (* to make it self-contained for generating ttags. *)

@@ -133,8 +133,8 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
      Ok (typed_mod, mod_tenv, topsyms)
 
 
-let codegen (_: dillc_config) tenv syms typedmod = 
-     let modcode = Codegen.gen_module tenv syms typedmod in
+let codegen (_: dillc_config) tenv syms layout typedmod = 
+     let modcode = Codegen.gen_module tenv syms layout typedmod in
      let header = Analyzer.create_module_spec typedmod in
      modcode, header
 
@@ -150,23 +150,9 @@ let write_header srcdir header =
 
 
 (** Write a module to disk as native code. *)
-let write_module_native filename modcode =
-  Llvm_all_backends.initialize (); (* was _X86 *)
-  let open Llvm_target in
-  let ttriple = "x86_64-pc-linux-gnu" in
-  Llvm.set_target_triple ttriple modcode;
-  let ttriple = Llvm.target_triple modcode in
-  let target = Target.by_triple ttriple in
-  let machine = Llvm_target.TargetMachine.create
-                  ~triple:ttriple
-                  ~cpu:"generic"
-                  (* got these features from the clang llvm output. *)
-                  (* TODO: figure out how to add pie feature. *)
-                  ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" target in
-  let dlstring = DataLayout.as_string
-                   (TargetMachine.data_layout machine) in
-  Llvm.set_data_layout dlstring modcode; 
+let write_module_native filename modcode machine =
   (* let passmgr = Llvm.PassManager.create () in (* for optimize only? *) *)
+  let open Llvm_target in
   let outfilename =
     Filename.chop_extension (Filename.basename filename) ^ ".o" in
   TargetMachine.emit_to_file
@@ -176,10 +162,23 @@ let write_module_native filename modcode =
     machine;
   print_endline ("Wrote object code file " ^ outfilename)
 
+let gen_x86_machine () = 
+  Llvm_all_backends.initialize (); (* was _X86 *)
+  let open Llvm_target in
+  let ttriple = "x86_64-pc-linux-gnu" in
+  let target = Target.by_triple ttriple in
+  Llvm_target.TargetMachine.create
+    ~triple:ttriple
+    ~cpu:"generic"
+    (* got these features from the clang llvm output. *)
+    (* TODO: figure out how to add pie feature. *)
+    ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" target
+    
 
+  
 (** Write a module to disk as LLVM IR text. *)
-let write_module_llvm filename modcode = 
-  Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode;
+let write_module_llvm filename modcode =
+  (* Llvm.set_target_triple "x86_64-pc-linux-gnu" modcode; *)
   let irfilename =
     Filename.chop_extension (Filename.basename filename) ^ ".ll" in
   Llvm.print_module irfilename modcode;
@@ -242,13 +241,18 @@ let () =
          | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
            if not cconfig.typecheck_only then (
              print_endline "* codegen stage reached";
-             let modcode, header = codegen cconfig tenv syms typedmod in 
+             let open Llvm_target in
+             let machine = gen_x86_machine () in
+             let layout = TargetMachine.data_layout machine in
+             let modcode, header = codegen cconfig tenv syms layout typedmod in
+             (* should we set this before codegen? *)
+             Llvm.set_target_triple (TargetMachine.triple machine) modcode;
              (* print_string (st_node_to_string topsyms); *)
              write_header cconfig.source_dir header;
              if cconfig.emit_llvm then 
                write_module_llvm srcfilename modcode
              else 
-               write_module_native srcfilename modcode
+               write_module_native srcfilename modcode machine
            )
          ); ispecs
        )
