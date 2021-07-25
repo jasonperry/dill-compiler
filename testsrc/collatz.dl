@@ -1,8 +1,9 @@
-module Collatz =
+module collatz begin
 
-open Stdio;
+open stdio;
 
-proc collatz(n: Int) : Int =
+proc collatz(n: Int) : Int
+begin
    var i = n;
    var count = 0;
    printInt(i);
@@ -29,4 +30,4 @@ printInt(collatz(6171)); (* 261 steps *)
 
 end
 *)
-end Collatz
+end collatz

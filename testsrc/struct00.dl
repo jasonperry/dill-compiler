@@ -1,15 +1,15 @@
 (* mutable struct initialized with individual field assignments. *)
-module Struct00 =
+module struct00 begin
 
-open Stdio;
+open stdio;
 
-type Complex = struct
+type Complex is struct
   mut i: Float,
   mut j: Float;
-end Complex
 
 
-export proc main() : Void = 
+export proc main() : Void
+begin
 
   var cpx: Complex;
   cpx.i = 4.0;
@@ -19,4 +19,4 @@ export proc main() : Void =
 
 end main
 
-end Struct00
+end struct00

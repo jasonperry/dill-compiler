@@ -5,6 +5,7 @@ import stdio;
 export proc main(): Int
 begin
    stdio::printInt(43);
+   stdio::printString("Hello World.\n");
    return 0;
 end main
 

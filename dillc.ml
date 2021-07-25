@@ -98,7 +98,7 @@ let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
       | Open mn -> mn in
     if StrMap.mem modname mmap then mmap (* already there *)
     else
-      let specfilename = String.lowercase_ascii modname ^ ".dms" in
+      let specfilename = modname ^ ".dms" in
       match open_from_paths cconfig.include_paths specfilename with
       | None -> failwith ("Could not find spec file " ^ specfilename)
       | Some specfile -> (
@@ -141,8 +141,9 @@ let codegen (_: dillc_config) tenv syms layout typedmod =
 
 let write_header srcdir header = 
   let headerfilename =
-    String.lowercase_ascii (String.sub header.name 0 1)
-    ^ String.sub header.name 1 (String.length header.name - 1) ^ ".dms" in
+    (*String.lowercase_ascii (String.sub header.name 0 1)
+    ^ String.sub header.name 1 (String.length header.name - 1) *)
+    header.name ^ ".dms" in
   let headerfile = open_out (srcdir ^ "/" ^ headerfilename) in
   output_string headerfile (modspec_to_string header);
   close_out headerfile;

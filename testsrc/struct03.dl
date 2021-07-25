@@ -1,10 +1,9 @@
 (* library-only struct definition *)
 
-module Struct03 =
+module struct03 begin
 
-type Complex = struct
+type Complex is struct
   i: Float,
   j: Float;
-end Complex
 
-end Struct03
+end struct03

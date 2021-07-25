@@ -197,7 +197,7 @@ and fieldDecl_to_string fd =
   ^ typeExpr_to_string fd.fieldtype
 
 and typedef_to_string tdef = 
-  "type " ^ tdef.typename ^ " = "
+  "type " ^ tdef.typename ^ " is "
   ^ (match tdef.subinfo with
      | Fields fields ->
         "struct\n  "
@@ -209,7 +209,7 @@ and typedef_to_string tdef =
                  vdec.variantName ^ ": " ^ typeExpr_to_string vdec.variantType)
                variants)
     )
-  ^ ";\nend " ^ tdef.typename ^ "\n"
+  ^ ";\n"
 
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
@@ -296,12 +296,12 @@ let procdecl_to_string (pdecl: 'sd procdecl) =
 
 let proc_to_string (proc: ('ed, 'sd) proc) =
   (* a little ugly, but maybe I will use the pdecl later. *)
-  procdecl_to_string proc.decl ^ "= \n"
+  procdecl_to_string proc.decl ^ "\nbegin\n"
   ^ block_to_string proc.body
   ^ "\nend " ^ proc.decl.name ^ "\n"
 
 let module_to_string (dmod: ('ed, 'sd) dillmodule) =
-  "module " ^ dmod.name ^ " = \n"
+  "module " ^ dmod.name ^ " begin \n"
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
         fun s gstmt ->
@@ -318,7 +318,7 @@ let module_to_string (dmod: ('ed, 'sd) dillmodule) =
 
 (** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: 'sd module_spec) =
-  "modspec " ^ mspec.name ^ " = \n"
+  "modspec " ^ mspec.name ^ " begin \n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
         fun s (gdecl: 'sd globaldecl) ->
