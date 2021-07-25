@@ -2,21 +2,29 @@ I'm working on a statically typed programming language that captures how
 I want to write imperative code, with nice safety features and good
 not-too-abstract abstractions. Notable features:
 - Immutable-by-default datatypes, with all procedure arguments passed
-  immutably by default. Passing a mutable reference has to be indicated
-  at the function definition and call site.
+  immutably by default. Passing a mutable reference must be indicated
+  at both the function definition and call site.
+- Struct and variant types
+- All concrete types are datatypes; there are no classes (containers for
+  both a type plus functions), though there is method-call syntax with
+  the dot.
 - Method call syntax that differentiates mutating from non-mutating
-  methods (not implemented yet)
+  methods
+- Null-safety with convenient syntax and value promotion for nullable
+  (option) types
+- Modules as the primary features for code grouping and data
+  hiding. Functions in a module can access private fields of datatypes
+  in that module.
+- Auto-generated module signatures, allowing separate compilation while
+  the programmer only has to write things in one place.
 - Clear and consistent value and reference semantics. One should be be
   able to write natural-looking code, but not at the cost of obscuring
   memory semantics. Okay, this is more of a principle than a feature.
-- Null-safety with convenient syntax for nullable (option) types.
-- Record types
-- Safe union types (not full variant types)
-- Every code unit is a module with an auto-generated signature, allowing
-  separate compilation
 - Keyword-based block syntax instead of curly braces; semicolons. "As
   readable as possible, as verbose as necessary"
-- Eventually: generics with interface constraints
+- Eventually: generics with interface constraints. One can code against
+  concrete datatypes or interfaces, with a clear distinction between
+  those cases.
   
 We'll see how far I get. The initial backend is LLVM, with a current
 target of x86_64.

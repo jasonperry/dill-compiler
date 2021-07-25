@@ -6,17 +6,20 @@ open Stdio;
 
 type Num = variant
   | f: Float
-  | i: Int;
-end Num
+  | i: Int
+  | null;
+end Num  (* we do kind of expect to see an "end" for multi-line things. *)
 
 export proc main() : Void =
   var u1: Num = Num.i(4);
   var u2 = Num.f(5.5);
+  var u3 = Num.null;
 
   (* case u1
-    of i: Int =>
+    of Num.null => (* hmm, can't tell the diff. *) 
+    of Num.i(i) => (* redundant...but OK*)
       printInt(i);
-    of f: Float =>
+    of Num.f(f) =>
       printFloat(f);
   endcase *)
 

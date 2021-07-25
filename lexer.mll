@@ -77,6 +77,7 @@ rule token = parse  (* funny that it's called parse *)
   | "elsif" { ELSIF }
   | "else"  { ELSE }
   | "endif" { ENDIF }
+  | "is"    { IS }
   | "begin" { BEGIN }
   | "end"   { END }
   | "while" { WHILE }

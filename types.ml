@@ -14,7 +14,7 @@ and fieldInfo = {
     fieldtype: typetag (* classData, formerly *)
   }
 
-(** The specification for a class of types, given by a type declaration *)
+(** The specification for a class of types, built from a type declaration *)
 and classData = {
     classname: string; (* do I even need it? It's the dict key *)
     in_module: string; (* to make it self-contained for generating ttags. *)
@@ -26,8 +26,8 @@ and classData = {
     (* When we do generics, need to link the field type parameters. 
        (possibly just by varname) *)
     fields: fieldInfo list;
-    subtypes: typetag list
-    (* also need all method signatures. *)
+    subtypes: (string * typetag) list
+    (* also need all method signatures. No, not in the latest design! *)
   }
 
 (** Unique specification of a concrete type. It's what's checked for

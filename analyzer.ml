@@ -36,7 +36,7 @@ let subtype_match (spectag: typetag) (gentag: typetag) =
        (spectag.tclass = null_class || spectag.tclass = gentag.tclass)
   (* Specific type is one of the types in a union *)
   (* Could do it recursively? Wait and see if it's better not to. *)
-  || List.exists ((=) spectag) gentag.tclass.subtypes
+(* || List.exists ((=) spectag) gentag.tclass.subtypes *)
 
 
 (** Expression result type (remember that exprs have a type field) *)
@@ -851,35 +851,40 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               subtypes = [];
             }
        )
-    | Subtypes subtypes ->
-       let rec check_subtypes texplist accres =
-         match texplist with
+    | Variants variants ->
+       let rec check_variants vdecllist accres =
+         match vdecllist with
          | [] -> Ok accres
-         | texp :: rest ->
-            (* check for type reuse, then check the expression itself *)
-            if List.exists ((=) texp) rest then
+         | vdecl :: rest ->
+            (* check for name reuse, then check the expression itself *)
+            if List.exists
+                 (fun vd -> vd.variantName = vdecl.variantName) rest then
               Error [{ loc=tdef.decor;
-                       value="Type " ^ typeExpr_to_string texp
-                             ^ " reused in union" }]
+                       value="Name " ^ vdecl.variantName
+                             ^ " reused in variant" }]
             else
-              match check_typeExpr tenv texp with
+              match check_typeExpr tenv vdecl.variantType with
               | Error e ->
                  Error [{loc=tdef.decor;
-                         value="Union subtype error: " ^ e}]
+                         value="Variant subtype error: " ^ e}]
               | Ok ttag ->
-                 check_subtypes rest (ttag::accres)
+                 check_variants rest ((vdecl.variantName, ttag)::accres)
        in
-       match check_subtypes subtypes [] with
+       match check_variants variants [] with
        | Error elist -> Error elist
-       | Ok subttags ->
+       | Ok subtypes ->
+          (* TODO: add constructors to function syms *)
+          (* add nullary constructors to variable symbol table?! They
+             are constants, I haven't handled those yet. *)
           Ok {
               classname = tdef.typename;
               in_module = modname;
-              muttype = List.exists (fun ttag -> ttag.tclass.muttype) subttags;
+              muttype = List.exists
+                          (fun st -> (snd st).tclass.muttype) subtypes;
               params = [];
               implements = [];
               fields = [];
-              subtypes = subttags
+              subtypes = subtypes
             }
   )
 
@@ -1012,8 +1017,11 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
                       {fd with decor=syms})
                     fields in
                 {tdef with subinfo=(Fields newfields); decor=syms}
-             | Subtypes subtypes ->
-                {tdef with subinfo=Subtypes subtypes; decor=syms}
+             | Variants variants ->
+                let newvariants =
+                  List.map (fun (vd: locinfo variantDecl) ->
+                      {vd with decor=syms}) variants in
+                {tdef with subinfo=Variants newvariants; decor=syms}
            ) dmod.typedefs in
        (* Check global declarations *)
        let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in

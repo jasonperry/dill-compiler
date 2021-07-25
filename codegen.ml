@@ -93,14 +93,15 @@ let rec gen_lltype context
                                  |> Array.of_list) false;
        (structtype, field_offsets)
      ) else if (cdata.subtypes <> []) then (
-       (* must be a union type. *)
+       (* must be a variant type. *)
        let maxsize =
          List.fold_left (fun max subtype ->
              let lltype = Lltenv.find_class_lltype subtype.tclass lltypes in
              let typesize = Llvm_target.DataLayout.abi_size
                               lltype layout in
              if typesize > max then typesize else max
-           ) (Int64.of_int 0) cdata.subtypes
+           ) (* temporary fix until proper codegen for variants *)
+           (Int64.of_int 0) (List.map snd cdata.subtypes)
        in 
        (* do I have to recursively add the subtypes too? Won't they already
         *  be defined? Maybe not in a specific incarnation. What's the 

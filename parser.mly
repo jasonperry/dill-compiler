@@ -13,7 +13,7 @@
 %token COLON DCOLON SEMI DOT COMMA HASH QMARK
 %token ASSIGN NULLASSIGN
 %token VAR
-%token BEGIN END
+%token IS BEGIN END
 %token IF THEN ELSIF ELSE ENDIF
 %token WHILE LOOP ENDLOOP
 %token PROC RETURN NOP
@@ -66,7 +66,7 @@ main: specopt=option(modspec) modopt=option(dillmodule) EOF
 *)
 
 dillmodule:
-  | MODULE mn=moduleName ASSIGN
+  | MODULE mn=moduleName BEGIN
     iss=list(includeStmt)
     tys=list(typedef)    (* TODO: let types come anywhere? Or be strict? *)
     gls=list(declStmt)
@@ -91,10 +91,10 @@ dillmodule:
         else $syntaxerror
     }
 
-moduleName: mn=IDENT_UC { mn }
+moduleName: mn=IDENT_LC { mn }
 
 modspec:
-  | MODSPEC mn=moduleName ASSIGN
+  | MODSPEC mn=moduleName BEGIN
     iss=list(includeStmt)
     tys=list(typedef)
     gls=list(declOnlyStmt) pd=list(procDecl)
@@ -124,17 +124,13 @@ importStmt:
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 typedef:
-  | TYPE tname=IDENT_UC ASSIGN tdi=typedefInfo END tname2=IDENT_UC
-    { if tname2 = tname then
-	{typename=tname; subinfo=tdi; decor=$loc}
-      else
-	$syntaxerror
-    }
+  | TYPE tname=IDENT_UC IS tdi=typedefInfo SEMI
+    { {typename=tname; subinfo=tdi; decor=$loc} }
 
 typedefInfo:
-  | STRUCT fl=fieldList SEMI
+  | STRUCT fl=fieldList
     { Fields fl }
-  | VARIANT vl=variantList SEMI
+  | VARIANT vl=variantList
     { Variants vl }
 
 fieldList:
@@ -159,8 +155,8 @@ variantDecl:
     { {variantName=vname; variantType=vty; decor=$loc} }
 
 proc:
-  | pd=procHeader ASSIGN sb=stmtSeq END en=IDENT_LC 
-    { if pd.name = en then
+  | pd=procHeader BEGIN sb=stmtSeq END name2=IDENT_LC 
+    { if pd.name = name2 then
 	{ decor=$loc; decl=pd; body=sb }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11)
              * (or wait for a hand-rolled parser? *)
