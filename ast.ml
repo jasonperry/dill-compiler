@@ -41,7 +41,7 @@ type 'a located =
 
 (** Syntactic type expression. Needs to be decorated with loc? *)
 type typeExpr = {
-    modname: string option; (* TODO: may be easier to just use empty strings *)
+    modname: string; (* change: use empty strings for none *)
     classname: string;
     (* module, params, array, null *)
     nullable: bool;
@@ -184,9 +184,9 @@ type 'sd module_spec = {
 
 
 let rec typeExpr_to_string te =
-  (match te.modname with
-   | Some mn -> mn ^ "::"
-   | None -> "")
+  (if te.modname <> "" then
+     te.modname ^ "::"
+   else "")
   ^ te.classname
   ^ if te.nullable then "?" else ""
 

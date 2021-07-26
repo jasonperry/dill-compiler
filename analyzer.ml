@@ -21,7 +21,7 @@ type typeExpr_result = (typetag, string) Stdlib.result
     and return the tag. *)
 let check_typeExpr tenv texp : (typetag, string) result =
   (* Types should be in the typeenv keyed by the name used locally. *)
-  match TypeMap.find_opt (Option.value texp.modname ~default:"", texp.classname)
+  match TypeMap.find_opt (texp.modname, texp.classname)
           tenv with
   | Some cdata ->
      (* Generate the base ttag for the class, then add nullable marker *)
@@ -1076,7 +1076,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
               (* regenerate a typeExpr from symtable type *)
               let vttag =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
-              { modname = Some (vttag.modulename);
+              { modname = vttag.modulename;
                 classname = vttag.typename;
                 nullable = false } (* TODO: fix for nullable *)
           }

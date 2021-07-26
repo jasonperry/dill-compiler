@@ -10,7 +10,7 @@
 %token EQ NE LT GT LE GE
 %token AND OR NOT
 %token TRUE FALSE NULL
-%token COLON DCOLON SEMI DOT COMMA HASH QMARK
+%token COLON DCOLON SEMI DOT COMMA HASH QMARK ARROW DARROW
 %token ASSIGN NULLASSIGN
 %token VAR
 %token IS BEGIN END
@@ -87,8 +87,8 @@ dillmodule:
           ) gls;
         procs=pr;
         (* initblock=initstmts *)
-        }
-        else $syntaxerror
+      }
+      else $syntaxerror
     }
 
 moduleName: mn=IDENT_LC { mn }
@@ -165,12 +165,17 @@ proc:
 
 procHeader:
   | ex = option(EXPORT) PROC pn=IDENT_LC
-    LPAREN pl=paramList RPAREN COLON rt=typeExp
+    LPAREN pl=paramList RPAREN rt=option(preceded(DARROW, typeExp))
     { {decor=$loc;
        name=pn;
        params=pl;
        export=Option.is_some ex;
-       rettype=rt} (* procdecl *) }
+       rettype = (
+	 match rt with
+	 | None -> { modname = ""; classname="Void"; nullable=false }
+	 | Some te -> te )
+      }
+    }
 
 procDecl: ph=procHeader SEMI { ph }
 
@@ -269,10 +274,10 @@ whileStmt:
 typeExp:
   (* typename plus possibly array, null markers *)
   | mn=moduleName DCOLON tn=IDENT_UC qm=option(QMARK)
-    { { modname=Some mn; classname=tn;
+    { { modname=mn; classname=tn;
         nullable=Option.is_some qm } }
   | tn=IDENT_UC qm=option(QMARK)
-    { { modname=None; classname=tn;
+    { { modname=""; classname=tn;
         nullable=Option.is_some qm } }
 
 (* Expressions are what evaluates to a value. *)

@@ -1,11 +1,13 @@
-module Alias01 =
+(* test module aliasing *)
+module alias01 begin
 
-open Stdio;
-import Collatz as Ctz;
+open stdio;
+import collatz as ctz;
 
-export proc main() : Void = 
-   printInt(Ctz.collatz(99));
+export proc main() : Void
+begin
+   printInt(ctz::collatz(99));
    return;
 end main
 
-end Alias01
+end alias01

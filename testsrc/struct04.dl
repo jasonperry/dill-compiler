@@ -19,7 +19,6 @@ export proc main() : Void
 begin
   var cpx: Complex = {i=2.0, j=1.111};
   printComplex(cpx);
-
 end main
 
 end struct04

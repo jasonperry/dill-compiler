@@ -67,6 +67,8 @@ rule token = parse  (* funny that it's called parse *)
   | '?'     { QMARK }
   | '='	    { ASSIGN }
   | "?="    { NULLASSIGN }
+  | "->"    { ARROW }
+  | "=>"    { DARROW }
   | ','	    { COMMA }
   | ';'	    { SEMI }
   | "::"    { DCOLON }

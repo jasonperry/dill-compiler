@@ -1,28 +1,30 @@
 (* first example of variant (formerly union) types *)
 
-module Union01 =
+module union01 begin
 
-open Stdio;
+open stdio;
 
-type Num = variant
+type Num is variant
   | f: Float
   | i: Int
   | null;
 end Num  (* we do kind of expect to see an "end" for multi-line things. *)
 
-export proc main() : Void =
+export proc main() => Void
+begin
   var u1: Num = Num.i(4);
   var u2 = Num.f(5.5);
   var u3 = Num.null;
 
   (* case u1
-    of Num.null => (* hmm, can't tell the diff. *) 
-    of Num.i(i) => (* redundant...but OK*)
+    of Num.null begin  (* can't have begin without an end *)
+      pass; 
+    of Num.i(i) do (* redundant...but OK*)
       printInt(i);
-    of Num.f(f) =>
+    of Num.f(f) then (* fewer keywords is good, it is like an if *)
       printFloat(f);
   endcase *)
 
 end main
 
-end Union01
+end union01

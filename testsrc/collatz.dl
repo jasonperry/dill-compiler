@@ -2,17 +2,17 @@ module collatz begin
 
 open stdio;
 
-proc collatz(n: Int) : Int
+proc collatz(n: Int) => Int
 begin
    var i = n;
    var count = 0;
    printInt(i);
-   while (i != 1) loop
-      if (i % 2 == 0) then
+   while i != 1 loop
+      if i % 2 == 0 then
          i = i/2;
       else
          i = 3*i + 1;
-         if (i < 0) then
+         if i < 0 then
 	    return -1;  (* detect overflow *)
 	 endif
       endif
