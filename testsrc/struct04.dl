@@ -7,7 +7,7 @@ type Complex is struct
   i: Float,
   j: Float;
 
-proc printComplex(c: Complex) : Void
+proc printComplex(c: Complex)
 begin
   printFloat(c.i);
   printFloat(c.j);
@@ -15,7 +15,7 @@ begin
 end printComplex
 
 
-export proc main() : Void 
+export proc main()
 begin
   var cpx: Complex = {i=2.0, j=1.111};
   printComplex(cpx);

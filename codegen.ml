@@ -594,8 +594,10 @@ let gen_global_decl the_module (gdecl: ('ed, 'sd) globalstmt) =
   let syms = gdecl.decor in
   match gdecl.init with
   | Some ex ->
+     let symname = (fst (Symtable.findvar gdecl.varname syms)).symname in
      let gaddr =
-       define_global gdecl.varname (gen_constexpr_value ex) the_module in
+       define_global
+         symname (gen_constexpr_value ex) the_module in
      Symtable.set_addr syms gdecl.varname gaddr;
   | None -> failwith "Shouldn't happen, global checked for initializer"
 

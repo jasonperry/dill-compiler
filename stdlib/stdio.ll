@@ -14,7 +14,7 @@ target triple = "x86_64-pc-linux-gnu"
 @stdin = external global %struct._IO_FILE*, align 8
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local void @stdio.printInt(i32 %0) #0 {
+define dso_local void @"stdio::printInt"(i32 %0) #0 {
   %2 = alloca i32, align 4
   store i32 %0, i32* %2, align 4
   %3 = load i32, i32* %2, align 4
@@ -25,7 +25,7 @@ define dso_local void @stdio.printInt(i32 %0) #0 {
 declare dso_local i32 @printf(i8*, ...) #1
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local void @stdio.printFloat(double %0) #0 {
+define dso_local void @"stdio::printFloat"(double %0) #0 {
   %2 = alloca double, align 8
   store double %0, double* %2, align 8
   %3 = load double, double* %2, align 8
@@ -34,7 +34,7 @@ define dso_local void @stdio.printFloat(double %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
-define dso_local void @stdio.printString(i8* %0) #0 {
+define dso_local void @"stdio::printString"(i8* %0) #0 {
   %2 = alloca i8*, align 8
   store i8* %0, i8** %2, align 8
   %3 = load i8*, i8** %2, align 8
@@ -45,7 +45,7 @@ define dso_local void @stdio.printString(i8* %0) #0 {
 declare i32 @puts(i8*) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
-define dso_local { i8, i8* } @stdio.getLine() #0 {
+define dso_local { i8, i8* } @"stdio:getLine"() #0 {
   %1 = alloca %struct.nullstr, align 8
   %2 = alloca i8*, align 8
   %3 = alloca i64, align 8

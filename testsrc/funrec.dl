@@ -1,6 +1,10 @@
 (* self-recursive function *)
+module funrec begin
 
-proc fac(n: Int) : Int =
+open stdio;
+
+proc fac(n: Int) => Int
+begin
   if (n == 0) then
     return 1;
   else
@@ -8,6 +12,9 @@ proc fac(n: Int) : Int =
   endif
 end fac
 
+export proc main()
 begin
   printInt(fac(6));
-end
+end main
+
+end funrec

@@ -58,8 +58,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
   | ExpConst (StringVal s) ->
      Ok {e=ExpConst (StringVal s); decor=string_ttag}
   | ExpVar (varname, fields) -> (
-    (* TODO: fix this to be consistent (maybe Symtable.get_exp_type) *)
-    let varstr = String.concat "." (varname::fields) in
+    let varstr = exp_to_string ex in
     match Symtable.findvar_opt varstr syms with
     | Some (ent, _) ->
        if StrSet.mem varstr syms.uninit then
@@ -372,69 +371,70 @@ let check_condexp condsyms (tenv: typeenv) condexp =
 type 'a stmt_result = ((typetag, 'a st_node) stmt, string located list)
                      Stdlib.result
 
-let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
-  match stm.st with 
-    (* Declaration: check for redeclaration, check the exp, make sure
-     * types match if declared. *)
-  | StmtDecl (v, tyopt, initopt) -> (
-    (* Should I factor this logic into a try_add symtable method? *)
-    match Symtable.findvar_opt v syms with
+(** factored out declaration typechecking code (used by globals also) *)
+let typecheck_decl syms tenv (varname, tyopt, initopt) =
+  (* Should I factor this logic into a try_add symtable method? *)
+    match Symtable.findvar_opt varname syms with
     | Some (_, scope) when scope = syms.scopedepth ->
-       Error [{loc=stm.decor; value="Redeclaration of variable " ^ v}]
+       Error ("Redeclaration of variable " ^ varname)
     | Some _ | None -> (
       (* check type expr and have result of option - is there a nicer way? *)
       let tyres = match tyopt with
         | None -> Ok None
         | Some dtyexp -> (
           match check_typeExpr tenv dtyexp with 
-          | Error msg -> Error [{loc=stm.decor; value=msg}]
+          | Error msg -> Error msg
           | Ok ttag -> Ok (Some ttag) )
       in
       match tyres with
-      | Error mlist -> Error mlist
+      | Error msg -> Error msg
       | Ok ttagopt -> (
         (* Check the initialization expression and its type if needed.
          * Value is a result with (ty, expr Option) pair *)
-        let initres = match initopt with
-          | None -> (
-             match ttagopt with
-             | None ->
-                Error [{loc=stm.decor;
-                        value="Var declaration must have type or initializer"}]
-             | Some decltype -> 
-                Ok (None, decltype) )
-          | Some initexp -> (
-            match check_expr syms tenv ~thint:ttagopt initexp with
-            | Error err -> Error [err]
-            | Ok ({e=_; decor=ettag} as e2) -> (
-                match ttagopt with
-                | Some ttag ->
-                   if subtype_match ettag ttag then
-                     Ok (Some e2, ttag)
-                  else
-                    Error [{loc=stm.decor;
-                            value="Declared type " ^ typetag_to_string ttag
-                                  ^ " for variable " ^ v
-                                  ^ " does not match initializer type "
-                                  ^ typetag_to_string ettag}] 
-                | None -> Ok (Some e2, ettag)
-            ))
-        in
-        match initres with
-        | Error errs -> Error errs
-        | Ok (e2opt, vty) -> (
+        match initopt with
+        | None -> (
+          match ttagopt with
+          | None ->
+             Error "Var declaration must have type or initializer"
+          | Some decltype -> 
+             Ok (None, decltype) )
+        | Some initexp -> (
+          match check_expr syms tenv ~thint:ttagopt initexp with
+          | Error err -> Error err.value (* oops, lose precise position *)
+          | Ok ({e=_; decor=ettag} as e2) -> (
+            match ttagopt with
+            | Some ttag ->
+               if subtype_match ettag ttag then
+                 Ok (Some e2, ttag)
+               else
+                 Error ("Declared type " ^ typetag_to_string ttag
+                        ^ " for variable " ^ varname
+                        ^ " does not match initializer type "
+                        ^ typetag_to_string ettag)
+            | None -> Ok (Some e2, ettag)
+      ))))
+
+
+let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
+  match stm.st with 
+    (* Declaration: check for redeclaration, check the exp, make sure
+     * types match if declared. *)
+  | StmtDecl (v, tyopt, initopt) -> (
+        match typecheck_decl syms tenv (v, tyopt, initopt) with
+        | Error msg -> Error [{loc=stm.decor; value=msg}]
+        | Ok (e2opt, vty) -> 
           (* Everything is Ok, create symbol table structures. *)
           Symtable.addvar syms v
             {symname=v; symtype=vty; var=true;
              mut=vty.tclass.muttype; addr=None};
           if Option.is_none e2opt then
             syms.uninit <- StrSet.add v syms.uninit;
-          let the_classdata = vty.tclass in
           (* add symtable info for record fields, if any. *)
+          let the_classdata = vty.tclass in
           List.iter (add_field_sym syms v (Option.is_some e2opt))
             the_classdata.fields;
           Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
-  ))))
+  )
 
   | StmtAssign ((v, fl), e) -> (
     (* Typecheck e, look up v, make sure types match *)
@@ -727,8 +727,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
            (* Create procedure symtable entry.
             * Don't add it to module symtable node here; caller does it. *)
            let procentry =
-             (* Still using . instead of :: for procedures internally *)
-             {procname=(if not pdecl.export then modname ^ "." else "")
+             {procname=(if not pdecl.export then modname ^ "::" else "")
                        ^ pdecl.name;
               rettype=rttag; fparams=paramentries} in
            (* create new inner scope under the procedure, and add args *)
@@ -766,8 +765,8 @@ let check_proc tenv (pdecl: 'addr st_node procdecl) proc =
 
 
 let rec is_const_expr = function
-    (* if true, I could eval and replace it in the AST. But...
-     * what if numerics don't match the target? Let LLVM do it. *)
+  (* if true, I could eval and replace it in the AST. But...
+   * what if numerics don't match the target? Let LLVM do it. *)
   | ExpConst _ -> true
   | ExpVar (_,_) -> false (* TODO: check in syms if it's a const *)
   | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
@@ -775,29 +774,33 @@ let rec is_const_expr = function
   | _ -> false
 
 
-(** Check a global declaration statement (needs const initializer) *)
-let check_globdecl syms tenv gstmt =
+(** Check a global declaration statement (needs const initializer) and
+    generate symtable entry. *)
+let check_globdecl syms tenv modname gstmt =
   match gstmt.init with
+  (* could do this syntactically *)
+  | None -> Error [{loc=gstmt.decor;
+                    value="Globals must be initialized when declared"}]
   | Some initexp when not (is_const_expr initexp.e) ->
      (* TODO: allow non-constant initializer (and generate code for it.) *)
      Error [{loc=initexp.decor;
              value="Global initializer must be constant expression"}]
-  | Some _ -> (  
-    (* Cheat a little: reconstruct a stmt so I can use check_stmt.
-     * It should catch redeclaration and type mismatch errors. 
-     * Seems nicer than having the check logic in two places. *)
-    match check_stmt syms tenv
-            {st=StmtDecl (gstmt.varname, gstmt.typeexp, gstmt.init);
-             decor=gstmt.decor} with
-    | Error errs -> Error errs
-    | Ok {st=dst; decor=dc} -> (
-      match dst with
-      | StmtDecl (v, topt, eopt) ->
-         Ok {varname=v; typeexp=topt; init=eopt; decor=dc}
-      | _ -> failwith "BUG: checking StmtDecl didn't return StmtDecl"
-  ))
-  | None -> Error [{loc=gstmt.decor;
-                    value="Globals must be initialized when declared"}]
+  | Some _ -> (
+    match typecheck_decl syms tenv
+            (gstmt.varname, gstmt.typeexp, gstmt.init) with
+    | Error msg -> Error [{loc=gstmt.decor; value=msg}]
+    | Ok (e2opt, vty) ->
+       (* add to symtable *)
+       Symtable.addvar syms gstmt.varname {
+           symname=modname ^ "::" ^ gstmt.varname;
+           symtype=vty;
+           var=true;
+           mut=vty.tclass.muttype;
+           addr=None
+         };
+       Ok {varname=gstmt.varname; typeexp=gstmt.typeexp;
+           init=e2opt; decor=syms}
+  )
 
 
 (** Check a struct declaration, generating classData for the tenv. *)
@@ -915,24 +918,27 @@ let add_imports syms tenv specs istmts =
       List.map (
           fun (gdecl: 'st globaldecl) ->
           let refname = prefix ^ gdecl.varname in
-          let fullname = modname ^ "." ^ gdecl.varname in
+          (* only codegen should make it a dot name? *)
+          let fullname = modname ^ "::" ^ gdecl.varname in
           match check_typeExpr tenv gdecl.typeexp with
           | Error msg ->
              Error [{value=msg; loc=gdecl.decor}] 
           | Ok ttag -> (
             match Symtable.findvar_opt refname syms with
             | Some (_, _) ->
-               Error [{value=("Duplicated extern variable " ^ refname);
+               Error [{value=("Extern variable name clash:" ^ refname);
                        loc=gdecl.decor}]
             | None ->
                let entry = {
+                   (* Keep the original module name internally. *)
                    symname = fullname; symtype = ttag; 
                    var = true; mut=ttag.tclass.muttype; addr = None
                  } in
-               (* wait, should we not add both? *)
                Symtable.addvar syms refname entry;
-               if refname <> fullname then
-                 Symtable.addvar syms fullname entry;
+               (* wait don't want to add both names, right? so we can 
+                * use module aliases to avoid name clashes. *)
+               (* if refname <> fullname then
+                 Symtable.addvar syms fullname entry; *)
                Ok syms (* doesn't get used *)
         )) the_spec.globals
       (* iterate over procedure declarations and add those. *)
@@ -963,7 +969,7 @@ let add_imports syms tenv specs istmts =
             | Some alias -> (modname, alias)
             | None -> (modname, modname) )
           | Open modname -> (modname, "") in
-        let prefix = if modalias = "" then "" else modalias ^ "." in
+        let prefix = if modalias = "" then "" else modalias ^ "::" in
         (* Get the modspec from the preloaded list. *)
         let the_spec = StrMap.find modname specs in
         (* Call the function to check imported types *)
@@ -1024,7 +1030,8 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
                 {tdef with subinfo=Variants newvariants; decor=syms}
            ) dmod.typedefs in
        (* Check global declarations *)
-       let globalsrlist = List.map (check_globdecl syms tenv) dmod.globals in
+       let globalsrlist = List.map (check_globdecl syms tenv dmod.name)
+                            dmod.globals in
        if List.exists Result.is_error globalsrlist then
          Error (concat_errors globalsrlist)
        else

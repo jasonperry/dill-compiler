@@ -1,12 +1,14 @@
-module Globext01 =
+(* access globals from another module *)
+module globext01 begin
 
-using Globlib01;
-open Stdio;
+(* open globlib01; *)
+import globlib01; (* BUG: doesn't detect second import *)
+open stdio;
 
+export proc main()
 begin
+  printInt(globlib01::x);
+  (*  printInt(x); *)
+end main
 
-printInt(Globlib01.x);
-
-end
-
-end Globext01
+end globext01

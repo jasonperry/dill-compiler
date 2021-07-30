@@ -1,26 +1,31 @@
 I'm working on a statically typed programming language that captures how
 I want to write imperative code, with nice safety features and good
-not-too-abstract abstractions. Notable features:
-- Immutable-by-default datatypes, with all procedure arguments passed
-  immutably by default. Passing a mutable reference must be indicated
-  at both the function definition and call site.
+not-too-abstract abstractions. Goals and features include:
+- "Keep mutation local"; being an imperative language, local variables
+  are reassignable. But datatypes are immutable by default, and
+  procedure arguments are passed immutably by default and not
+  reassignable. Passing a mutable reference must be indicated at both
+  the function definition and call site. Possibly this will allow for
+  more useful types of static analysis, in addition to making the
+  code's behavior clearer from the source code.
 - Struct and variant types
-- All concrete types are datatypes; there are no classes (containers for
-  both a type plus functions), though there is method-call syntax with
-  the dot.
-- Method call syntax that differentiates mutating from non-mutating
-  methods
-- Null-safety with convenient syntax and value promotion for nullable
-  (option) types
-- Modules as the primary features for code grouping and data
+- All concrete types are datatypes; there are no classes as containers
+  for a type plus methods, though there is method-call syntax.
+- Method call syntax differentiates mutating from non-mutating methods
+- Modules as the primary feature for code grouping and data
   hiding. Functions in a module can access private fields of datatypes
   in that module.
 - Auto-generated module signatures, allowing separate compilation while
   the programmer only has to write things in one place.
+- Null-safety with convenient syntax and value promotion for nullable
+  (option) types
 - Clear and consistent value and reference semantics. One should be be
   able to write natural-looking code, but not at the cost of obscuring
-  memory semantics. Okay, this is more of a principle than a feature.
-- Keyword-based block syntax instead of curly braces; semicolons. "As
+  memory semantics.
+- Keyword-based block syntax instead of curly braces. Some pains have
+  been taken to be more concise than Pascal/Ada syntax, while still
+  being more explicit about structure than, say, Ruby or Lua. Semicolons
+  as statement (but not block) terminators (not separators.) "As
   readable as possible, as verbose as necessary"
 - Eventually: generics with interface constraints. One can code against
   concrete datatypes or interfaces, with a clear distinction between

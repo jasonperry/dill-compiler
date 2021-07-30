@@ -47,7 +47,7 @@ type typeExpr = {
     nullable: bool;
   }
 
-(** Type alias for an lvalue *)
+(** Type alias for an lvalue. Needs module name too *)
 type var_expr = string * string list  (* field specifiers *)
 
 type 'ed raw_expr = (* should really probably change to inline records *)
@@ -219,8 +219,8 @@ let rec exp_to_string (e: 'a expr) =
   | ExpConst (BoolVal b) -> if b then "True" else "False"
   | ExpConst (StringVal s) -> "\"" ^ String.escaped s ^ "\""
   | ExpConst NullVal -> "Null"
-  | ExpVar (v, flds) ->
-     v ^ if flds <> [] then "." ^ String.concat "." flds else ""
+  | ExpVar (vn, flds) ->
+     vn ^ if flds <> [] then "." ^ String.concat "." flds else ""
   | ExpRecord fl ->
       "{" ^ String.concat ", "
               (List.map (fun (fname, ex) ->
@@ -292,7 +292,7 @@ let procdecl_to_string (pdecl: 'sd procdecl) =
         List.map (fun (mut, varname, vartype) ->
             (if mut then "#" else "")
             ^ varname ^ ": " ^ typeExpr_to_string vartype) pdecl.params)
-  ^ ") : " ^ typeExpr_to_string pdecl.rettype
+  ^ ") => " ^ typeExpr_to_string pdecl.rettype
 
 let proc_to_string (proc: ('ed, 'sd) proc) =
   (* a little ugly, but maybe I will use the pdecl later. *)

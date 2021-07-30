@@ -4,6 +4,7 @@ out/
 *.cmo
 *.cmi
 parser.ml
+stdlib/*.o
 testsrc/*.o
 testsrc/*.ll
 testsrc/*.dms

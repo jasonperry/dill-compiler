@@ -1,11 +1,12 @@
-module Globals01 = 
+module globals01 begin
 
-open Stdio;
+open stdio;
 
 var x: Int = 16;
 var y = 4.0;
 
-export proc main() : Void =
+export proc main() => Void
+begin
   x = 14;
   (* y = 2.2; *)
   printFloat(y);
@@ -13,4 +14,4 @@ export proc main() : Void =
   printInt(pp);
 end main
 
-end Globals01
+end globals01

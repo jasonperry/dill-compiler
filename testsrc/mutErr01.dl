@@ -1,23 +1,23 @@
 (* attempt to mutate an argument though passed immutably *)
-module MutErr01 =
+module mutErr01 begin
 
-open Stdio;
+open stdio;
 
-type Complex = struct
+type Complex is struct
   mut i: Float,
   mut j: Float;
-end Complex
 
 
-proc swapij(c: Complex) : Void =
+proc swapij(c: Complex)
+begin
   var temp = c.i;
   c.i = c.j;
   c.j = temp;
   return;
 end swapij
 
-export proc main() : Void = 
-
+export proc main()
+begin
   var cpx: Complex = {i=2.0, j=1.111};
   printFloat(cpx.i);
   printFloat(cpx.j);
@@ -27,4 +27,4 @@ export proc main() : Void =
 
 end main
 
-end MutErr01
+end mutErr01

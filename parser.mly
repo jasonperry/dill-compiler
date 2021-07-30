@@ -308,10 +308,12 @@ constExp:
     { ExpConst (StringVal s) }
   | NULL
     { ExpConst (NullVal) }
-(* | STRCONST | *)
 
-varExp:
-  (* a method call could be preceded by this. *)
+
+varExp: (* Oops, needs to possibly have a modulename first *)
+  (* note that a method call could be preceded by a varExp *)
+  | mn=moduleName DCOLON v=varName fl=list(preceded(DOT, varName))
+    { (mn ^ "::" ^ v, fl) }
   | v=varName fl=list(preceded(DOT, varName))
     { (v, fl) }
     (* { ExpVar (v, fl) } *)
