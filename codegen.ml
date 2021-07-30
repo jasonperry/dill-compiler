@@ -40,6 +40,8 @@ module Lltenv = struct
   let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
   let find_class_lltype tclass tmap =
     fst (TypeMap.find (tclass.in_module, tclass.classname) tmap)
+  let find_class_fieldmap tclass tmap =
+    snd (TypeMap.find (tclass.in_module, tclass.classname) tmap)
   let find_lltype_opt tkey tmap =
     Option.map fst (TypeMap.find_opt tkey tmap)
   (* Get the offset of a record field. *)
@@ -558,6 +560,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtBlock _ -> failwith "not implemented"
 
 
+(* 
 (** Get a default value for a type. Seems to be needed for unreachable 
   * returns and empty union (nullable) fields. *)
 let default_value ttag =
@@ -568,36 +571,54 @@ let default_value ttag =
   else const_int int_type 0 (* Could we use this for all? *)
   (* else failwith ("Cannot generate default value for type "
                  ^ typetag_to_string ttag) *)
+ *)
 
-
-(** Generate value of a constant expression for a global var initializer. *)
-let gen_constexpr_value (ex: typetag expr) =
+(** Generate value of a constant expression for a global var initializer 
+    (and other constant expressions when we have them) *)
+let rec gen_constexpr_value lltypes (ex: typetag expr) =
   (* How many types will this support? Might need a tenv later *)
   if ex.decor = int_ttag then
     match ex.e with
     | ExpConst (IntVal n) -> const_int int_type n
+    | ExpUnop (OpNeg, e) -> const_neg (gen_constexpr_value lltypes e)
     | _ -> failwith "Unsupported constant initializer, please add it"
   else if ex.decor = float_ttag then
     match ex.e with
     | ExpConst (FloatVal x) -> const_float float_type x
+    | ExpUnop (OpNeg, e) -> const_fneg (gen_constexpr_value lltypes e)
     | _ -> failwith "Unsupported constant initializer, please add it"
   else if ex.decor = bool_ttag then
     match ex.e with
     | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
     | _ -> failwith "Unsupported constant initializer, please add it"
-  else failwith "BUG codegen: Unhandled constexpr type"   
+  else
+    (* struct type *)
+    match ex.e with
+    | ExpRecord fieldlist -> 
+       (* Iterate over the fields and write the value in an llvalue array *)
+       let lltype = Lltenv.find_class_lltype (ex.decor.tclass) lltypes in
+       let fieldmap = Lltenv.find_class_fieldmap ex.decor.tclass lltypes in
+       let valarray = Array.make (List.length fieldlist)
+                        (const_int int_type 0) in
+       List.iter (fun (fname, fexp) ->
+         let (offset, _) = StrMap.find fname fieldmap in
+         let fieldval = gen_constexpr_value lltypes fexp in
+         Array.set valarray offset fieldval
+       ) fieldlist;
+       const_named_struct lltype valarray
+    | _ -> failwith "BUG codegen: Unhandled constexpr type"
     
 
 (** Generate code for a global variable declaration (and constant initializer,
     for now) *)
-let gen_global_decl the_module (gdecl: ('ed, 'sd) globalstmt) =
+let gen_global_decl the_module lltypes (gdecl: ('ed, 'sd) globalstmt) =
   let syms = gdecl.decor in
   match gdecl.init with
   | Some ex ->
      let symname = (fst (Symtable.findvar gdecl.varname syms)).symname in
      let gaddr =
        define_global
-         symname (gen_constexpr_value ex) the_module in
+         symname (gen_constexpr_value lltypes ex) the_module in
      Symtable.set_addr syms gdecl.varname gaddr;
   | None -> failwith "Shouldn't happen, global checked for initializer"
 
@@ -722,7 +743,7 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   (* if List.length (topsyms.children) <> 1 then
     failwith "BUG: didn't find unique module-level symtable"; *)
   let modsyms = List.hd (topsyms.children) in
-  List.iter (gen_global_decl the_module) modtree.globals;
+  List.iter (gen_global_decl the_module lltypes) modtree.globals;
   (* Generate proc declarations first, so they can mutually refer *)
   gen_fdecls the_module lltypes modsyms.fsyms;
   (* Generate each of the procedures. *)

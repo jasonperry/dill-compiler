@@ -3,7 +3,14 @@
 module globals03 begin
 
 open complex;
+open stdio;
 
 var z: Complex = {i=-2.3, j=4.4};
+
+export proc main()
+begin
+  printFloat(z.i);
+  printFloat(z.j);
+end main
 
 end globals03
