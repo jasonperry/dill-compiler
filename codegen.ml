@@ -585,7 +585,7 @@ let gen_constexpr_value (ex: typetag expr) =
     match ex.e with
     | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
     | _ -> failwith "Unsupported constant initializer, please add it"
-  else failwith "Unknown constexpr type"   
+  else failwith "BUG codegen: Unhandled constexpr type"   
     
 
 (** Generate code for a global variable declaration (and constant initializer,

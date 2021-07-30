@@ -1,0 +1,9 @@
+(* Struct initialized at declaration. *)
+module complex begin
+
+
+type Complex is struct
+  i: Float,
+  j: Float;
+
+end complex

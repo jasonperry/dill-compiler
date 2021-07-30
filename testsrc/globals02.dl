@@ -1,5 +1,8 @@
+module globals02 begin
+
 var x = 42;
 var y: Float = 33.3;
 var b = False;
 
-(* all initialized, no block needed *)
+
+end globals02

@@ -1,6 +1,9 @@
+(* try to import module twice. *)
 module import01 begin
 
 import collatz;
+open collatz;
+
 open stdio;
 
 export proc main()

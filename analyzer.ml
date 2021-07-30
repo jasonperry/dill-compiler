@@ -771,6 +771,8 @@ let rec is_const_expr = function
   | ExpVar (_,_) -> false (* TODO: check in syms if it's a const *)
   | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
   | ExpUnop (_, e1) -> is_const_expr e1.e
+  | ExpRecord fieldlist ->
+     List.for_all (fun (_, e) -> is_const_expr e.e) fieldlist
   | _ -> false
 
 
@@ -798,6 +800,7 @@ let check_globdecl syms tenv modname gstmt =
            mut=vty.tclass.muttype;
            addr=None
          };
+       (* TODO: add field initializers too. *)
        Ok {varname=gstmt.varname; typeexp=gstmt.typeexp;
            init=e2opt; decor=syms}
   )
@@ -935,8 +938,7 @@ let add_imports syms tenv specs istmts =
                    var = true; mut=ttag.tclass.muttype; addr = None
                  } in
                Symtable.addvar syms refname entry;
-               (* wait don't want to add both names, right? so we can 
-                * use module aliases to avoid name clashes. *)
+               (* wait, don't want to add both names... *)
                (* if refname <> fullname then
                  Symtable.addvar syms fullname entry; *)
                Ok syms (* doesn't get used *)
@@ -958,31 +960,36 @@ let add_imports syms tenv specs istmts =
            ) the_spec.procdecls
         ) (* end check_importdecls *)
     in
-    let rec mainloop stmts tenv_acc =
+    let rec mainloop stmts tenv_acc modnames =
       match stmts with
       | [] -> Ok (syms, tenv_acc) (* return value of outer function *)
       | istmt::rest -> (
         (* get the module names to be used in the symtable and tenv. *)
-        let (modname, modalias) = match istmt with
+        let (modname, modalias) = match istmt.value with
           | Using (modname, aliasopt) -> (
             match aliasopt with
             | Some alias -> (modname, alias)
             | None -> (modname, modname) )
           | Open modname -> (modname, "") in
-        let prefix = if modalias = "" then "" else modalias ^ "::" in
-        (* Get the modspec from the preloaded list. *)
-        let the_spec = StrMap.find modname specs in
-        (* Call the function to check imported types *)
-        match
-          check_importtypes modname modalias the_spec.typedefs tenv_acc with
-        | Error errs -> Error errs
-        | Ok newtenv -> (
-          (* print_typekeys newtenv; *)
-          match concat_errors (check_importdecls modname prefix the_spec) with
-          | [] -> mainloop rest newtenv
-          | errs -> Error errs
+        if List.mem modname modnames then
+          Error [{value="Duplicate module import " ^ modname;
+                  loc=istmt.loc}]
+        else 
+          let prefix = if modalias = "" then "" else modalias ^ "::" in
+          (* TODO: check if already imported. *)
+          (* Get the modspec from the preloaded list. *)
+          let the_spec = StrMap.find modname specs in
+          (* Call the function to check and add imported types *)
+          match
+            check_importtypes modname modalias the_spec.typedefs tenv_acc with
+          | Error errs -> Error errs
+          | Ok newtenv -> (
+            (* Check and add import declarations (vars and procs) *)
+            match concat_errors (check_importdecls modname prefix the_spec) with
+            | [] -> mainloop rest newtenv (modname::modnames)
+            | errs -> Error errs
       )) (* end mainloop *)
-    in mainloop istmts tenv
+    in mainloop istmts tenv []
 
 
 (** Check one entire module, generating new versions of each component. *)
@@ -1066,9 +1073,13 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
 let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
   {
     name = the_mod.name;
-    imports = List.map (function
-                  | Using (mn, alias) -> Using (mn, alias)
-                  | Open mn -> Using (mn, None)) the_mod.imports;
+    imports = 
+      List.map (fun istmt -> {
+                    value = (match istmt.value with
+                             | Using (mn, alias) -> Using (mn, alias)
+                             | Open mn -> Using (mn, None));
+                    loc=istmt.loc
+                  }) the_mod.imports;
     (* I want to make all names fully qualified in the spec file. *)
     (* Idea: keep a map of module name->symtable and "open" symbol->module *)
     (* but anyway, do types need to remember which module they're defined in?

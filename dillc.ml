@@ -93,7 +93,7 @@ let rec open_from_paths plist filename =
 (** Recursively scan all modspec files and populate the map of known ones. *)
 let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
   let rec load_import mmap istmt =
-    let modname = match istmt with
+    let modname = match istmt.value with
       | Using (mn, _) -> mn
       | Open mn -> mn in
     if StrMap.mem modname mmap then mmap (* already there *)

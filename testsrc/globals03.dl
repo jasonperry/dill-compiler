@@ -1,0 +1,9 @@
+(* global initialized with a struct *)
+
+module globals03 begin
+
+open complex;
+
+var z: Complex = {i=-2.3, j=4.4};
+
+end globals03

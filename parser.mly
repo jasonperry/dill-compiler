@@ -115,7 +115,7 @@ modspec:
 includeStmt:
   | is=importStmt
   | is=openStmt
-    { is }
+    { {value=is; loc=$loc} }
 
 importStmt:
   | IMPORT mn=moduleName SEMI  { Using (mn, None) }

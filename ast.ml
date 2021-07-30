@@ -154,16 +154,15 @@ type 'sd typedef = {
 
 (* import and full module syntax begins here *)
 
-(** Import statements occur separately, so it seems no need to include in 
- * the stmt type. Also, no decoration needed?
- * Any possible errors are in the imported header itself, so it seems not. *)
+(** Import statements occur separately, so no need to include in 
+ * the stmt type. Only decoration is location, so just do it directly *)
 type importStmt =
   | Using of string * string option
   | Open of string
 
 type ('ed,'sd) dillmodule = {
     name: string;
-    imports: importStmt list;
+    imports: (importStmt located) list;
     typedefs: 'sd typedef list;
     globals: ('ed, 'sd) globalstmt list;
     procs: ('ed,'sd) proc list;
@@ -173,7 +172,7 @@ type ('ed,'sd) dillmodule = {
 (* No expressions in a module spec. *)
 type 'sd module_spec = {
     name: string;
-    imports: importStmt list;
+    imports: (importStmt located) list;
     typedefs: 'sd typedef list;
     globals: 'sd globaldecl list;
     procdecls: 'sd procdecl list
@@ -302,6 +301,7 @@ let proc_to_string (proc: ('ed, 'sd) proc) =
 
 let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   "module " ^ dmod.name ^ " begin \n"
+  (* TODO: imports *)
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
         fun s gstmt ->

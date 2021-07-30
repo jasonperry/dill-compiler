@@ -8,6 +8,7 @@ open stdio;
 export proc main()
 begin
   globlib01::x = globlib01::x + 4;
+  var nope = globlib01::isItFour(9); (* increments x. *)
   printInt(globlib01::x);
 
 end main
