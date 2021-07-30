@@ -372,7 +372,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       let expval = gen_expr the_module builder syms lltypes ex in
       let alloca =
         gen_varexp_alloca entry flds lltypes builder in
-      print_endline (Llvm.string_of_llvalue alloca);
+      (* print_endline (Llvm.string_of_llvalue alloca); *)
       (* handle string type specially (for now) *)
       (* cases to handle nullable types *)
       if entry.symtype.nullable = ex.decor.nullable then
@@ -416,7 +416,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
                            ^ Llvm.string_of_llvalue ev);
             promote_value ev rettype builder lltypes )
         in
-        print_endline("got up to build_ret");
+        (* print_endline("got up to build_ret"); *)
         ignore (build_ret expval builder)
     );
     (* Add a basic block after in case a break is added afterwards. *)
@@ -625,9 +625,11 @@ let gen_fdecls the_module lltypes fsyms =
         |> Array.of_list in
       (* print_string ("Declaring function " ^ procentry.procname ^ "\n"); *)
       (* This is the qualified version (or not, if exported) *)
-      let llfunc = (declare_function procentry.procname
-                      (function_type rettype paramtypes) the_module) in
-      print_endline (string_of_llvalue llfunc)
+      (* let llfunc = ( *)
+      declare_function procentry.procname
+        (function_type rettype paramtypes) the_module
+      |> ignore
+      (* print_endline (string_of_llvalue llfunc) *)
     (* We could set names for arguments here. *)
     ) fsyms  (* returns () *)
 
@@ -704,6 +706,16 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
             ^ "\n"); 
         Lltenv.add newkey lltydata lltenv
       ) tenv Lltenv.empty in
+  (* Generate decls for imported global variables in the symbol table. *)
+  StrMap.iter (fun localname gsym ->
+      let gvalue = declare_global
+                     (ttag_to_llvmtype lltypes gsym.symtype)
+                     gsym.symname
+                     the_module in
+      set_externally_initialized true gvalue;
+      (* Name maybe not correct? Need the local name of it. *)
+      Symtable.set_addr topsyms localname gvalue
+    ) topsyms.syms;
   (* Generate decls for imports (already in the top symbol table node.) *)
   gen_fdecls the_module lltypes topsyms.fsyms;
   (* The next symtable node underneath has this module's proc declarations *)
@@ -713,6 +725,7 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   List.iter (gen_global_decl the_module) modtree.globals;
   (* Generate proc declarations first, so they can mutually refer *)
   gen_fdecls the_module lltypes modsyms.fsyms;
+  (* Generate each of the procedures. *)
   List.iter (gen_proc the_module builder lltypes) modtree.procs;
   Llvm_analysis.assert_valid_module the_module;
   the_module

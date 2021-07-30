@@ -1,0 +1,15 @@
+(* access globals from another module with alias *)
+module globext03 begin
+
+(* open globlib01; *)
+import globlib01 as gb; 
+open stdio;
+
+export proc main()
+begin
+  gb::x = gb::x + 4;
+  printInt(gb::x);
+
+end main
+
+end globext03

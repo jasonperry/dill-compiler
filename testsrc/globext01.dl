@@ -7,8 +7,9 @@ open stdio;
 
 export proc main()
 begin
+  globlib01::x = globlib01::x + 4;
   printInt(globlib01::x);
-  (*  printInt(x); *)
+
 end main
 
 end globext01

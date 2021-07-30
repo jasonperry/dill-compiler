@@ -1,0 +1,14 @@
+(* access globals from another module *)
+module globext02 begin
+
+open globlib01;
+open stdio;
+
+export proc main()
+begin
+  printInt(x);
+  x = x - 4;
+  printInt(x);
+end main
+
+end globext02
