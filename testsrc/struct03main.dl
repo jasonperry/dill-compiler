@@ -4,7 +4,7 @@ module struct003 begin
 open struct03;
 open stdio;
 
-export proc main (): Void
+export proc main ()
 begin
   var cpx: Complex = {i=2.0, j=1.111};
   printFloat(cpx.i);

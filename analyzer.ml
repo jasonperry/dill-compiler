@@ -274,10 +274,10 @@ let is_redecl varname syms =
 
 (** Recursively add record fields to a symbol table. Used by both 
     StmtDecl and ExpNullAssn. *)
-let rec add_field_sym syms v initted (finfo: fieldInfo) =
+let rec add_field_sym syms varname initted (finfo: fieldInfo) =
   (* instead of adding nested scope for record fields,
    * we just add "var.field" symbols *)
-  let varstr = v ^ "." ^ finfo.fieldname in
+  let varstr = varname ^ "." ^ finfo.fieldname in
   Symtable.addvar syms varstr
     {symname=varstr; symtype=finfo.fieldtype; var=finfo.mut;
      mut=finfo.fieldtype.tclass.muttype; addr=None};
@@ -780,11 +780,10 @@ let rec is_const_expr = function
     generate symtable entry. *)
 let check_globdecl syms tenv modname gstmt =
   match gstmt.init with
-  (* could do this syntactically *)
+  (* could do this syntactically...but error messages are better here. *)
   | None -> Error [{loc=gstmt.decor;
                     value="Globals must be initialized when declared"}]
   | Some initexp when not (is_const_expr initexp.e) ->
-     (* TODO: allow non-constant initializer (and generate code for it.) *)
      Error [{loc=initexp.decor;
              value="Global initializer must be constant expression"}]
   | Some _ -> (
@@ -793,14 +792,15 @@ let check_globdecl syms tenv modname gstmt =
     | Error msg -> Error [{loc=gstmt.decor; value=msg}]
     | Ok (e2opt, vty) ->
        (* add to symtable *)
+       let varname = modname ^ "::" ^ gstmt.varname in
        Symtable.addvar syms gstmt.varname {
-           symname=modname ^ "::" ^ gstmt.varname;
+           symname=varname;
            symtype=vty;
            var=true;
            mut=vty.tclass.muttype;
            addr=None
          };
-       (* TODO: add field initializers too. *)
+       List.iter (add_field_sym syms gstmt.varname true) vty.tclass.fields;
        Ok {varname=gstmt.varname; typeexp=gstmt.typeexp;
            init=e2opt; decor=syms}
   )
@@ -911,12 +911,14 @@ let add_imports syms tenv specs istmts =
          match check_typedef modname tenv_acc td with
          | Ok cdata ->
             let newtenv =
-              TypeMap.add (modalias, cdata.classname) cdata tenv_acc in
+              (* need to add unqualified type name for imports *)
+              TypeMap.add (modalias, cdata.classname) cdata tenv_acc
+              |> TypeMap.add (modname, cdata.classname) cdata in
             check_importtypes modname modalias rest newtenv
          | Error e -> Error e
     in
     (* global variables and procs done together, both create symbols *)
-    let check_importdecls modname prefix the_spec = 
+    let check_importdecls modname prefix tenv the_spec = 
       (* Iterate over global variable declarations and add to symtable *)
       List.map (
           fun (gdecl: 'st globaldecl) ->
@@ -938,7 +940,8 @@ let add_imports syms tenv specs istmts =
                    var = true; mut=ttag.tclass.muttype; addr = None
                  } in
                Symtable.addvar syms refname entry;
-               (* wait, don't want to add both names... *)
+               (* TODO: add field initializers too. *)
+               (* Don't think we want to add both names in this context. *)
                (* if refname <> fullname then
                  Symtable.addvar syms fullname entry; *)
                Ok syms (* doesn't get used *)
@@ -947,7 +950,7 @@ let add_imports syms tenv specs istmts =
       @ (List.map (
              fun (pdecl: 'sd procdecl) ->
              let refname = prefix ^ pdecl.name in
-             let fullname = modname ^ "." ^ pdecl.name in
+             let fullname = modname ^ "::" ^ pdecl.name in
              (* check_pdecl now gets module name prefix from AST. *)
              match check_pdecl syms tenv modname pdecl 
              (* { pdecl with name=(prefix ^ pdecl.name) } *) with
@@ -976,7 +979,6 @@ let add_imports syms tenv specs istmts =
                   loc=istmt.loc}]
         else 
           let prefix = if modalias = "" then "" else modalias ^ "::" in
-          (* TODO: check if already imported. *)
           (* Get the modspec from the preloaded list. *)
           let the_spec = StrMap.find modname specs in
           (* Call the function to check and add imported types *)
@@ -985,7 +987,8 @@ let add_imports syms tenv specs istmts =
           | Error errs -> Error errs
           | Ok newtenv -> (
             (* Check and add import declarations (vars and procs) *)
-            match concat_errors (check_importdecls modname prefix the_spec) with
+            match concat_errors
+                    (check_importdecls modname prefix newtenv the_spec) with
             | [] -> mainloop rest newtenv (modname::modnames)
             | errs -> Error errs
       )) (* end mainloop *)

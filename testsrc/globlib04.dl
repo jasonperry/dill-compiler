@@ -1,0 +1,24 @@
+(** Module that exports a function and struct globals. *)
+module globlib04 begin
+
+open complex;
+
+var x: Int = 13; (* getAnInit(); *)
+var y = 4.0;
+var z: Complex = {i=4.5, j=-5.5};
+
+proc isItFour(n: Int) => Bool
+begin
+  x = x + 1;
+  return (n == 4);
+end isItFour
+
+proc getAnInit() => Int
+begin
+  return 43;
+end getAnInit
+
+(* Importing a module should not make code run, so we can't have
+ * globals initted in the main block. *)
+
+end globlib04
