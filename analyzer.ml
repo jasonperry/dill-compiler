@@ -272,8 +272,8 @@ let is_redecl varname syms =
   | Some (_, scope) -> scope = syms.scopedepth
 
 
-(** Recursively add record fields to a symbol table. Used by both 
-    StmtDecl and ExpNullAssn. *)
+(** Recursively add record fields to a symbol table. Used by 
+    StmtDecl, ExpNullAssn, check_globdecl, and add_imports. *)
 let rec add_field_sym syms varname initted (finfo: fieldInfo) =
   (* instead of adding nested scope for record fields,
    * we just add "var.field" symbols *)
@@ -326,7 +326,7 @@ let check_condexp condsyms (tenv: typeenv) condexp =
            Symtable.addvar condsyms varname
              {symname=varname; symtype={ety with nullable=false}; var=true;
               mut=ety.tclass.muttype; addr=None};
-           print_endline ("Adding field symbols for " ^ varname);
+           (* print_endline ("Adding field symbols for " ^ varname); *)
            List.iter (add_field_sym condsyms varname true) ety.tclass.fields;
            Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
                 decor=bool_ttag }
@@ -911,7 +911,7 @@ let add_imports syms tenv specs istmts =
          match check_typedef modname tenv_acc td with
          | Ok cdata ->
             let newtenv =
-              (* need to add unqualified type name for imports *)
+              (* need to add unqualified type name for modspecs *)
               TypeMap.add (modalias, cdata.classname) cdata tenv_acc
               |> TypeMap.add (modname, cdata.classname) cdata in
             check_importtypes modname modalias rest newtenv
@@ -934,13 +934,13 @@ let add_imports syms tenv specs istmts =
                Error [{value=("Extern variable name clash:" ^ refname);
                        loc=gdecl.decor}]
             | None ->
-               let entry = {
+               Symtable.addvar syms refname {
                    (* Keep the original module name internally. *)
                    symname = fullname; symtype = ttag; 
                    var = true; mut=ttag.tclass.muttype; addr = None
-                 } in
-               Symtable.addvar syms refname entry;
-               (* TODO: add field initializers too. *)
+                 };
+               (* Add field initializers too. *)
+               List.iter (add_field_sym syms refname true) ttag.tclass.fields;
                (* Don't think we want to add both names in this context. *)
                (* if refname <> fullname then
                  Symtable.addvar syms fullname entry; *)

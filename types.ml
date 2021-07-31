@@ -11,7 +11,7 @@ and fieldInfo = {
     fieldname: string;
     priv: bool;
     mut: bool;
-    fieldtype: typetag (* classData, formerly *)
+    fieldtype: typetag
   }
 
 (** The specification for a class of types, built from a type declaration *)
