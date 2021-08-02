@@ -850,7 +850,6 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
                             finfo.mut || finfo.fieldtype.tclass.muttype)
                           flist;
               params = [];
-              implements = [];
               (* for generics: generate field info with same type
                 variables as outer *)
               fields = flist;
@@ -888,7 +887,6 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               muttype = List.exists
                           (fun st -> (snd st).tclass.muttype) subtypes;
               params = [];
-              implements = [];
               fields = [];
               subtypes = subtypes
             }
@@ -902,52 +900,59 @@ let add_imports syms tenv specs istmts =
   (* Wouldn't (global) variables need it too? *)
   (* Maybe vars can have a 'parent_struct' that could either be a 
      proc or a type or a module. *)
-    (* Construct the right names to use from the statements. *)
-    (* check type definitions and add to tenv. *)
-    let rec check_importtypes modname modalias tdefs tenv_acc =
-      match tdefs with
-      | [] -> Ok tenv_acc
-      | td::rest ->
-         match check_typedef modname tenv_acc td with
-         | Ok cdata ->
-            let newtenv =
-              (* need to add unqualified type name for modspecs *)
-              TypeMap.add (modalias, cdata.classname) cdata tenv_acc
-              |> TypeMap.add (modname, cdata.classname) cdata in
-            check_importtypes modname modalias rest newtenv
-         | Error e -> Error e
-    in
-    (* global variables and procs done together, both create symbols *)
-    let check_importdecls modname prefix tenv the_spec = 
-      (* Iterate over global variable declarations and add to symtable *)
-      List.map (
-          fun (gdecl: 'st globaldecl) ->
-          let refname = prefix ^ gdecl.varname in
-          (* only codegen should make it a dot name? *)
-          let fullname = modname ^ "::" ^ gdecl.varname in
-          match check_typeExpr tenv gdecl.typeexp with
-          | Error msg ->
-             Error [{value=msg; loc=gdecl.decor}] 
-          | Ok ttag -> (
-            match Symtable.findvar_opt refname syms with
-            | Some (_, _) ->
-               Error [{value=("Extern variable name clash:" ^ refname);
-                       loc=gdecl.decor}]
-            | None ->
-               Symtable.addvar syms refname {
-                   (* Keep the original module name internally. *)
-                   symname = fullname; symtype = ttag; 
-                   var = true; mut=ttag.tclass.muttype; addr = None
-                 };
-               (* Add field initializers too. *)
-               List.iter (add_field_sym syms refname true) ttag.tclass.fields;
-               (* Don't think we want to add both names in this context. *)
-               (* if refname <> fullname then
-                 Symtable.addvar syms fullname entry; *)
-               Ok syms (* doesn't get used *)
-        )) the_spec.globals
-      (* iterate over procedure declarations and add those. *)
-      @ (List.map (
+  (* helper function to append to errors (list of string located) *)
+  let add_import_notice errlist =
+    List.map (fun sloc ->               
+        {sloc with value=(sloc.value ^ " (in included modspec)")})
+      errlist
+  in 
+  (* Construct the right names to use from the statements. *)
+  (* check type definitions and add to tenv. *)
+  let rec check_importtypes modname modalias tdefs tenv_acc =
+    match tdefs with
+    | [] -> Ok tenv_acc
+    | td::rest ->
+       match check_typedef modname tenv_acc td with
+       | Ok cdata ->
+          let newtenv =
+            (* need to add unqualified type name for modspecs *)
+            TypeMap.add (modalias, cdata.classname) cdata tenv_acc
+            |> TypeMap.add (modname, cdata.classname) cdata in
+          check_importtypes modname modalias rest newtenv
+       | Error es -> Error (add_import_notice es)
+                         
+  in
+  (* global variables and procs done together, both create symbols *)
+  let check_importdecls modname prefix tenv the_spec = 
+    (* Iterate over global variable declarations and add to symtable *)
+    List.map (
+        fun (gdecl: 'st globaldecl) ->
+        let refname = prefix ^ gdecl.varname in
+        (* only codegen should make it a dot name? *)
+        let fullname = modname ^ "::" ^ gdecl.varname in
+        match check_typeExpr tenv gdecl.typeexp with
+        | Error msg ->
+           Error [{value=msg ^ " (in included modspec)"; loc=gdecl.decor}] 
+        | Ok ttag -> (
+          match Symtable.findvar_opt refname syms with
+          | Some (_, _) ->
+             Error [{value=("Extern variable name clash:" ^ refname);
+                     loc=gdecl.decor}]
+          | None ->
+             Symtable.addvar syms refname {
+                 (* Keep the original module name internally. *)
+                 symname = fullname; symtype = ttag; 
+                 var = true; mut=ttag.tclass.muttype; addr = None
+               };
+             (* Add field initializers too. *)
+             List.iter (add_field_sym syms refname true) ttag.tclass.fields;
+             (* Don't think we want to add both names in this context. *)
+             (* if refname <> fullname then
+                Symtable.addvar syms fullname entry; *)
+             Ok syms (* doesn't get used *)
+      )) the_spec.globals
+    (* iterate over procedure declarations and add those. *)
+    @ (List.map (
              fun (pdecl: 'sd procdecl) ->
              let refname = prefix ^ pdecl.name in
              let fullname = modname ^ "::" ^ pdecl.name in
@@ -959,9 +964,9 @@ let add_imports syms tenv specs istmts =
                 if refname <> fullname then 
                   Symtable.addproc syms fullname entry;
                 Ok syms
-             | Error errs -> Error errs
+             | Error errs -> Error (add_import_notice errs)
            ) the_spec.procdecls
-        ) (* end check_importdecls *)
+      ) (* end check_importdecls *)
     in
     let rec mainloop stmts tenv_acc modnames =
       match stmts with

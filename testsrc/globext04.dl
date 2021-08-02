@@ -3,7 +3,7 @@ module globext04 begin
 
 (* have to import this first to import any spec that uses it. Is that 
    the behavior we want? *)
-open complex;  
+(* open complex;   *)
 (* import globlib04; (* has Complex variables in signatures *) *)
 (* open globlib04; *)
 import globlib04 as glb;

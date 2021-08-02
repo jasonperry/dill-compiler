@@ -1,0 +1,15 @@
+(* import a header with an unknown type *)
+module importErr02 begin
+
+import globlib04; (* uses complex in a signature *)
+
+open stdio;
+
+export proc main()
+begin
+
+  printInt(42);
+
+end main
+
+end importErr02

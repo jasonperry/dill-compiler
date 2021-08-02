@@ -18,16 +18,18 @@ and fieldInfo = {
 and classData = {
     classname: string; (* do I even need it? It's the dict key *)
     in_module: string; (* to make it self-contained for generating ttags. *)
-      (* anyway, if we have extensions, still need to reference the original
-       * module where the class was defined. *)
-    muttype: bool;  (* in structs, inferred from field mutability *)
+      (* also for extensions, types need to "know" the original
+       * module where they were defined. *)
+    muttype: bool;  (* true if any field or variant is mutable *)
     params: typevar list; (* generic params *)
-    implements: string list; (* interfaces *)
-    (* When we do generics, need to link the field type parameters. 
-       (possibly just by varname) *)
+    (* Impls are no longer part of the type definition, so we'll get rid 
+       of this. Only possibility is constraints for the type variables. 
+       Need to think about that. *)
+    (* implements: string list;  *)
+    (* When we do generics, need to link params to the field type variables. 
+       (possibly just by var name) *)
     fields: fieldInfo list;
-    subtypes: (string * typetag) list
-    (* also need all method signatures. No, not in the latest design! *)
+    subtypes: (string * typetag) list (* variants *)
   }
 
 (** Unique specification of a concrete type. It's what's checked for
@@ -84,33 +86,28 @@ let rec typetag_to_string (tt: typetag) =
 
 (* Class definitions for built-in types, and tags for convenience. *)
 let null_class = { classname="NullType"; in_module = "";
-                   muttype=false; params=[]; implements=[]; fields=[];
+                   muttype=false; params=[]; fields=[];
                    subtypes=[] }
 let null_ttag = gen_ttag null_class []
 (* NOTE: void is not a type! Maybe it shouldn't be one in Dill, just have
  * procs that return nothing. *)
-let void_class =  { classname="Void"; in_module = "";
-                    muttype=false; params=[]; implements=[]; fields=[];
-                    subtypes=[] }
+let void_class =  { classname="Void"; in_module = ""; muttype=false;
+                    params=[]; fields=[]; subtypes=[] }
 let void_ttag = gen_ttag void_class []
 
 let int_class = { classname="Int"; in_module = ""; muttype=false; params=[];
-                  implements=[]; fields=[];
-                  subtypes=[] } (* later: "Arith" *)
+                  fields=[]; subtypes=[] } (* later: "Arith" *)
 let int_ttag = gen_ttag int_class []
 
 let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
-                   implements=[]; fields=[];
-                   subtypes=[] }
+                   fields=[]; subtypes=[] }
 let bool_ttag = gen_ttag bool_class []
 
 let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
-                    implements=[]; fields=[];
-                    subtypes=[] }
+                    fields=[]; subtypes=[] }
 let float_ttag = gen_ttag float_class []
 
 let string_class = { classname="String"; in_module=""; muttype=false;
-                     params=[]; implements=[]; fields=[];
-                   subtypes=[] }
+                     params=[]; fields=[]; subtypes=[] }
 let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)

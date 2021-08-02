@@ -45,10 +45,11 @@ let format_loc (spos: Lexing.position) (epos: Lexing.position) =
 
 (** Generate string buffer showing a sequence of errors. *)
 (* Is this only used here at the top level? Should it go in common? *)
-let format_errors elist =
+let format_errors filename elist =
   let format1 {loc; value} =
     (* TODO: distinguish between error and warning. *)
-    "Error: " ^ format_loc (fst loc) (snd loc) ^ ":\n    " ^ value
+    "Error: " ^ filename ^ " " ^ format_loc (fst loc) (snd loc)
+    ^ ":\n    " ^ value
   in
   (* errors append at beginning, so need to reverse the list. *)
   let errstrs = List.rev_map format1 elist in
@@ -237,7 +238,7 @@ let () =
        else (
          match analysis cconfig ispecs parsedmod with
          | Error errs -> 
-            prerr_string (format_errors errs);
+            prerr_string (format_errors srcfilename errs);
             exit 1
          | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
            if not cconfig.typecheck_only then (
