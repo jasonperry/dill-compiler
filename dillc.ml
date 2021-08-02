@@ -56,15 +56,9 @@ let format_errors filename elist =
   String.concat "\n" errstrs ^ "\n"
 
 
-(** Lex and parse an open source or spec file, returning the AST
- *  with location decoration *)
-let parse_sourcefile channel filename =
-  let buf = Lexing.from_channel channel in
-  let open Lexing in 
-  try
-    Parser.main Lexer.token buf
-  with
+let handle_parse_errors filename buf = function
   | Lexer.Error msg ->
+     let open Lexing in
      let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
      print_endline ("Error while lexing file " ^ filename ^ ":");
      print_string
@@ -72,11 +66,31 @@ let parse_sourcefile channel filename =
         ^ msg ^ "\n");
      failwith "Compilation terminated at lexing."
   | Parser.Error ->
+     let open Lexing in
      let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
      print_endline ("Error while parsing file " ^ filename ^ ":");
      print_string
        ("  At line " ^ format_loc spos epos ^ ": syntax error.\n");
      failwith "Compilation terminated at parsing."
+  | _ -> failwith "Unknown error from parser."
+
+
+(** Lex and parse an open source or spec file, returning the AST
+ *  with location decoration *)
+let parse_sourcefile channel filename =
+  let buf = Lexing.from_channel channel in
+  try
+    Parser.sourcefile Lexer.token buf
+  with
+  | exn -> handle_parse_errors filename buf exn
+
+let parse_modspec channel filename =
+  let buf = Lexing.from_channel channel in
+  try
+    Parser.modspec Lexer.token buf
+  with
+  | exn -> handle_parse_errors filename buf exn
+
 
 (** Try to open a given filename, searching paths *)
 let rec open_from_paths plist filename =
@@ -102,16 +116,10 @@ let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
       let specfilename = modname ^ ".dms" in
       match open_from_paths cconfig.include_paths specfilename with
       | None -> failwith ("Could not find spec file " ^ specfilename)
-      | Some specfile -> (
-        (* what kind of ('ed, 'sd) are they? Location, at first... *)
-        match parse_sourcefile specfile specfilename with
-        | (Some spec, None) ->
-           let newmap = StrMap.add modname spec mmap in
-           List.fold_left load_import newmap spec.imports
-        | (None, _) -> failwith ("No modspec found in " ^ specfilename)
-        | (Some _, _) ->
-           failwith ("Spec file " ^ specfilename ^ " cannot contain a module")
-      )
+      | Some specfile ->
+         let spec = parse_modspec specfile specfilename in
+         let newmap = StrMap.add modname spec mmap in
+         List.fold_left load_import newmap spec.imports  
   in 
   List.fold_left load_import modmap istmts
 
@@ -224,13 +232,9 @@ let () =
    * modspecs that are loaded. *)
   let process_sourcefile ispecs srcfilename =
     let infile = open_in srcfilename in
-    let (specopt, modopt) = parse_sourcefile infile srcfilename in
-    if Option.is_some specopt then
-      failwith ("Module specs cannot be given on the command line "
-                ^ "or in Dill source files.");
-    match modopt with
-    | None -> failwith "No module code was parsed from input."
-    | Some parsedmod ->
+    match parse_sourcefile infile srcfilename with
+    | [] -> failwith "No module code was parsed from input."
+    | parsedmod::_ -> (* TODO: multiple modules in a source file. *)
        if cconfig.parse_only then (
          print_string (module_to_string parsedmod);
          ispecs (* import specifications carried through *)

@@ -46,24 +46,16 @@
 %type <Ast.locinfo Ast.variantDecl> variantDecl
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
-%type <(Ast.locinfo) Ast.module_spec> modspec
+(* %type <(Ast.locinfo) Ast.module_spec> modspec *)
 (* Switched to a single module per file until I get object codegen working. *)
-%start <(Ast.locinfo) Ast.module_spec option
-        * (Ast.locinfo,Ast.locinfo) Ast.dillmodule option> main
-
+%start <(Ast.locinfo,Ast.locinfo) Ast.dillmodule list> sourcefile
+%start <Ast.locinfo Ast.module_spec> modspec
 %%
 
 (* Why the heck did I make it consist of a modspec *and* a module instead
  * of one or (a list of) the other? *)
-main: specopt=option(modspec) modopt=option(dillmodule) EOF
-    { (specopt, modopt) }
-
-(* My brilliant idea, but it never reduces. TODO: allow interspersing. *)
-(* main: ml=list(pair (option(modspec), option(dillmodule))) EOF
-    { (List.concat_map (fun (specopt, _) -> Option.to_list specopt) ml,
-       List.concat_map (fun (_, modopt) -> Option.to_list modopt) ml)
-    }
-*)
+sourcefile: onemod=dillmodule EOF
+    { [onemod] }
 
 dillmodule:
   | MODULE mn=moduleName BEGIN
@@ -377,7 +369,7 @@ callExp:
 (* Todo: for methods, will be preceded by varExp and dot *)
 (* Resolved conflicts by putting procName options here. *)
   | mn=moduleName DCOLON pn=IDENT_LC LPAREN al=argList RPAREN
-    { ExpCall (mn ^ "." ^ pn, al) }
+    { ExpCall (mn ^ "::" ^ pn, al) }
   | pn=IDENT_LC LPAREN al=argList RPAREN
     { ExpCall (pn, al) }
 
