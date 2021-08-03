@@ -80,7 +80,7 @@ let handle_parse_errors filename buf = function
 let parse_sourcefile channel filename =
   let buf = Lexing.from_channel channel in
   try
-    Parser.sourcefile Lexer.token buf
+    Parser.modsource Lexer.token buf
   with
   | exn -> handle_parse_errors filename buf exn
 
@@ -232,36 +232,36 @@ let () =
    * modspecs that are loaded. *)
   let process_sourcefile ispecs srcfilename =
     let infile = open_in srcfilename in
-    match parse_sourcefile infile srcfilename with
-    | [] -> failwith "No module code was parsed from input."
-    | parsedmod::_ -> (* TODO: multiple modules in a source file. *)
-       if cconfig.parse_only then (
-         print_string (module_to_string parsedmod);
-         ispecs (* import specifications carried through *)
-       )
-       else (
-         match analysis cconfig ispecs parsedmod with
-         | Error errs -> 
-            prerr_string (format_errors srcfilename errs);
-            exit 1
-         | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
-           if not cconfig.typecheck_only then (
-             print_endline "* codegen stage reached";
-             let open Llvm_target in
-             let machine = gen_x86_machine () in
-             let layout = TargetMachine.data_layout machine in
-             let modcode, header = codegen cconfig tenv syms layout typedmod in
-             (* should we set this before codegen? *)
-             Llvm.set_target_triple (TargetMachine.triple machine) modcode;
-             (* print_string (st_node_to_string topsyms); *)
-             write_header cconfig.source_dir header;
-             if cconfig.emit_llvm then 
-               write_module_llvm srcfilename modcode
-             else 
-               write_module_native srcfilename modcode machine
-           )
-         ); ispecs
-       )
+    let parsedmod = parse_sourcefile infile srcfilename in
+    if cconfig.parse_only then (
+      print_string (module_to_string parsedmod);
+      ispecs (* import specifications carried through *)
+    )
+    else (
+      match analysis cconfig ispecs parsedmod with
+      | Error errs -> 
+         prerr_string (format_errors srcfilename errs);
+         exit 1
+      (* Here is where I may want to generate a new spec from the 
+         module that was just analyzed. *)
+      | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
+        if not cconfig.typecheck_only then (
+          print_endline "* codegen stage reached";
+          let open Llvm_target in
+          let machine = gen_x86_machine () in
+          let layout = TargetMachine.data_layout machine in
+          let modcode, header = codegen cconfig tenv syms layout typedmod in
+          (* should we set this before codegen? *)
+          Llvm.set_target_triple (TargetMachine.triple machine) modcode;
+          (* print_string (st_node_to_string topsyms); *)
+          write_header cconfig.source_dir header;
+          if cconfig.emit_llvm then 
+            write_module_llvm srcfilename modcode
+          else 
+            write_module_native srcfilename modcode machine
+        )
+      ); ispecs
+    )
   in
   (* We accumulate module headers for efficiency, to avoid reading the same 
    * one multiple times. *)

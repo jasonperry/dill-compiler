@@ -53,9 +53,9 @@ type 'addr st_node = {
     scopedepth: int; 
     mutable syms: 'addr st_entry StrMap.t;
     mutable fsyms: 'addr st_procentry StrMap.t;  (* No overloading! *)
-    (* vars declared but not initted in this scope *)
+    (* vars declared but not initted in this scope. *)
     mutable uninit: StrSet.t;
-    (* vars from higher scope that are initted *)
+    (* vars from higher scope that are initted in this scope. *)
     mutable parent_init: StrSet.t;
     (* The root node has no parent *)
     parent: 'addr st_node option; 

@@ -1,12 +1,13 @@
-module hello begin
+(* hello world as top-level code *)
 
 import stdio;
 
-export proc main()
+var x = 43;
+
+proc main()
 begin
-   stdio::printInt(43);
+   var y = 10;
+   stdio::printInt(x+y);
    stdio::printString("Hello World.\n");
    (* return 0; *)
 end main
-
-end hello

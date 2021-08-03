@@ -727,7 +727,8 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
            (* Create procedure symtable entry.
             * Don't add it to module symtable node here; caller does it. *)
            let procentry =
-             {procname=(if not pdecl.export then modname ^ "::" else "")
+             (* if not pdecl.export *)
+             {procname=(if modname <> "" then modname ^ "::" else "")
                        ^ pdecl.name;
               rettype=rttag; fparams=paramentries} in
            (* create new inner scope under the procedure, and add args *)
@@ -897,9 +898,8 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
 let add_imports syms tenv specs istmts = 
   (* Even if you open a module, you should remember which module the 
    * function came from, for error messages *)
-  (* Wouldn't (global) variables need it too? *)
-  (* Maybe vars can have a 'parent_struct' that could either be a 
-     proc or a type or a module. *)
+  (* Maybe var symbols can have a 'parent_struct' that could either be a 
+     proc or a type or a module. Namespace? *)
   (* helper function to append to errors (list of string located) *)
   let add_import_notice errlist =
     List.map (fun sloc ->               
@@ -932,7 +932,7 @@ let add_imports syms tenv specs istmts =
         let fullname = modname ^ "::" ^ gdecl.varname in
         match check_typeExpr tenv gdecl.typeexp with
         | Error msg ->
-           Error [{value=msg ^ " (in included modspec)"; loc=gdecl.decor}] 
+           Error [{value=msg ^ " (in imported modspec)"; loc=gdecl.decor}] 
         | Ok ttag -> (
           match Symtable.findvar_opt refname syms with
           | Some (_, _) ->

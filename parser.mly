@@ -48,28 +48,32 @@
 %type <(Ast.locinfo, Ast.locinfo) Ast.dillmodule> dillmodule
 (* %type <(Ast.locinfo) Ast.module_spec> modspec *)
 (* Switched to a single module per file until I get object codegen working. *)
-%start <(Ast.locinfo,Ast.locinfo) Ast.dillmodule list> sourcefile
+%start <(Ast.locinfo,Ast.locinfo) Ast.dillmodule> modsource
 %start <Ast.locinfo Ast.module_spec> modspec
 %%
 
-(* Why the heck did I make it consist of a modspec *and* a module instead
- * of one or (a list of) the other? *)
-sourcefile: onemod=dillmodule EOF
-    { [onemod] }
+(* In the future, may allow multiple modules in a source file/stream *)
+modsource: onemod=dillmodule EOF
+    { onemod }
 
 dillmodule:
   | MODULE mn=moduleName BEGIN
-    iss=list(includeStmt)
+    mb=moduleBody
+    END mn2=moduleName
+    { if mn = mn2 then
+	{ mb with name=mn }
+      else $syntaxerror
+    }
+  | mb=moduleBody (* unnamed top-level module *)
+    { mb }
+
+moduleBody: 
+  | iss=list(includeStmt)
     tys=list(typedef)    (* TODO: let types come anywhere? Or be strict? *)
     gls=list(declStmt)
     pr=list(proc)
-    (* bl=option(blockStmt) *)
-    END mn2=moduleName
-    (* { let initstmts = match bl with
-	| Some (StmtBlock slist) -> slist
-	| _ -> [] in *)
-    { if mn = mn2 then {
-        name=mn;
+    { {
+        name="";
         imports=iss;
         typedefs=tys;
         globals=List.map (
@@ -78,9 +82,7 @@ dillmodule:
 	       typeexp=topt; init=eopt; decor=$loc}
           ) gls;
         procs=pr;
-        (* initblock=initstmts *)
       }
-      else $syntaxerror
     }
 
 moduleName: mn=IDENT_LC { mn }
