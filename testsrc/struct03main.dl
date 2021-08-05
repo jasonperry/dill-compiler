@@ -1,14 +1,14 @@
 (* driver for Struct03, testing type imports *)
-module struct003 begin
+(* module struct003 begin *)
 
 open struct03;
 open stdio;
 
-export proc main ()
+(*export*) proc main ()
 begin
   var cpx: Complex = {i=2.0, j=1.111};
   printFloat(cpx.i);
   printFloat(cpx.j);
 end main
 
-end struct003
+(* end struct003 *)

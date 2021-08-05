@@ -35,7 +35,7 @@ type binary_op =
 (** position info to decorate the AST with. TODO: don't put it here. *)
 type locinfo = Lexing.position * Lexing.position
 
-(** This is still used for error messages. *)
+(** This is still used for error messages. And importStmt! *)
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
@@ -47,14 +47,15 @@ type typeExpr = {
     nullable: bool;
   }
 
-(** Type alias for an lvalue. Needs module name too *)
+(** Type alias for an lvalue. Module name is currently concatted on. *)
 type var_expr = string * string list  (* field specifiers *)
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
-  (* is the module name already concatted in the var name? *)
   | ExpVar of var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
+  (* type, variant, initializer *)
+  | ExpVariant of (string * string) * string * 'ed expr option
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * (bool * 'ed expr) list (* proc name, mut * value list *)
@@ -76,7 +77,7 @@ type ('ed,'sd) raw_stmt =
               * ('ed,'sd) stmt list option (* else block *)
   | StmtWhile of 'ed expr (* cond *)
                  * ('ed, 'sd) stmt list (* body *)
-  | StmtCall of 'ed expr  (* have to check the function returns void *)
+  | StmtCall of 'ed expr  (* call used as statement, must return void *)
   | StmtBlock of ('ed,'sd) stmt list
 
 (** Decorated statement type ('a is for the decor of embedded exprs) *)
@@ -134,7 +135,7 @@ type 'sd fieldDecl = {
 (** A single named option for a variant type. *)
 type 'sd variantDecl = {
     variantName: string;
-    variantType: typeExpr;
+    variantType: typeExpr option; (* may be a constant symbol *)
     decor: 'sd
   }
 
@@ -205,7 +206,11 @@ and typedef_to_string tdef =
         "variant\n  | "
         ^ String.concat "| \n  "
             (List.map (fun vdec ->
-                 vdec.variantName ^ ": " ^ typeExpr_to_string vdec.variantType)
+                 vdec.variantName
+                 ^ match vdec.variantType with
+                   | Some vt -> ": " ^ typeExpr_to_string vt
+                   | None -> ""
+               )          
                variants)
     )
   ^ ";\n"
@@ -225,6 +230,12 @@ let rec exp_to_string (e: 'a expr) =
               (List.map (fun (fname, ex) ->
                    fname ^ "=" ^ exp_to_string ex) fl)
       ^ "}"
+  | ExpVariant ((mn, tn), vn, eopt) ->
+     (if mn <> "" then mn ^ "::" else "")
+     ^ tn ^ "|" ^ vn
+     ^ (match eopt with
+        | Some e -> "(" ^ exp_to_string e ^ ")"
+        | None -> "")
   | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
   | ExpCall (procname, args) ->

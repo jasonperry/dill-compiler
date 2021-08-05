@@ -94,7 +94,7 @@ let rec gen_lltype context
        struct_set_body structtype (List.map (fun (lty, _, _) -> lty) tlist
                                  |> Array.of_list) false;
        (structtype, field_offsets)
-     ) else if (cdata.subtypes <> []) then (
+     ) else if (cdata.variants <> []) then (
        (* must be a variant type. *)
        let maxsize =
          List.fold_left (fun max subtype ->
@@ -103,7 +103,7 @@ let rec gen_lltype context
                               lltype layout in
              if typesize > max then typesize else max
            ) (* temporary fix until proper codegen for variants *)
-           (Int64.of_int 0) (List.map snd cdata.subtypes)
+           (Int64.of_int 0) (List.map snd cdata.variants)
        in 
        (* do I have to recursively add the subtypes too? Won't they already
         *  be defined? Maybe not in a specific incarnation. What's the 

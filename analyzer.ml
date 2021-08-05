@@ -68,6 +68,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
          Ok { e=ExpVar (varname, fields); decor=ent.symtype }
     | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
   )
+
   | ExpRecord _ -> (
     match thint with
     | None ->
@@ -78,6 +79,52 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
     | Some ttag ->
        check_recExpr syms tenv ttag ex
   )
+
+  | ExpVariant ((mname, tname), vname, eopt) -> (
+     (* 1. the variant type exists *)
+     match TypeMap.find_opt (mname, tname) tenv with
+     | None ->
+        Error {loc=ex.decor;
+               value=("Unknown type " ^ mname ^ "::" ^ tname
+                      ^ " in variant expression")}
+     | Some cdata -> (
+     (* 2. vname is a variant of it *)
+       match List.find_opt (fun (vstr, _) -> vstr = vname) cdata.variants with
+       | None ->
+          Error {loc=ex.decor;
+                 value=("Unknown variant " ^ vname ^ " of type "
+                        ^ mname ^ "::" ^ tname)}
+       | Some (_, tyopt) -> (
+         match tyopt with
+         | None -> 
+           (* 3. check if the variant takes a value or not *)
+           if Option.is_some eopt then
+             Error {loc=(Option.get eopt).decor;
+                    value="Variant " ^ vname ^ " does not hold a value"}
+           else 
+             Ok {e=ExpVariant ((mname, tname), vname, None);
+                 decor=gen_ttag cdata []}
+         | Some vtype -> (
+           match eopt with
+           | None -> 
+              Error {loc=ex.decor;
+                     value="Variant " ^ vname ^ " requires a value"}
+           | Some e2 -> (
+             (* 4. typecheck the value *)
+             match check_expr syms tenv ~thint:(Some vtype) e2 with 
+             | Error err -> Error err
+             (* 5. Check that the value type and variant type match *)
+             | Ok echecked ->
+                if subtype_match echecked.decor vtype then
+                  Ok {e=ExpVariant ((mname, tname), vname, Some echecked);
+                      decor=vtype}
+                else
+                  Error {loc=e2.decor;
+                         value="Value type " ^ typetag_to_string echecked.decor
+                               ^ " Does not match variant type "
+                               ^ typetag_to_string vtype}
+     )))))
+
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
     | Ok ({e=_; decor=ty1} as e1) -> (  (* without () e1 is the whole thing *)
@@ -854,7 +901,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               (* for generics: generate field info with same type
                 variables as outer *)
               fields = flist;
-              subtypes = [];
+              variants = [];
             }
        )
     | Variants variants ->
@@ -869,16 +916,20 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
                        value="Name " ^ vdecl.variantName
                              ^ " reused in variant" }]
             else
-              match check_typeExpr tenv vdecl.variantType with
-              | Error e ->
-                 Error [{loc=tdef.decor;
-                         value="Variant subtype error: " ^ e}]
-              | Ok ttag ->
-                 check_variants rest ((vdecl.variantName, ttag)::accres)
+              match vdecl.variantType with
+              | Some vt -> (
+                match check_typeExpr tenv vt with
+                | Error e ->
+                   Error [{loc=tdef.decor;
+                           value="Variant subtype error: " ^ e}]
+                | Ok ttag ->
+                   check_variants rest ((vdecl.variantName, Some ttag)::accres)
+              )
+              | None -> check_variants rest ((vdecl.variantName, None)::accres)
        in
        match check_variants variants [] with
        | Error elist -> Error elist
-       | Ok subtypes ->
+       | Ok variants ->
           (* TODO: add constructors to function syms *)
           (* add nullary constructors to variable symbol table?! They
              are constants, I haven't handled those yet. *)
@@ -886,10 +937,12 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               classname = tdef.typename;
               in_module = modname;
               muttype = List.exists
-                          (fun st -> (snd st).tclass.muttype) subtypes;
+                          (fun st -> Option.is_some (snd st)
+                                     && (Option.get (snd st)).tclass.muttype
+                          ) variants;
               params = [];
               fields = [];
-              subtypes = subtypes
+              variants = variants
             }
   )
 

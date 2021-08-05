@@ -6,15 +6,14 @@ open stdio;
 
 type Num is variant
   | f: Float
-  | i: Int
-  | null;
-end Num  (* we do kind of expect to see an "end" for multi-line things. *)
+  | i: Int;
+  (* | null; *)
 
-export proc main() => Void
+export proc main() => Int
 begin
-  var u1: Num = Num.i(4);
-  var u2 = Num.f(5.5);
-  var u3 = Num.null;
+  var u1: Num = Num|i(4);
+  var u2 = Num|f(5.5);
+  (* var u3 = Num.null; *)
 
   (* case u1
     of Num.null begin  (* can't have begin without an end *)
@@ -24,6 +23,7 @@ begin
     of Num.f(f) then (* fewer keywords is good, it is like an if *)
       printFloat(f);
   endcase *)
+  return 0;
 
 end main
 

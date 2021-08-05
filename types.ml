@@ -29,7 +29,7 @@ and classData = {
     (* When we do generics, need to link params to the field type variables. 
        (possibly just by var name) *)
     fields: fieldInfo list;
-    subtypes: (string * typetag) list (* variants *)
+    variants: (string * typetag option) list (* variants *)
   }
 
 (** Unique specification of a concrete type. It's what's checked for
@@ -87,27 +87,27 @@ let rec typetag_to_string (tt: typetag) =
 (* Class definitions for built-in types, and tags for convenience. *)
 let null_class = { classname="NullType"; in_module = "";
                    muttype=false; params=[]; fields=[];
-                   subtypes=[] }
+                   variants=[] }
 let null_ttag = gen_ttag null_class []
 (* NOTE: void is not a type! Maybe it shouldn't be one in Dill, just have
  * procs that return nothing. *)
 let void_class =  { classname="Void"; in_module = ""; muttype=false;
-                    params=[]; fields=[]; subtypes=[] }
+                    params=[]; fields=[]; variants=[] }
 let void_ttag = gen_ttag void_class []
 
 let int_class = { classname="Int"; in_module = ""; muttype=false; params=[];
-                  fields=[]; subtypes=[] } (* later: "Arith" *)
+                  fields=[]; variants=[] } (* later: "Arith" *)
 let int_ttag = gen_ttag int_class []
 
 let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
-                   fields=[]; subtypes=[] }
+                   fields=[]; variants=[] }
 let bool_ttag = gen_ttag bool_class []
 
 let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
-                    fields=[]; subtypes=[] }
+                    fields=[]; variants=[] }
 let float_ttag = gen_ttag float_class []
 
 let string_class = { classname="String"; in_module=""; muttype=false;
-                     params=[]; fields=[]; subtypes=[] }
+                     params=[]; fields=[]; variants=[] }
 let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)

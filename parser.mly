@@ -145,7 +145,7 @@ variantList:
     { vl }
 
 variantDecl:
-  | vname=IDENT_LC COLON vty=typeExp
+  | vname=IDENT_LC vty=option(preceded(COLON, typeExp))
     { {variantName=vname; variantType=vty; decor=$loc} }
 
 proc:
@@ -280,6 +280,7 @@ expr:
     { ex }
   | ex=constExp
   | ex=recordExp
+  | ex=variantExp
   | ex=opExp
   | ex=callExp
   | ex=nullAssnExp
@@ -304,7 +305,7 @@ constExp:
     { ExpConst (NullVal) }
 
 
-varExp: (* Oops, needs to possibly have a modulename first *)
+varExp:
   (* note that a method call could be preceded by a varExp *)
   | mn=moduleName DCOLON v=varName fl=list(preceded(DOT, varName))
     { (mn ^ "::" ^ v, fl) }
@@ -318,6 +319,14 @@ varName:
 recordExp:
   | LBRACE fl=separated_list(COMMA, fieldAssign) RBRACE
     { ExpRecord fl }
+
+variantExp: (* Now using pairs everywhere for type names *)
+  | mn=moduleName DCOLON tn=IDENT_UC PIPE vn=IDENT_LC
+        eopt=option(delimited(LPAREN, expr, RPAREN))
+    { ExpVariant ((mn, tn), vn, eopt) }
+  | tn=IDENT_UC PIPE vn=IDENT_LC
+        eopt=option(delimited(LPAREN, expr, RPAREN))
+    { ExpVariant (("", tn), vn, eopt) }
 
 fieldAssign:
   | vn=varName ASSIGN e=expr
