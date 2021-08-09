@@ -200,6 +200,9 @@ let parse_cmdline args =
     if i == Array.length args then (List.rev srcfiles, config)
     else 
       match args.(i) with
+      | "--debug" ->  (* debug is a "true global" *)
+         _debug := true;
+         ploop (i+1) srcfiles config
       | "--print-ast" ->
          ploop (i+1) srcfiles { config with print_ast = true }
       | "--print-symtable" ->
@@ -246,7 +249,7 @@ let () =
          module that was just analyzed. *)
       | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
         if not cconfig.typecheck_only then (
-          print_endline "* codegen stage reached";
+          debug_print "* codegen stage reached";
           let open Llvm_target in
           let machine = gen_x86_machine () in
           let layout = TargetMachine.data_layout machine in
@@ -254,7 +257,8 @@ let () =
           (* should we set this before codegen? *)
           Llvm.set_target_triple (TargetMachine.triple machine) modcode;
           (* print_string (st_node_to_string topsyms); *)
-          write_header cconfig.source_dir header;
+          if parsedmod.name <> "" then 
+            write_header cconfig.source_dir header;
           if cconfig.emit_llvm then 
             write_module_llvm srcfilename modcode
           else 

@@ -1,15 +1,15 @@
 (* struct example, initted by record exp after declaration *)
-module Struct02 =
+(* module struct02 begin *)
 
-open Stdio;
+open stdio;
 
-type Complex = struct
+type Complex is struct
   i: Float,
   j: Float;
-end Complex
 
 
-export proc main() : Void = 
+export proc main()
+begin
 
   var cpx: Complex; (*  = {i=2.0, j=1.111};*)
   cpx = {i=4.0, j=-1.53};
@@ -20,4 +20,4 @@ export proc main() : Void =
 
 end main
 
-end Struct02
+(* end struct02 *)

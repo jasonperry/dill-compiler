@@ -1,4 +1,5 @@
 (* first example of variant (formerly union) types *)
+module union01 begin
 
 open stdio;
 
@@ -6,6 +7,11 @@ type Num is variant
   | f: Float
   | i: Int
   | nan;
+
+type Flags is variant
+  | local
+  | remote
+  | gone;
 
 export proc main() => Int
 begin
@@ -26,3 +32,4 @@ begin
 
 end main
 
+end union01

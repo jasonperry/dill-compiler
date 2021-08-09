@@ -774,9 +774,9 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
            (* Create procedure symtable entry.
             * Don't add it to module symtable node here; caller does it. *)
            let procentry =
-             (* if not pdecl.export *)
-             {procname=(if modname <> "" then modname ^ "::" else "")
-                       ^ pdecl.name;
+             (* may get rid of export later. For now, handy for testing modules *)
+             {procname=(if modname = "" || pdecl.export then pdecl.name
+                        else modname ^ "::" ^ pdecl.name);
               rettype=rttag; fparams=paramentries} in
            (* create new inner scope under the procedure, and add args *)
            (* Woops, it creates a "dangling" scope if proc isn't defined *)

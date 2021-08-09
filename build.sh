@@ -10,7 +10,7 @@ if [ $# -lt 1 ]; then
 fi
 
 for sf in $@; do
-    if dillc.exe -I $incdir "$sf"; then
+    if dillc.exe --debug -I $incdir "$sf"; then
 	name=$(basename "$sf" .dl)
 	# mv -f "$name.o" $outdir/
 	objfiles="$objfiles $name.o"

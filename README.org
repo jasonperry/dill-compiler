@@ -37,7 +37,7 @@ include:
   been taken to be more concise than Pascal/Ada syntax, while still
   being more explicit about structure than, say, Ruby or Lua. Semicolons
   as statement terminators. "As readable as possible, as verbose as
-  necessary." Making code easy to type is also a goal.
+  necessary." Making code easy to type and even pronounce are also goals.
 - Eventually: generics with interface constraints. One can code against
   concrete datatypes or interfaces, with type signatures that
   clearly distinguish between those cases.

@@ -13,11 +13,12 @@ let context = global_context()
 let float_type = double_type context
 let int_type = i32_type context
 let bool_type = i1_type context
-let void_type = void_type context (* may end up not using these. *)
+let void_type = void_type context
 let nulltag_type = i8_type context
-let uniontag_type = i32_type context
+let varianttag_type = i32_type context
 
 (* Implement comparison for typetag so we can make a map of them. *)
+(* Note: haven't done this yet, still using the string pair for basetype *)
 module TypeTag = struct
   type t = typetag
   let compare t1 t2 =
@@ -65,7 +66,8 @@ let rec gen_lltype context
   | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
   | _ ->
      (* Process struct or variant type. *)
-     (* make a list of names/types for either record or variant fields. *)
+     (* make a list of names/types for either struct or variant fields.
+      * (access information about struct fields not needed for codegen) *)
      let fielddata = 
        if cdata.fields <> []
        then List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) cdata.fields
@@ -83,7 +85,7 @@ let rec gen_lltype context
                | Some basetype -> basetype
                (* Recurse in case the field's lltype isn't generated yet.
                 * Happens if type defined later in the module, I think *)
-               (* what happens if the type is recursive? *)
+               (* TODO: recursive types (check for non-recursive base case) *)
                | None -> fst (gen_lltype context types lltypes layout
                                 (TypeMap.find (mname, tname) types))
              in (* create the array type if it is. TODO: nullable? *)
@@ -118,12 +120,13 @@ let rec gen_lltype context
            (Int64.of_int 0)
            (List.map (fun (_, llty, _, _) -> llty) ftypeinfo)
        in
-       print_endline ("Max subtype size: " ^ Int64.to_string maxsize);
+       debug_print (cdata.classname ^ " max variant size: "
+                    ^ Int64.to_string maxsize);
        (* compute two-field struct type (tag and data value) *)
-       let structtype = named_struct_type context typename in
        (* TODO: optimize to have just the tag (enum) if max size is zero. *)
+       let structtype = named_struct_type context typename in
        struct_set_body structtype
-         [| uniontag_type; array_type uniontag_type (Int64.to_int maxsize) |]
+         [| varianttag_type; array_type (i8_type context) (Int64.to_int maxsize) |]
          false;
        (structtype, fieldmap)
      ) else
@@ -728,20 +731,17 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   (* Llvm.set_target_triple ttriple the_module; *)
   Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) the_module;
   let builder = builder context in
-  (* Generate dict of llvm types for the type definitions. TODO: imports) *)
+  (* Generate dict of llvm types from the type definitions. *)
+  (* TODO: imports - wait, really? but imported types seem to work fine... *)
   let lltypes =
     TypeMap.fold (fun _ cdata lltenv ->
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)
         let (lltype, fieldmap) = gen_lltype context tenv lltenv layout cdata in
-        print_string (
+        debug_print (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
-            ^ " to lltenv. "
-            ^ (if type_is_sized lltype then
-                 "Size = " ^ string_of_llvalue (size_of lltype)
-               else "Not sized.")
-            ^ "\n"); 
+            ^ " to lltenv. lltype: \n  " ^ string_of_lltype lltype);
         Lltenv.add newkey (lltype, fieldmap) lltenv
       ) tenv Lltenv.empty in
   (* Generate decls for imported global variables in the symbol table. *)

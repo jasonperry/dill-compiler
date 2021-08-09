@@ -204,13 +204,13 @@ and typedef_to_string tdef =
         ^ String.concat ",\n  " (List.map fieldDecl_to_string fields)
      | Variants variants ->
         "variant\n  | "
-        ^ String.concat "| \n  "
+        ^ String.concat "\n  | "
             (List.map (fun vdec ->
                  vdec.variantName
-                 ^ match vdec.variantType with
-                   | Some vt -> ": " ^ typeExpr_to_string vt
-                   | None -> ""
-               )          
+                 ^ (match vdec.variantType with 
+                    | Some vt -> ": " ^ typeExpr_to_string vt
+                    | None -> "")                          
+               )         
                variants)
     )
   ^ ";\n"

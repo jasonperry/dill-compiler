@@ -1,5 +1,11 @@
 (** The obligatory utilities-needed-by-everything module. *)
 
+let _debug = ref false
+
+let debug_print s =
+  if !_debug then print_endline s
+  else ()
+
 module StrMap = Map.Make(String)
 module StrSet = Set.Make(String)
 
