@@ -36,7 +36,7 @@ let subtype_match (spectag: typetag) (gentag: typetag) =
        (spectag.tclass = null_class || spectag.tclass = gentag.tclass)
   (* Specific type is one of the types in a union *)
   (* Could do it recursively? Wait and see if it's better not to. *)
-(* || List.exists ((=) spectag) gentag.tclass.subtypes *)
+  (* || List.exists ((=) spectag) gentag.tclass.variants *)
 
 
 (** Expression result type (remember that exprs have a type field) *)
@@ -111,13 +111,13 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                      value="Variant " ^ vname ^ " requires a value"}
            | Some e2 -> (
              (* 4. typecheck the value *)
-             match check_expr syms tenv ~thint:(Some vtype) e2 with 
+             match check_expr syms tenv e2 with 
              | Error err -> Error err
              (* 5. Check that the value type and variant type match *)
              | Ok echecked ->
                 if subtype_match echecked.decor vtype then
                   Ok {e=ExpVariant ((mname, tname), vname, Some echecked);
-                      decor=vtype}
+                      decor=gen_ttag cdata []}
                 else
                   Error {loc=e2.decor;
                          value="Value type " ^ typetag_to_string echecked.decor

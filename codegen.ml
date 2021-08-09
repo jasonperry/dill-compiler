@@ -95,20 +95,21 @@ let rec gen_lltype context
                                  |> Array.of_list) false;
        (structtype, field_offsets)
      ) else if (cdata.variants <> []) then (
-       (* must be a variant type. *)
+       (* must be a variant type. compute max size of data field. *)
        let maxsize =
-         List.fold_left (fun max subtype ->
-             let lltype = Lltenv.find_class_lltype subtype.tclass lltypes in
-             let typesize = Llvm_target.DataLayout.abi_size
-                              lltype layout in
-             if typesize > max then typesize else max
+         List.fold_left (fun max vtyopt ->
+             let typesize = match vtyopt with
+               | None -> Int64.of_int 0
+               | Some vty -> (       
+                 let lltype = Lltenv.find_class_lltype vty.tclass lltypes in
+                 Llvm_target.DataLayout.abi_size lltype layout
+               ) in if typesize > max then typesize else max
            ) (* temporary fix until proper codegen for variants *)
            (Int64.of_int 0) (List.map snd cdata.variants)
        in 
        (* do I have to recursively add the subtypes too? Won't they already
         *  be defined? Maybe not in a specific incarnation. What's the 
-        * difference with record fields? *)
-       
+        * difference with record fields? *)   
        print_endline ("Max subtype size: " ^ Int64.to_string maxsize);
        failwith "almost there"
      (* Generate an integer to subtype map *)
@@ -209,6 +210,11 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      (* look up each field in symtable to get its address, 
       * put in a list, sort by the index, remove the index? *)
      failwith "BUG Record codegen not implemented in non-assignment context"
+  | ExpVariant _ (* ((tymod ,tyname), variant, eopt) *) ->
+     (* 1. Look up lltype and allocate struct *)
+     (* 2. Look up variant in table and plug in its tag *)
+     (* 3. generate code for expr if exists and plug in *)
+     failwith "working on ExpVariant codegen"
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
