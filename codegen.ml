@@ -15,6 +15,7 @@ let int_type = i32_type context
 let bool_type = i1_type context
 let void_type = void_type context (* may end up not using these. *)
 let nulltag_type = i8_type context
+let uniontag_type = i32_type context
 
 (* Implement comparison for typetag so we can make a map of them. *)
 module TypeTag = struct
@@ -25,14 +26,14 @@ end
 
 module TtagMap = Map.Make(TypeTag)
 
-(* dressed-up type environment to store field offsets as well. *)
+(* dressed-up type environment to store lltype + field/tag offsets. *)
 module Lltenv = struct
+  (* Think I can use fieldmap for both struct offsets and union tags. *)
   type fieldmap = (int * typetag) StrMap.t
-  type tagmap = int TtagMap.t (* map a subtype tag to the union index. *)
-  (* TypeMap.t: (module, typename) -> value *)
   (* Can I just take a typetag and pull in_module and classname out of
      that, so I don't have to awkwardly pass pairs? Should be okay as
      long as this is used only for looking up classes? *)
+  (* TypeMap.t: (module, typename) -> value *)
   type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
   let add strpair (llty, fmap) map = TypeMap.add strpair (llty, fmap) map
@@ -63,58 +64,68 @@ let rec gen_lltype context
   | ("", "String") -> pointer_type (i8_type context), StrMap.empty
   | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
   | _ ->
-     if cdata.fields <> [] then (
-       (* Record type. Generate list of types from record fields *)
-       let tlist =
-         List.mapi (fun i fi ->
-             let mname, tname = fi.fieldtype.modulename, fi.fieldtype.typename in
+     (* Process struct or variant type. *)
+     (* make a list of names/types for either record or variant fields. *)
+     let fielddata = 
+       if cdata.fields <> []
+       then List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) cdata.fields
+       else cdata.variants
+     in 
+     (* Generate list of (name, lltype, offset, type) from fields *)
+     let ftypeinfo =
+       List.mapi (fun i (fieldname, ftyopt) ->
+           match ftyopt with
+           | None -> (fieldname, void_type, i, void_ttag)
+           | Some fty -> (
+             let mname, tname = fty.modulename, fty.typename in
              let basetype = match Lltenv.find_lltype_opt
                                     (mname, tname) lltypes with
                | Some basetype -> basetype
-               (* what happens if the type is recursive?  
-                * I believe its type will be generated and added separately.
-                * I hope it doesn't confuse LLVM if the same named type is
-                * generated twice. *)
+               (* Recurse in case the field's lltype isn't generated yet.
+                * Happens if type defined later in the module, I think *)
+               (* what happens if the type is recursive? *)
                | None -> fst (gen_lltype context types lltypes layout
                                 (TypeMap.find (mname, tname) types))
-             in if fi.fieldtype.array
-              then (array_type basetype 0, i, fi.fieldtype)
-                else (basetype, i, fi.fieldtype)
-           ) cdata.fields
-       in
-       (* Create a mapping from field names to offsets (and types). *)
-       let field_offsets =
-         List.fold_left (fun fomap (_, i, ftype) ->
-           StrMap.add ((List.nth cdata.fields i).fieldname) (i, ftype) fomap
-           ) StrMap.empty tlist in
-       (* Create named struct type *)
-       let typename = cdata.in_module ^ "::" ^ cdata.classname in
+             in (* create the array type if it is. TODO: nullable? *)
+             if fty.array
+             then (fieldname, array_type basetype 0, i, fty)
+             else (fieldname, basetype, i, fty))
+         ) fielddata in
+     (* Create the mapping from field name to offset and type. *)
+     (* do we still need the high-level type? maybe for lookup info. *)
+     let fieldmap =
+         List.fold_left (fun fomap (fname, _, i, ftype) ->
+           StrMap.add fname (i, ftype) fomap
+           ) StrMap.empty ftypeinfo in
+     let typename = cdata.in_module ^ "::" ^ cdata.classname in
+     (* generate the llvm named struct type, record case *)
+     if cdata.fields <> [] then
        let structtype = named_struct_type context typename in
-       (* Don't know if we will want packed structs in the future *)
-       struct_set_body structtype (List.map (fun (lty, _, _) -> lty) tlist
-                                 |> Array.of_list) false;
-       (structtype, field_offsets)
-     ) else if (cdata.variants <> []) then (
-       (* must be a variant type. compute max size of data field. *)
+       (* "false" means to not use packed structs. *)
+       struct_set_body structtype
+         (List.map (fun (_, lty, _, _) -> lty) ftypeinfo
+          |> Array.of_list) false;
+       (structtype, fieldmap)
+     else if (cdata.variants <> []) then (
+       (* Compute max size of data field. *)
        let maxsize =
-         List.fold_left (fun max vtyopt ->
-             let typesize = match vtyopt with
-               | None -> Int64.of_int 0
-               | Some vty -> (       
-                 let lltype = Lltenv.find_class_lltype vty.tclass lltypes in
-                 Llvm_target.DataLayout.abi_size lltype layout
-               ) in if typesize > max then typesize else max
-           ) (* temporary fix until proper codegen for variants *)
-           (Int64.of_int 0) (List.map snd cdata.variants)
-       in 
-       (* do I have to recursively add the subtypes too? Won't they already
-        *  be defined? Maybe not in a specific incarnation. What's the 
-        * difference with record fields? *)   
+         List.fold_left (fun max llty ->
+             let typesize =
+               if llty = void_type then Int64.of_int 0
+               else Llvm_target.DataLayout.abi_size llty layout
+             in if typesize > max then typesize else max
+           )
+           (Int64.of_int 0)
+           (List.map (fun (_, llty, _, _) -> llty) ftypeinfo)
+       in
        print_endline ("Max subtype size: " ^ Int64.to_string maxsize);
-       failwith "almost there"
-     (* Generate an integer to subtype map *)
-        (* struct_type 
-                         [| uniontag_type; array_type (i8_type * nbytes) |] *)
+       (* compute two-field struct type (tag and data value) *)
+       let structtype = named_struct_type context typename in
+       (* TODO: optimize to have just the tag (enum) if max size is zero. *)
+       struct_set_body structtype
+         [| uniontag_type; array_type uniontag_type (Int64.to_int maxsize) |]
+         false;
+       (structtype, fieldmap)
      ) else
        failwith ("BUG: unknown class type " ^ cdata.classname ^ "in codegen")
 
@@ -136,9 +147,10 @@ let ttag_to_llvmtype lltypes ttag =
        with_null
 
 
-(** Generate LLVM allocation for a varexp, traversing fields *)
+(** Generate LLVM allocation for a varexp from symtable entry and fields *)
 (* Seems I need to do this once to get the load from the field offset. 
- * BUT after that I could store the field alloca back in the symtable?! *)
+ * But after that, to optimize, I could store the field alloca back in 
+   the symtable *)
 let gen_varexp_alloca varentry fieldlist lltypes builder =
   match varentry.addr with 
   | None -> failwith ("BUG: gen_varexp_alloca: alloca address not present for "
@@ -199,8 +211,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      build_global_stringptr s "sconst" builder
   (* stmtDecl will create new symtable entry, this will get it. *)
   | ExpVar (varname, fields) -> (
-    (* let varstr = String.concat "." (varname::fields) in *)
-    let (entry, _) = Symtable.findvar varname (*varstr*) syms in
+    let (entry, _) = Symtable.findvar varname syms in
     let alloca = gen_varexp_alloca entry fields lltypes builder in
     build_load alloca varname builder
   )
@@ -723,15 +734,15 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)
-        let lltydata = gen_lltype context tenv lltenv layout cdata in
+        let (lltype, fieldmap) = gen_lltype context tenv lltenv layout cdata in
         print_string (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
             ^ " to lltenv. "
-            ^ (if type_is_sized (fst lltydata) then
-                 "Size = " ^ string_of_llvalue (size_of (fst lltydata))
+            ^ (if type_is_sized lltype then
+                 "Size = " ^ string_of_llvalue (size_of lltype)
                else "Not sized.")
             ^ "\n"); 
-        Lltenv.add newkey lltydata lltenv
+        Lltenv.add newkey (lltype, fieldmap) lltenv
       ) tenv Lltenv.empty in
   (* Generate decls for imported global variables in the symbol table. *)
   StrMap.iter (fun localname gsym ->

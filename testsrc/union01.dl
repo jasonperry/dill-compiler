@@ -1,18 +1,17 @@
 (* first example of variant (formerly union) types *)
 
-module union01 begin
-
 open stdio;
 
 type Num is variant
   | f: Float
-  | i: Int;
-  (* | null; *)
+  | i: Int
+  | nan;
 
 export proc main() => Int
 begin
-  var u1: Num = Num|i(4);
-  var u2 = Num|f(5.5);
+  printString("whoopee.\n");
+  (* var u1: Num = Num|i(4);
+  var u2 = Num|f(5.5); *)
   (* var u3 = Num.null; *)
 
   (* case u1
@@ -27,4 +26,3 @@ begin
 
 end main
 
-end union01

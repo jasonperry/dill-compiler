@@ -29,7 +29,7 @@ and classData = {
     (* When we do generics, need to link params to the field type variables. 
        (possibly just by var name) *)
     fields: fieldInfo list;
-    variants: (string * typetag option) list
+    variants: (string * typetag option) list (* variant name and type if any *)
   }
 
 (** Unique specification of a concrete type. It's what's checked for
