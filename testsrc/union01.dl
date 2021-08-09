@@ -15,9 +15,9 @@ type Flags is variant
 
 export proc main() => Int
 begin
-  printString("whoopee.\n");
-  (* var u1: Num = Num|i(4);
-  var u2 = Num|f(5.5); *)
+  var u1: Num = Num|i(4);
+  var u2 = Num|f(5.5);
+  printString("whoopee\n");
   (* var u3 = Num.null; *)
 
   (* case u1

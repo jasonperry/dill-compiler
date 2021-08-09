@@ -8,7 +8,7 @@ type Complex is struct
   j: Float;
 
 
-export proc main() : Void
+export proc main()
 begin
 
   var cpx: Complex = {i=2.0, j=1.111};

@@ -37,7 +37,7 @@ module Lltenv = struct
   (* TypeMap.t: (module, typename) -> value *)
   type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
-  let add strpair (llty, fmap) map = TypeMap.add strpair (llty, fmap) map
+  let add strpair (llvarty, fmap) map = TypeMap.add strpair (llvarty, fmap) map
   (* Return just the LLVM type for a given type name. *)
   let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
   let find_class_lltype tclass tmap =
@@ -111,14 +111,14 @@ let rec gen_lltype context
      else if (cdata.variants <> []) then (
        (* Compute max size of data field. *)
        let maxsize =
-         List.fold_left (fun max llty ->
+         List.fold_left (fun max llvarty ->
              let typesize =
-               if llty = void_type then Int64.of_int 0
-               else Llvm_target.DataLayout.abi_size llty layout
+               if llvarty = void_type then Int64.of_int 0
+               else Llvm_target.DataLayout.abi_size llvarty layout
              in if typesize > max then typesize else max
            )
            (Int64.of_int 0)
-           (List.map (fun (_, llty, _, _) -> llty) ftypeinfo)
+           (List.map (fun (_, llvarty, _, _) -> llvarty) ftypeinfo)
        in
        debug_print (cdata.classname ^ " max variant size: "
                     ^ Int64.to_string maxsize);
@@ -171,7 +171,7 @@ let gen_varexp_alloca varentry fieldlist lltypes builder =
           let ptypekey = (parentty.modulename, parentty.typename) in
           (* Look up field offset in Lltenv, emit gep *)
           let offset, fieldtype = Lltenv.find_field ptypekey fld lltypes in
-          let alloca = build_struct_gep alloca offset "fld" builder in
+          let alloca = build_struct_gep alloca offset "field" builder in
           (*  Propagate field's typetag to next iteration *)
           get_field_alloca rest fieldtype alloca
      in
@@ -212,23 +212,41 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpConst (StringVal s) ->
      (* It will build the instruction /and/ return the ptr value *)
      build_global_stringptr s "sconst" builder
-  (* stmtDecl will create new symtable entry, this will get it. *)
+
   | ExpVar (varname, fields) -> (
     let (entry, _) = Symtable.findvar varname syms in
+    (* it gets complicated with field chains; call out to helper function *)
     let alloca = gen_varexp_alloca entry fields lltypes builder in
     build_load alloca varname builder
   )
+
   | ExpRecord _ (* fieldlist *) ->
-     (* Record init expr will be desugared to a list of assignments. *)
-     (* Do I need the type hint here, like I do in the analyzer? *)
-     (* look up each field in symtable to get its address, 
-      * put in a list, sort by the index, remove the index? *)
-     failwith "BUG Record codegen not implemented in non-assignment context"
-  | ExpVariant _ (* ((tymod ,tyname), variant, eopt) *) ->
+     failwith "Struct literal codegen not implemented in non-assignment context"
+
+  | ExpVariant ((tymod, tyname), variant, eopt) ->
+     debug_print ("Generating variant expression code for " ^ tyname);
      (* 1. Look up lltype and allocate struct *)
-     (* 2. Look up variant in table and plug in its tag *)
+     let (llvarty, varmap) = TypeMap.find (tymod, tyname) lltypes in
+     (* 2. Look up variant type, allocate struct, store tag value *)
+     let (tagval, subty) = StrMap.find variant varmap in
+     let llsubty = ttag_to_llvmtype lltypes subty in
+     let structsubty = struct_type context [| varianttag_type; llsubty |] in
+     let structaddr = build_alloca structsubty "variantSubAddr" builder in 
+     let tagaddr = build_struct_gep structaddr 0 "tag" builder in
+     ignore (build_store (const_int varianttag_type tagval) tagaddr builder);
      (* 3. generate code for expr if exists and plug in *)
-     failwith "working on ExpVariant codegen"
+     (match eopt with
+      | None -> ()
+      | Some e ->
+         let expval = gen_expr the_module builder syms lltypes e in
+         let valaddr = build_struct_gep structaddr 1 "varVal" builder in
+         ignore (build_store expval valaddr builder)
+     );
+     (* 4. cast specific struct to the general struct and store *)
+     let castedaddr = build_bitcast structaddr (pointer_type llvarty)
+                        "varstruct" builder in
+     build_load castedaddr "filledVariant" builder
+         
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
@@ -250,6 +268,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
     else
       failwith "BUG: Unknown type in unary op"
   )
+
   | ExpBinop (e1, op, e2) -> (
     let e1val = gen_expr the_module builder syms lltypes e1 in
     let e2val = gen_expr the_module builder syms lltypes e2 in
@@ -289,6 +308,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
     else
       failwith "unknown type for binary operation"
   )
+
   | ExpCall (fname, args) ->
      let (callee, llargs) = 
        gen_call the_module builder syms lltypes (fname, args) in

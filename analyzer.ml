@@ -101,8 +101,9 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
            if Option.is_some eopt then
              Error {loc=(Option.get eopt).decor;
                     value="Variant " ^ vname ^ " does not hold a value"}
-           else 
-             Ok {e=ExpVariant ((mname, tname), vname, None);
+           else
+             (* NOTE: replacing with the type's actual module name here. *)
+             Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
                  decor=gen_ttag cdata []}
          | Some vtype -> (
            match eopt with
@@ -116,7 +117,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
              (* 5. Check that the value type and variant type match *)
              | Ok echecked ->
                 if subtype_match echecked.decor vtype then
-                  Ok {e=ExpVariant ((mname, tname), vname, Some echecked);
+                  Ok {e=ExpVariant ((cdata.in_module, tname), vname, Some echecked);
                       decor=gen_ttag cdata []}
                 else
                   Error {loc=e2.decor;
