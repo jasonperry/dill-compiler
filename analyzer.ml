@@ -645,6 +645,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
      | _ -> failwith "BUG: Call statement with non-call expression"
   )
 
+  | StmtCase (_, _, _) -> failwith "case stmt analysis in progress"
+
   | StmtBlock stlist ->
      let blockscope = Symtable.new_scope syms in
      match check_stmt_seq blockscope tenv stlist with
@@ -700,6 +702,16 @@ let rec block_returns stlist =
     | StmtWhile (_, _) ->
        (* While body may never be entered, so can't guarantee *)
        block_returns rest
+    | StmtCase (_, caseblocks, elseopt) -> (
+      (* case statements will be exhaustiveness-checked, so the function
+       * returns if all present cases return *)
+      let rets =
+        List.for_all (fun (_, blk) -> block_returns blk) caseblocks
+        && (match elseopt with
+            | None -> true
+            | Some eblk -> block_returns eblk)
+      in rets || block_returns rest
+    )
   )
 
 
@@ -807,7 +819,7 @@ let check_proc tenv (pdecl: 'addr st_node procdecl) proc =
      if rettype <> void_ttag && not (block_returns proc.body) then 
        Error [{loc=proc.decor;
                value="Non-void procedure " ^ pdecl.name
-                     ^ " may not return a value"}]
+                     ^ " does not return a value on every execution path"}]
      else
        (* procedure's decoration is its inner symbol table *)
        Ok {decl=pdecl; body=newslist; decor=procscope}

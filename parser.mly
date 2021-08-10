@@ -16,6 +16,7 @@
 %token IS BEGIN END
 %token IF THEN ELSIF ELSE ENDIF
 %token WHILE LOOP ENDLOOP
+%token CASE OF ENDCASE
 %token PROC RETURN NOP
 %token MODULE MODSPEC
 %token IMPORT AS OPEN 
@@ -197,6 +198,7 @@ stmt:
   | st=assignStmt
   | st=ifStmt
   | st=whileStmt
+  | st=caseStmt
   | st=nopStmt
   | st=returnStmt
   | st=callStmt
@@ -264,6 +266,17 @@ whileStmt:
     body=stmtSeq
     ENDLOOP
     { StmtWhile (cond, body) }
+
+caseStmt:
+  | CASE matchexp=expr
+    caseblocks=list(caseBlock)
+    elseopt=option(preceded(ELSE, stmtSeq))
+    ENDCASE
+    { StmtCase (matchexp, caseblocks, elseopt) }
+
+caseBlock:
+  | OF caseexp=expr THEN blk=stmtSeq
+    { (caseexp, blk) }
 
 typeExp:
   (* typename plus possibly array, null markers *)

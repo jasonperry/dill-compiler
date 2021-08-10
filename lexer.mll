@@ -85,12 +85,15 @@ rule token = parse  (* funny that it's called parse *)
   | "while" { WHILE }
   | "loop"  { LOOP }
   | "endloop" { ENDLOOP }
+  | "case"    { CASE }
+  | "of"      { OF }
+  | "endcase" { ENDCASE }
   | "proc"    { PROC }
   | "return"  { RETURN }
   | "nop"     { NOP }
   | "module"  { MODULE }
   | "modspec" { MODSPEC }
-  | "import"   { IMPORT }
+  | "import"  { IMPORT }
   | "as"      { AS }
   | "open"    { OPEN }
   | "export"  { EXPORT }

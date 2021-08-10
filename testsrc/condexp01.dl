@@ -1,9 +1,15 @@
-var x: int;
+(* Is this superseded by null**.dl? *)
 
-if (x ?= 42) then
-  x = 33;
-endif
+proc main()
+begin
+  var x: Int;
 
-if (var y: int ?= 33) then
-  y = 42;
-endif
+  if (x ?= 42) then
+    x = 33;
+  endif
+
+  if (var y: Int ?= 33) then
+    y = 42;
+  endif
+
+end main

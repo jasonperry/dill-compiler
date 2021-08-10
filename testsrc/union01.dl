@@ -17,17 +17,18 @@ export proc main() => Int
 begin
   var u1: Num = Num|i(4);
   var u2 = Num|f(5.5);
+  var flag1 = Flags|remote;
   printString("whoopee\n");
   (* var u3 = Num.null; *)
 
-  (* case u1
-    of Num.null begin  (* can't have begin without an end *)
-      pass; 
-    of Num.i(i) do (* redundant...but OK*)
+  case u1
+    of Num|null then
+      printString("doodoo\n");  (* todo: pass *)
+    of Num|i(i) then
       printInt(i);
-    of Num.f(f) then (* fewer keywords is good, it is like an if *)
+    of Num|f(f) then
       printFloat(f);
-  endcase *)
+  endcase 
   return 0;
 
 end main

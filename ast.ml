@@ -76,7 +76,10 @@ type ('ed,'sd) raw_stmt =
               * ('ed expr * ('ed,'sd) stmt list) list (* elsif blocks *)
               * ('ed,'sd) stmt list option (* else block *)
   | StmtWhile of 'ed expr (* cond *)
-                 * ('ed, 'sd) stmt list (* body *)
+                 * ('ed,'sd) stmt list (* body *)
+  | StmtCase of 'ed expr (* object to match *)
+                * ('ed expr * ('ed,'sd) stmt list) list (* case blocks *)
+                * ('ed,'sd) stmt list option (* else block *)
   | StmtCall of 'ed expr  (* call used as statement, must return void *)
   | StmtBlock of ('ed,'sd) stmt list
 
@@ -270,6 +273,7 @@ let rec stmt_to_string st =
       | StmtReturn None -> "return;\n"
       | StmtCall e -> exp_to_string e ^ ";\n"
       | StmtIf (e, tb, eifs, eb) -> if_to_string (e, tb, eifs, eb)
+      | StmtCase (e, blks, elseopt) -> case_to_string (e, blks, elseopt)
       | StmtWhile (cond, body) ->
          "while (" ^ exp_to_string cond ^ ") loop\n"
          ^ block_to_string body
@@ -285,13 +289,24 @@ and elsif_to_string (e, sl) =
 
 (* maybe interpret sub-functions will return a label *)
 and if_to_string (e, tb, eifs, els) =
-  "if (" ^ exp_to_string e ^ ") then\n"
+  "if " ^ exp_to_string e ^ " then \n"
   ^ block_to_string tb
   ^ List.fold_left (fun s eif -> s ^ elsif_to_string eif) "" eifs
   ^ (match els with
-     | Some sb -> "else " ^ block_to_string sb
+     | Some sb -> "else \n" ^ block_to_string sb
      | None -> "")
   ^ "endif\n"
+
+and case_to_string (matchexp, caseblocks, elseopt) =
+  "case " ^ exp_to_string matchexp ^ "\n"
+  ^ String.concat "\n"
+      (List.map (fun (caseexp, block) ->
+           "  of " ^ exp_to_string caseexp ^ " then \n"
+           ^ block_to_string block) caseblocks)
+  ^ (match elseopt with
+     | Some eblock -> "  else \n" ^ block_to_string eblock
+     | None -> "")
+  ^ "\nendcase\n"
 
 (* let interpret_params plist =  *)
 

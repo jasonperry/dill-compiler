@@ -126,7 +126,11 @@ let rec gen_lltype context
        (* TODO: optimize to have just the tag (enum) if max size is zero. *)
        let structtype = named_struct_type context typename in
        struct_set_body structtype
-         [| varianttag_type; array_type (i8_type context) (Int64.to_int maxsize) |]
+         (if maxsize = Int64.zero then 
+            [| varianttag_type |]
+          else
+            [| varianttag_type;
+               array_type (i8_type context) (Int64.to_int maxsize) |])
          false;
        (structtype, fieldmap)
      ) else
@@ -228,9 +232,14 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      (* 1. Look up lltype and allocate struct *)
      let (llvarty, varmap) = TypeMap.find (tymod, tyname) lltypes in
      (* 2. Look up variant type, allocate struct, store tag value *)
+     let typesize = Array.length (struct_element_types llvarty) in
      let (tagval, subty) = StrMap.find variant varmap in
      let llsubty = ttag_to_llvmtype lltypes subty in
-     let structsubty = struct_type context [| varianttag_type; llsubty |] in
+     let structsubty =
+       struct_type context
+         (if typesize > 1 then [| varianttag_type; llsubty |]
+          else [| varianttag_type |]
+         ) in
      let structaddr = build_alloca structsubty "variantSubAddr" builder in 
      let tagaddr = build_struct_gep structaddr 0 "tag" builder in
      ignore (build_store (const_int varianttag_type tagval) tagaddr builder);
@@ -243,6 +252,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
          ignore (build_store expval valaddr builder)
      );
      (* 4. cast specific struct to the general struct and store *)
+     (* It still wants the cast even if no value (because named struct?) *)
      let castedaddr = build_bitcast structaddr (pointer_type llvarty)
                         "varstruct" builder in
      build_load castedaddr "filledVariant" builder
@@ -254,16 +264,16 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
     if e1.decor = int_ttag then 
       match op with
       (* type checker should catch negating an unsigned. *)
-      | OpNeg -> build_neg e1val "inegtemp" builder
-      | OpBitNot -> build_not e1val "bitnottemp" builder
+      | OpNeg -> build_neg e1val "inegated" builder
+      | OpBitNot -> build_not e1val "bitnotted" builder
       | _ -> failwith "BUG: Codegen type error in unary op (int)"
     else if e1.decor = float_ttag then
       match op with
-      | OpNeg -> build_fneg e1val "fnegtemp" builder
+      | OpNeg -> build_fneg e1val "fnegated" builder
       | _ -> failwith "BUG: Codegen type error in unary op (float)"
     else if e1.decor = bool_ttag then 
       match op with 
-      | OpNot -> build_not e1val "boolnottemp" builder
+      | OpNot -> build_not e1val "boolnotted" builder
       | _ -> failwith "BUG: Codegen type error in unary op (bool)"
     else
       failwith "BUG: Unknown type in unary op"
@@ -566,6 +576,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       ignore (build_br merge_bb builder);
       position_at_end merge_bb builder
   )
+
+  | StmtCase (_, _, _) -> failwith "case codegen not implemented yet"
 
   | StmtWhile (cond, body) -> (
     (* test block, loop block, afterloop block. *)
