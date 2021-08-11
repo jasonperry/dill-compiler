@@ -21,13 +21,17 @@ begin
   printString("whoopee\n");
   (* var u3 = Num.null; *)
 
-  case u1
-    of Num|null then
-      printString("doodoo\n");  (* todo: pass *)
+  var x: Int = 4;
+
+  case x
+    of Num|nan then (* check that field is there *)
+      nop;
     of Num|i(i) then
       printInt(i);
-    of Num|f(f) then
-      printFloat(f);
+    (* of Num|f(f) then
+      printFloat(f); *)
+    else
+      printString("leftovers");
   endcase 
   return 0;
 

@@ -14,11 +14,11 @@ include:
   distinguishing values from references in the source, without
   sacrificing efficiency. It's clear that languages should not have
   hidden differences in behavior that come from using value
-  vs. reference types; I additionally feel that only low-level languages
-  should require manual notation of references. The hope is that with
-  mutation tracking, it will be straightforward for the compiler to
-  determine that behavior will be correct and use values or references
-  as appropriate for efficiency.
+  vs. reference types; also, this language is meant to be higher-level
+  than languages requiring manual notation of references. The hope is
+  that with mutation tracking, it will be straightforward for the
+  compiler to determine that behavior will be correct and use values or
+  references as appropriate for efficiency.
 - Struct and variant types, generative type aliases
 - All concrete types are datatypes; there are no classes (containers
   for a type and methods), though there is method call syntax. Method

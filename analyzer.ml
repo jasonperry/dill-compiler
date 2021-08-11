@@ -628,6 +628,115 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
       | Ok newbody -> Ok {st=StmtWhile (newcond, newbody); decor=whilesyms}
   ))
 
+  | StmtCase (matchexp, caseblocks, elseopt) -> (
+    match check_expr syms tenv matchexp with
+    | Error err -> Error [err]
+    | Ok matchexp ->
+       let mtype = matchexp.decor in
+       let rec check_cases (cblocks: ('ed expr * ('ed,'sd) stmt list) list)
+                 caseacc =
+         match cblocks with
+         | (cexp, cbody)::rest -> (
+           let errout msg =
+             Error [{value=msg; loc=cexp.decor}] in
+           match cexp.e with
+           | ExpVariant ((modname, tyname), varname, eopt) -> (
+              (* may want to factor out getting the type (result variable) *)
+              match TypeMap.find_opt (modname, tyname) tenv with
+              | None -> errout ("Unknown type " ^ modname ^ "::" ^ tyname)
+              | Some cdata ->
+                 if cdata <> mtype.tclass then
+                   errout ("Case type " ^ modname ^ "::" ^ tyname
+                           ^ " does not match match expression type "
+                           ^ mtype.modulename ^ "::" ^ mtype.typename)
+                 else (
+                   match List.find_opt (fun (vn, _) -> varname = vn)
+                           cdata.variants with
+                   | None -> errout ("Unknown variant type " 
+                                     ^ tyname ^ "|" ^ varname ^ " in case")
+                   | Some (_, vartyopt) -> (
+                     if List.exists ((=) varname) caseacc then 
+                       errout ("Duplicate variant case"
+                               ^ tyname ^ "|" ^ varname)
+                     else
+                       match eopt with (* result.fold? join? bind? *)
+                       | None -> (
+                          if Option.is_some vartyopt then
+                            errout ("Variant " ^ tyname ^ "|" ^ varname
+                                    ^ "holds a value that must be captured")
+                          else
+                            let blocksyms = Symtable.new_scope syms in
+                            match check_stmt_seq blocksyms tenv cbody with
+                            | Error errs -> Error errs
+                            | Ok newcbody -> (
+                               let newcexp =
+                                 {e=ExpVariant((modname, tyname), varname, None);
+                                  decor=matchexp.decor} in
+                               match check_cases rest (varname::caseacc) with
+                               | Ok blocks -> Ok ((newcexp, newcbody)::blocks)
+                               | Error errs -> Error errs
+                       ))
+                       | Some cvalexp -> (
+                         match vartyopt with
+                         | None -> 
+                            errout ("Variant " ^ tyname ^ "|" ^ varname
+                                    ^ " does not hold a value")
+                         | Some varty -> 
+                           match cvalexp.e with
+                           | ExpVar (cvar, []) -> (
+                             let blocksyms = Symtable.new_scope syms in
+                             Symtable.addvar blocksyms cvar {
+                                 symname=cvar;
+                                 symtype=varty;
+                                 var=false;
+                                 mut=false = varty.tclass.muttype; (*correct?*)
+                                 addr=None 
+                               };
+                             match check_stmt_seq blocksyms tenv cbody with
+                             | Error errs -> Error errs
+                             | Ok newcbody -> (
+                               let newcexp =
+                                 {e=ExpVariant((modname, tyname), varname,
+                                               Some {e=ExpVar(cvar, []);
+                                                     decor=varty});
+                                  decor=matchexp.decor} in
+                               match check_cases rest (varname::caseacc) with
+                               | Ok blocks -> Ok ((newcexp, newcbody)::blocks)
+                               | Error errs -> Error errs
+                           ))
+                           | _ -> errout ("Case value expression must be "
+                                          ^ "a single variable name")
+           ))))
+           | _ -> failwith "Case statements only for variants currently"
+         )
+         | [] ->
+            (* check for exhaustiveness here, just by comparing lengths*)
+            if List.length caseacc < List.length mtype.tclass.variants
+               && Option.is_none elseopt then
+              Error [{value="Variant case statement is not exhaustive";
+                      loc=stm.decor}]
+            else if List.length caseacc = List.length mtype.tclass.variants
+                    && Option.is_some elseopt then
+              Error [{value="Unreachable else block; cases cover all variants";
+                      loc=stm.decor}] (* get location in else block instead? *)
+            else 
+              Ok []
+       in
+       match check_cases caseblocks [] with
+       | Error errs -> Error errs
+       | Ok newcblocks -> (
+         match elseopt with
+         | None -> 
+            Ok {st=StmtCase (matchexp, newcblocks, None); decor=syms}
+         | Some eblock ->
+            let blocksyms = Symtable.new_scope syms in
+            match check_stmt_seq blocksyms tenv eblock with
+            | Error errs -> Error errs
+            | Ok neweblock ->
+               Ok {st=StmtCase (matchexp, newcblocks, Some neweblock);
+                   decor=syms}
+  ))
+
   | StmtCall ex -> (
      match ex.e with
      | ExpCall (fname, args) -> (
@@ -644,8 +753,6 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
      ))
      | _ -> failwith "BUG: Call statement with non-call expression"
   )
-
-  | StmtCase (_, _, _) -> failwith "case stmt analysis in progress"
 
   | StmtBlock stlist ->
      let blockscope = Symtable.new_scope syms in
