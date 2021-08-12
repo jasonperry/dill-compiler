@@ -483,7 +483,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* Evaluate a condition, possibly inserting declaration and value store 
      * in the then block for conditional-null assignments. *)
     (* TODO: factor this out to use in while loops too *)
-    let gen_cond cond thenbb thensyms =
+    let gen_cond cond thenbb blocksyms =
       match cond.e with
       | ExpNullAssn (isdecl, (varname, flds), _, nullexp) ->
          let condval = gen_expr the_module builder syms lltypes nullexp in
@@ -497,8 +497,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          position_at_end thenbb builder;
          if isdecl then
            gen_stmt the_module builder lltypes 
-             { st=StmtDecl (varname, None, None); decor=thensyms };
-         let (entry, _) = Symtable.findvar varname thensyms in
+             { st=StmtDecl (varname, None, None); decor=blocksyms };
+         let (entry, _) = Symtable.findvar varname blocksyms in
          let alloca =
            gen_varexp_alloca entry flds lltypes builder in
          let realval = build_extractvalue condval 1 "condval" builder in
@@ -507,7 +507,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          condres
       | _ ->
          let condval = gen_expr the_module builder syms lltypes cond in
-         (* need to handle nullable case here too *)
+         (* If a nullable type, then the condition is to test if it's null *)
          if cond.decor.nullable then
            let nulltag = build_extractvalue condval 0 "nulltag" builder in
            build_icmp Icmp.Ne
@@ -517,10 +517,11 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
     let then_bb = append_block context "then" the_function in
-    let thensyms = (List.hd thenblock).decor in
-    let condval = gen_cond cond then_bb thensyms in
+    let blocksyms = (List.hd thenblock).decor in
+    let condval = gen_cond cond then_bb blocksyms in
     position_at_end then_bb builder;
     List.iter (gen_stmt the_module builder lltypes) thenblock;
+    (* code insertion could add new blocks to the "then" block. *)
     let new_then_bb = insertion_block builder in
     (* elsif generating code *)
     let gen_elsif (cond, (block: (typetag, 'b) stmt list)) =
@@ -528,56 +529,139 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
         let cond_bb = append_block context "elsifcond" the_function in
         position_at_end cond_bb builder;
         let then_bb = append_block context "elsifthen" the_function in
-        let thensyms = (List.hd block).decor in
-        let condval = gen_cond cond then_bb thensyms in
+        let blocksyms = (List.hd block).decor in
+        let condval = gen_cond cond then_bb blocksyms in
         position_at_end then_bb builder;
         List.iter (gen_stmt the_module builder lltypes) block;
         (condval, cond_bb, then_bb, insertion_block builder) (* for jumps *)
-      in
-      let elsif_blocks = List.map gen_elsif elsifs in
-      (* generating dummy else block regardless. *)
-      let else_bb = append_block context "else" the_function in
-      position_at_end else_bb builder;
-      (match elsopt with
-       | Some elseblock ->
-          List.iter (gen_stmt the_module builder lltypes) elseblock
-       | None -> ());
-      let new_else_bb = insertion_block builder in
-      let merge_bb = append_block context "ifcont" the_function in
-      (* kaleidoscope inserts the phi here *)
-      (* position_at_end merge_bb builder; *)
-      position_at_end start_bb builder;
-      (* Still loop to the /original/ then block! *)
-      let firstelse =
-        match elsif_blocks with
-        | [] -> else_bb
-        | (_, condblk, _, _) :: _ -> condblk in
-      (* This is where we build the first conditional! *)
-      ignore (build_cond_br condval then_bb firstelse builder);
-      position_at_end new_then_bb builder;
-      ignore (build_br merge_bb builder);
-      (* add conditional and unconditional jumps between elsif blocks *)
-      let rec add_elsif_jumps = function
-        | [] -> ()
-        | (condval, condblk, thenblk, endblk) :: rest ->
-           position_at_end condblk builder;
-           (match rest with
-            | [] ->
-               ignore (build_cond_br condval thenblk else_bb builder);
-            | (_, nextblk, _, _) :: _ -> 
-               ignore (build_cond_br condval thenblk nextblk builder);
-           );
-           position_at_end endblk builder;
-           ignore (build_br merge_bb builder);
-           add_elsif_jumps rest
-      in
-      add_elsif_jumps elsif_blocks;
-      position_at_end new_else_bb builder;
-      ignore (build_br merge_bb builder);
-      position_at_end merge_bb builder
+    in
+    let elsif_blocks = List.map gen_elsif elsifs in
+    (* generating dummy else block regardless. *)
+    let else_bb = append_block context "else" the_function in
+    position_at_end else_bb builder;
+    (match elsopt with
+     | Some elseblock ->
+        List.iter (gen_stmt the_module builder lltypes) elseblock
+     | None -> ());
+    let new_else_bb = insertion_block builder in
+    let merge_bb = append_block context "ifcont" the_function in
+    (* kaleidoscope inserts the phi here *)
+    (* position_at_end merge_bb builder; *)
+    position_at_end start_bb builder;
+    (* Still loop to the /original/ then block! *)
+    let firstelse =
+      match elsif_blocks with
+      | [] -> else_bb
+      | (_, condblk, _, _) :: _ -> condblk in
+    (* Way down here, we finally build the first conditional! *)
+    ignore (build_cond_br condval then_bb firstelse builder);
+    position_at_end new_then_bb builder;
+    ignore (build_br merge_bb builder);
+    (* Add conditional and unconditional jumps between elsif blocks 
+     * (the blocks had to be created first) *)
+    let rec add_elsif_jumps = function
+      | [] -> ()
+      | (condval, condblk, thenblk, endblk) :: rest ->
+         position_at_end condblk builder;
+         (match rest with
+          | [] ->
+             ignore (build_cond_br condval thenblk else_bb builder);
+          | (_, nextblk, _, _) :: _ -> 
+             ignore (build_cond_br condval thenblk nextblk builder);
+         );
+         position_at_end endblk builder;
+         ignore (build_br merge_bb builder);
+         add_elsif_jumps rest
+    in 
+    add_elsif_jumps elsif_blocks;
+    position_at_end new_else_bb builder;
+    ignore (build_br merge_bb builder);
+    position_at_end merge_bb builder
   )
 
-  | StmtCase (_, _, _) -> failwith "case codegen not implemented yet"
+  | StmtCase (matchexp, cblocks, elseopt) -> (
+    (* 1. generate value of matchexp *)
+    let matchval = gen_expr the_module builder syms lltypes matchexp in
+    let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
+    (* oh, can get the fieldmap just once here to save time *)
+    let fieldmap =
+        match TypeMap.find_opt
+                (matchexp.decor.modulename, matchexp.decor.typename) lltypes with
+        | None -> None
+        | Some (_, fieldmap) -> Some fieldmap in
+    let gen_caseexp caseexp = 
+      match caseexp.e with
+      | ExpVariant (_, vname, _) ->
+         let fieldmap = Option.get fieldmap in
+         (* compare tag value of case to tag of the matchval *)
+         let casetag = fst (StrMap.find vname fieldmap) in
+         build_icmp
+           Icmp.Eq (const_int varianttag_type casetag) matchtagval
+           "casecomp" builder
+      (* The load of the value into the variable is done in the block *)
+      | _ -> failwith "Only variant case codegen so far"
+    in
+    let start_bb = insertion_block builder in
+    let the_function = block_parent start_bb in
+    (* generate compare and block code, return the block pointers for jumps *)
+    let gen_caseblock caseexp (caseblock: ('ed,'sd) stmt list) =
+        (* however, need to insert conditional jump and jump-to-merge later *)
+        let comp_bb = append_block context "casecomp" the_function in
+        position_at_end comp_bb builder;
+        let casebody_bb = append_block context "casebody" the_function in
+        (* Don't think we need the updated syms here, because no declarations
+         * are happening in the comparison *)
+        (* let blocksyms = (List.hd caseblock).decor in *)
+        let condval = gen_caseexp caseexp (* casebody_bb blocksyms *) in
+        position_at_end casebody_bb builder;
+        (* If variant holds a value, create alloca and load value *)
+        (match caseexp.e with
+         | ExpVariant (_, vname, Some valexp) -> (
+           match valexp.e with
+           | ExpVar (varname, _) -> 
+              let fieldmap = Option.get fieldmap in
+              let casetype = snd (StrMap.find vname fieldmap) in
+              (* let blockstart =  (* think it's already where we want *) *)
+              let allocatype = ttag_to_llvmtype lltypes casetype in
+              let _ = build_alloca allocatype varname builder in
+              ()
+           | _ -> failwith "Shouldn't happen: no ExpVar in case"
+         )
+         | _ -> ()) ;
+        List.iter (gen_stmt the_module builder lltypes) caseblock;
+        (condval, comp_bb, casebody_bb, insertion_block builder)
+    in  
+    let caseblocks = List.map (fun (ce, cb) -> gen_caseblock ce cb) cblocks in
+    (* generating dummy else block regardless. *)
+    let else_bb = append_block context "else" the_function in
+    position_at_end else_bb builder;
+    (match elseopt with
+     | Some elseblock ->
+        List.iter (gen_stmt the_module builder lltypes) elseblock
+     | None -> ());
+    let new_else_bb = insertion_block builder in
+    let merge_bb = append_block context "casecont" the_function in
+    (* kaleidoscope inserts the phi here *)
+    position_at_end start_bb builder;
+    let rec add_block_jumps = function
+      | [] -> ()
+      | (condval, condblk, thenblk, endblk) :: rest ->
+         position_at_end condblk builder;
+         (match rest with
+          | [] ->
+             ignore (build_cond_br condval thenblk else_bb builder);
+          | (_, nextblk, _, _) :: _ -> 
+             ignore (build_cond_br condval thenblk nextblk builder);
+         );
+         position_at_end endblk builder;
+         ignore (build_br merge_bb builder);
+         add_block_jumps rest
+    in 
+    add_block_jumps caseblocks;
+    position_at_end new_else_bb builder;
+    ignore (build_br merge_bb builder);
+    position_at_end merge_bb builder
+  )
 
   | StmtWhile (cond, body) -> (
     (* test block, loop block, afterloop block. *)

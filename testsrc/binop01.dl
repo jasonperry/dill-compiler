@@ -1,6 +1,8 @@
-module Binop01 =
 
-begin (* maybe "main = begin" *)
+open stdio;
+
+proc main()
+begin
 
 var x: Int = 100;
 var y: Bool = False;
@@ -12,14 +14,11 @@ endif
 if (x < 50 && y) then
   y = !y;
   x = x + 2;
-elsif (!(x == 2)) then  (* need the paren here. *)
+elsif !(x == 2) then 
   x = x + 3;
   x = x % 23;  (* let's have a (* nested comment test *) too. *)
 endif
 
 printInt(x);
 
-end
- (* should I combine these two ends? Or have syntax so that a named
-  * terminator ends everything inside of it? nah. *)
-end Binop01
+end main
