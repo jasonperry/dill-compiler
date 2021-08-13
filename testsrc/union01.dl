@@ -13,27 +13,27 @@ type Flags is variant
   | remote
   | gone;
 
-export proc main() => Int
+export proc main() (* => Int *)
 begin
   var u1: Num = Num|i(4);
   var u2 = Num|f(5.5);
-  var flag1 = Flags|remote;
+  (* var flag1 = Flags|remote; *)
   printString("whoopee\n");
   (* var u3 = Num.null; *)
 
   var x: Int = 4;
 
   case u1
-    of Num|nan then (* check that field is there *)
-      nop;
+    (* of Num|nan then (* check that field is there *)
+      nop; *)
     of Num|i(i) then
       printInt(i);
-    (* of Num|f(f) then
-      printFloat(f); *)
+    of Num|f(f) then
+      printFloat(f);
     else
       printString("leftovers");
-  endcase 
-  return 0;
+  endcase
+  (*return 0; *)
 
 end main
 

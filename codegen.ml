@@ -581,6 +581,10 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
 
   | StmtCase (matchexp, cblocks, elseopt) -> (
     (* 1. generate value of matchexp *)
+    let start_bb = insertion_block builder in
+    let the_function = block_parent start_bb in
+    (*let match_bb = append_block context "caseexp" the_function in
+    ignore (build_br match_bb builder); *)
     let matchval = gen_expr the_module builder syms lltypes matchexp in
     let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
     (* oh, can get the fieldmap just once here to save time *)
@@ -601,18 +605,15 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       (* The load of the value into the variable is done in the block *)
       | _ -> failwith "Only variant case codegen so far"
     in
-    let start_bb = insertion_block builder in
-    let the_function = block_parent start_bb in
     (* generate compare and block code, return the block pointers for jumps *)
     let gen_caseblock caseexp (caseblock: ('ed,'sd) stmt list) =
         (* however, need to insert conditional jump and jump-to-merge later *)
         let comp_bb = append_block context "casecomp" the_function in
         position_at_end comp_bb builder;
-        let casebody_bb = append_block context "casebody" the_function in
-        (* Don't think we need the updated syms here, because no declarations
-         * are happening in the comparison *)
-        (* let blocksyms = (List.hd caseblock).decor in *)
+        let blocksyms = (List.hd caseblock).decor in 
         let condval = gen_caseexp caseexp (* casebody_bb blocksyms *) in
+        let casebody_bb = append_block context "casebody" the_function in
+        (* Need the syms for the variable that's declared to hold the value *)
         position_at_end casebody_bb builder;
         (* If variant holds a value, create alloca and load value *)
         (match caseexp.e with
@@ -623,15 +624,23 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
               let casetype = snd (StrMap.find vname fieldmap) in
               (* let blockstart =  (* think it's already where we want *) *)
               let allocatype = ttag_to_llvmtype lltypes casetype in
-              let _ = build_alloca allocatype varname builder in
-              ()
+              let alloca = build_alloca allocatype varname builder in
+              (* load value from matchexp addr (with cast?), store in the alloca *)
+              Symtable.set_addr blocksyms varname alloca;
            | _ -> failwith "Shouldn't happen: no ExpVar in case"
          )
-         | _ -> ()) ;
+         | _ -> failwith ("Still need to code non-variable-setting case case:"
+                          ^ exp_to_string caseexp)
+        ) ;
         List.iter (gen_stmt the_module builder lltypes) caseblock;
         (condval, comp_bb, casebody_bb, insertion_block builder)
-    in  
+    in
     let caseblocks = List.map (fun (ce, cb) -> gen_caseblock ce cb) cblocks in
+    (* generate jump into first case comparison *)
+    let firstcomp_bb = match (List.hd caseblocks) with
+      | (_, compblk, _, _) -> compblk in
+    position_at_end start_bb builder;
+    ignore (build_br firstcomp_bb builder);
     (* generating dummy else block regardless. *)
     let else_bb = append_block context "else" the_function in
     position_at_end else_bb builder;
@@ -642,16 +651,15 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let new_else_bb = insertion_block builder in
     let merge_bb = append_block context "casecont" the_function in
     (* kaleidoscope inserts the phi here *)
-    position_at_end start_bb builder;
     let rec add_block_jumps = function
       | [] -> ()
-      | (condval, condblk, thenblk, endblk) :: rest ->
+      | (condval, condblk, bodyblk, endblk) :: rest ->
          position_at_end condblk builder;
          (match rest with
           | [] ->
-             ignore (build_cond_br condval thenblk else_bb builder);
+             ignore (build_cond_br condval bodyblk else_bb builder);
           | (_, nextblk, _, _) :: _ -> 
-             ignore (build_cond_br condval thenblk nextblk builder);
+             ignore (build_cond_br condval bodyblk nextblk builder);
          );
          position_at_end endblk builder;
          ignore (build_br merge_bb builder);
@@ -826,7 +834,11 @@ let gen_proc the_module builder lltypes proc =
        (* if return_type (type_of llfunc) = void_type then ( *)
        if fentry.rettype = void_ttag then ( 
          ignore (build_ret_void builder);
-         Llvm_analysis.assert_valid_function llfunc
+         Llvm_analysis.view_function_cfg llfunc
+         (* match Llvm_analysis.verify_function llfunc with
+         | None -> ()
+         | Some reason -> failwith reason *)
+       (* Llvm_analysis.assert_valid_function llfunc *)
        )
        else (
          (* dummy return, for unreachable code such as after ifs where all
