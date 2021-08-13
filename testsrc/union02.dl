@@ -1,31 +1,36 @@
 (* union with nullable type *)
 
-module Union02 =
+module union02 begin
 
-open Stdio;
+open stdio;
 
-type Num = union
-  Float?,
-  Int;
-end Num
+type Num is variant
+  | f: Float?
+  | i: Int;
 
-export proc main() : Void =
-  var u1: Num = 4;
+export proc main() => Int
+begin
+  var u1 = Num|i(4);
   var fm: Float? = 5.5;
-  var u2: Num = fm;
+  var u2 = Num|f(fm);
 
+  (* good I did this, it wasn't catching the type error in the case. *)
   var u3: Num? = Null;
 
   (* should probably be able to do this. *)
   (* var u2: Num = (5.5: Float?); *)
 
-  (* case u1
-    of i: Int =>
+  case u2
+    of Num|i(i) then
       printInt(i);
-    of f: Float =>
-      printFloat(f);
-  endcase *)
+    of Num|f(nf) then
+      printString("Need code for nullable cases");
+      (* case ... *)
+      (* printFloat(f); *)
+  endcase
+
+  return 0;
 
 end main
 
-end Union02
+end union02

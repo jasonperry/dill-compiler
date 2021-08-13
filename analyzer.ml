@@ -637,18 +637,18 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                  caseacc =
          match cblocks with
          | (cexp, cbody)::rest -> (
-           let errout msg =
-             Error [{value=msg; loc=cexp.decor}] in
+           let errout msg = Error [{value=msg; loc=cexp.decor}] in
            match cexp.e with
            | ExpVariant ((modname, tyname), varname, eopt) -> (
               (* may want to factor out getting the type (result variable) *)
               match TypeMap.find_opt (modname, tyname) tenv with
               | None -> errout ("Unknown type " ^ modname ^ "::" ^ tyname)
               | Some cdata ->
-                 if cdata <> mtype.tclass then
-                   errout ("Case type " ^ modname ^ "::" ^ tyname
+                 let casetype = gen_ttag cdata [] in 
+                 if casetype <> mtype then
+                   errout ("Case type " ^ typetag_to_string casetype
                            ^ " does not match match expression type "
-                           ^ mtype.modulename ^ "::" ^ mtype.typename)
+                           ^ typetag_to_string mtype)
                  else (
                    match List.find_opt (fun (vn, _) -> varname = vn)
                            cdata.variants with

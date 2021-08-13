@@ -74,10 +74,10 @@ let gen_ttag (classdata: classData) _ (* mapping to type vars *) =
 (** Convert a type tag to printable format. *)
 let rec typetag_to_string (tt: typetag) =
   if tt.paramtypes <> [] then 
-    "<"
+    "("
     ^ String.concat ","
         (List.map (fun pt -> typetag_to_string pt) tt.paramtypes)
-    ^ ">"
+    ^ ")"
   else ""
        ^ tt.modulename ^ "::" ^ tt.typename
        ^ (if tt.array then "[]" else "")

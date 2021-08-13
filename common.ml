@@ -34,7 +34,6 @@ let concat_map f l = List.concat (List.map f l)
 let concat_errors rlist =
   (* the list of errors are each themselves lists. *)
   List.concat (
-      (* List.concat_map ( (* 4.10 only *) *)
       concat_map (
           fun r -> match r with
                    | Ok _ -> []

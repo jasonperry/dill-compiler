@@ -235,12 +235,15 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      (* 2. Look up variant type, allocate struct, store tag value *)
      let typesize = Array.length (struct_element_types llvarty) in
      let (tagval, subty) = StrMap.find variant varmap in
-     let llsubty = ttag_to_llvmtype lltypes subty in
      let structsubty =
        struct_type context
-         (if typesize > 1 then [| varianttag_type; llsubty |]
-          else [| varianttag_type |]
+         (if typesize = 1 || subty = void_ttag
+          then [| varianttag_type |]
+          else
+            let llsubty = ttag_to_llvmtype lltypes subty in
+            [| varianttag_type; llsubty |]
          ) in
+     debug_print ("  subtype struct: " ^ string_of_lltype structsubty);
      let structaddr = build_alloca structsubty "variantSubAddr" builder in 
      let tagaddr = build_struct_gep structaddr 0 "tag" builder in
      ignore (build_store (const_int varianttag_type tagval) tagaddr builder);
@@ -257,7 +260,6 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      let castedaddr = build_bitcast structaddr (pointer_type llvarty)
                         "varstruct" builder in
      let varval = build_load castedaddr "filledVariant" builder in
-     debug_print ("filledVariant: " ^ string_of_llvalue varval);
      varval
          
   | ExpUnop (op, e1) -> (
