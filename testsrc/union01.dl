@@ -8,28 +8,29 @@ type Num is variant
   | i: Int
   | nan;
 
-type Flags is variant
+(* type Flags is variant
   | local
   | remote
   | gone;
+*)
 
 export proc main() (* => Int *)
 begin
   var u1: Num = Num|i(4);
+  (* var myf: Float = 5.6; *)
   var u2 = Num|f(5.5);
+  (* var u3 = Num|nan; *)
   (* var flag1 = Flags|remote; *)
-  printString("whoopee\n");
-  (* var u3 = Num.null; *)
+  (* var x: Int = 4; *)
 
-  var x: Int = 4;
-
-  case u1
+  case u2
     (* of Num|nan then (* check that field is there *)
-      nop; *)
+      printString("nan"); *)
     of Num|i(i) then
       printInt(i);
     of Num|f(f) then
       printFloat(f);
+      (* printFloat(myf); *)
     else
       printString("leftovers");
   endcase

@@ -130,7 +130,8 @@ let rec gen_lltype context
             [| varianttag_type |]
           else
             [| varianttag_type;
-               array_type (i8_type context) (Int64.to_int maxsize) |])
+               (* Voodoo magic: adding 4 bytes fixes my double problem. *)
+               array_type (i8_type context) (Int64.to_int maxsize + 4) |])
          false;
        (structtype, fieldmap)
      ) else
@@ -255,7 +256,9 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      (* It still wants the cast even if no value (because named struct?) *)
      let castedaddr = build_bitcast structaddr (pointer_type llvarty)
                         "varstruct" builder in
-     build_load castedaddr "filledVariant" builder
+     let varval = build_load castedaddr "filledVariant" builder in
+     debug_print ("filledVariant: " ^ string_of_llvalue varval);
+     varval
          
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
@@ -587,7 +590,11 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     ignore (build_br match_bb builder); *)
     let matchval = gen_expr the_module builder syms lltypes matchexp in
     let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
-    (* oh, can get the fieldmap just once here to save time *)
+    (* Need to store for the match val also, to have the pointer  *)
+    (* TODO: optimize to omit this if it's an enum-only variant *)
+    let matchaddr =
+      build_alloca (type_of matchval) "matchaddr" builder in
+    ignore (build_store matchval matchaddr builder);
     let fieldmap =
         match TypeMap.find_opt
                 (matchexp.decor.modulename, matchexp.decor.typename) lltypes with
@@ -622,15 +629,23 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
            | ExpVar (varname, _) -> 
               let fieldmap = Option.get fieldmap in
               let casetype = snd (StrMap.find vname fieldmap) in
-              (* let blockstart =  (* think it's already where we want *) *)
-              let allocatype = ttag_to_llvmtype lltypes casetype in
-              let alloca = build_alloca allocatype varname builder in
-              (* load value from matchexp addr (with cast?), store in the alloca *)
+              let caselltype = ttag_to_llvmtype lltypes casetype in
+              let alloca = build_alloca caselltype varname builder in
               Symtable.set_addr blocksyms varname alloca;
+              (* cast the match value to the specific struct type. *)
+              let varstructty =
+                (struct_type context [| varianttag_type; caselltype |]) in
+              let structptr =
+                build_bitcast matchaddr (pointer_type varstructty)
+                  "structptr" builder in
+              debug_print (string_of_llvalue structptr);
+              (* load the value from the struct and store in the variable. *)
+              let valptr = build_struct_gep structptr 1 "valptr" builder in
+              let caseval = build_load valptr "caseval" builder in 
+              ignore (build_store caseval alloca builder)
            | _ -> failwith "Shouldn't happen: no ExpVar in case"
          )
-         | _ -> failwith ("Still need to code non-variable-setting case case:"
-                          ^ exp_to_string caseexp)
+         | _ -> ()
         ) ;
         List.iter (gen_stmt the_module builder lltypes) caseblock;
         (condval, comp_bb, casebody_bb, insertion_block builder)
@@ -650,7 +665,6 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
      | None -> ());
     let new_else_bb = insertion_block builder in
     let merge_bb = append_block context "casecont" the_function in
-    (* kaleidoscope inserts the phi here *)
     let rec add_block_jumps = function
       | [] -> ()
       | (condval, condblk, bodyblk, endblk) :: rest ->
@@ -834,11 +848,8 @@ let gen_proc the_module builder lltypes proc =
        (* if return_type (type_of llfunc) = void_type then ( *)
        if fentry.rettype = void_ttag then ( 
          ignore (build_ret_void builder);
-         Llvm_analysis.view_function_cfg llfunc
-         (* match Llvm_analysis.verify_function llfunc with
-         | None -> ()
-         | Some reason -> failwith reason *)
-       (* Llvm_analysis.assert_valid_function llfunc *)
+         if !_debug then Llvm_analysis.view_function_cfg llfunc;
+         Llvm_analysis.assert_valid_function llfunc 
        )
        else (
          (* dummy return, for unreachable code such as after ifs where all
