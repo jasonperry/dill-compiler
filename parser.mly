@@ -9,13 +9,13 @@
 %token AMP PIPE CARAT TILDE
 %token EQ NE LT GT LE GE
 %token AND OR NOT
-%token TRUE FALSE NULL
+%token TRUE FALSE NULL VAL
 %token COLON DCOLON SEMI DOT COMMA HASH QMARK ARROW DARROW
 %token ASSIGN NULLASSIGN
 %token VAR
 %token IS BEGIN END
 %token IF THEN ELSIF ELSE ENDIF
-%token WHILE LOOP ENDLOOP
+%token WHILE LOOP ENDWHILE
 %token CASE OF ENDCASE
 %token PROC RETURN NOP
 %token MODULE MODSPEC
@@ -264,7 +264,7 @@ elsifBlock:
 whileStmt:
   | WHILE cond=expr LOOP
     body=stmtSeq
-    ENDLOOP
+    ENDWHILE
     { StmtWhile (cond, body) }
 
 caseStmt:

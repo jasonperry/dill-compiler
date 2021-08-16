@@ -84,7 +84,7 @@ rule token = parse  (* funny that it's called parse *)
   | "end"   { END }
   | "while" { WHILE }
   | "loop"  { LOOP }
-  | "endloop" { ENDLOOP }
+  | "endwhile" { ENDWHILE }
   | "case"    { CASE }
   | "of"      { OF }
   | "endcase" { ENDCASE }
@@ -103,9 +103,10 @@ rule token = parse  (* funny that it's called parse *)
   | "struct"  { STRUCT }
   | "variant" { VARIANT }
   | "mut"     { MUT }
-  | "True"    { TRUE }    (* Is this the place to put built-in names? *)
-  | "False"   { FALSE }   (* Even if not, bools might be special. *)
-  | "Null"    { NULL }
+  | "true"    { TRUE }    (* these also represent values *)
+  | "false"   { FALSE }
+  | "null"    { NULL }
+  | "val"     { VAL }
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
   | eof     { EOF }

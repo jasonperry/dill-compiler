@@ -13,6 +13,16 @@ exception SemanticError of string
 
 (* Symbol table nodes are decorations for statements. *)
 
+let reserved_words = (* Skip "open" and "import". Actually I don't use these *)
+  StrSet.of_list [
+      "as"; "begin"; "case"; "else"; "elsif"; "endcase"; "endif"; "endwhile";
+      "export"; "false"; "if"; "loop"; "modspec"; "module"; "mut"; "nop";
+      "null"; "of"; "private"; "proc"; "return"; "struct"; "then"; "true";
+      "type"; "val"; "var"; "variant"; "while"
+    ]
+let reserved_names = StrSet.of_list [ "null"; "true"; "false"; "val" ]
+let reserved_procnames = StrSet.of_list [ "val" ]
+
 (** make the type expr result return only the tag for now. 
  *  Hopefully there's no need for a rewritten typeExp in the AST. *)
 type typeExpr_result = (typetag, string) Stdlib.result
@@ -41,6 +51,7 @@ let subtype_match (spectag: typetag) (gentag: typetag) =
 
 (** Expression result type (remember that exprs have a type field) *)
 type expr_result = (typetag expr, string located) Stdlib.result
+
 
 (** Check semantics of an expression, replacing with a type *)
 let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
@@ -80,51 +91,8 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
        check_recExpr syms tenv ttag ex
   )
 
-  | ExpVariant ((mname, tname), vname, eopt) -> (
-     (* 1. the variant type exists *)
-     match TypeMap.find_opt (mname, tname) tenv with
-     | None ->
-        Error {loc=ex.decor;
-               value=("Unknown type " ^ mname ^ "::" ^ tname
-                      ^ " in variant expression")}
-     | Some cdata -> (
-     (* 2. vname is a variant of it *)
-       match List.find_opt (fun (vstr, _) -> vstr = vname) cdata.variants with
-       | None ->
-          Error {loc=ex.decor;
-                 value=("Unknown variant " ^ vname ^ " of type "
-                        ^ mname ^ "::" ^ tname)}
-       | Some (_, tyopt) -> (
-         match tyopt with
-         | None -> 
-           (* 3. check if the variant takes a value or not *)
-           if Option.is_some eopt then
-             Error {loc=(Option.get eopt).decor;
-                    value="Variant " ^ vname ^ " does not hold a value"}
-           else
-             (* NOTE: replacing with the type's actual module name here. *)
-             Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
-                 decor=gen_ttag cdata []}
-         | Some vtype -> (
-           match eopt with
-           | None -> 
-              Error {loc=ex.decor;
-                     value="Variant " ^ vname ^ " requires a value"}
-           | Some e2 -> (
-             (* 4. typecheck the value *)
-             match check_expr syms tenv e2 with 
-             | Error err -> Error err
-             (* 5. Check that the value type and variant type match *)
-             | Ok echecked ->
-                if subtype_match echecked.decor vtype then
-                  Ok {e=ExpVariant ((cdata.in_module, tname), vname, Some echecked);
-                      decor=gen_ttag cdata []}
-                else
-                  Error {loc=e2.decor;
-                         value="Value type " ^ typetag_to_string echecked.decor
-                               ^ " Does not match variant type "
-                               ^ typetag_to_string vtype}
-     )))))
+  | ExpVariant (_, _, _) ->
+     check_variant syms tenv ex ~declvar:false
 
   | ExpBinop (e1, oper, e2) -> (
     match check_expr syms tenv e1 with
@@ -312,6 +280,64 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
   | _ -> failwith "BUG: check_recExpr called with non-record expr"
 
 
+(** check a variant expression (used in both expressions and case matches *)
+and check_variant syms tenv ex ~declvar =
+  match ex.e with 
+  | ExpVariant ((mname, tname), vname, eopt) -> (
+     (* 1. the variant type exists *)
+     match TypeMap.find_opt (mname, tname) tenv with
+     | None ->
+     Error {loc=ex.decor;
+            value=("Unknown type " ^ mname ^ "::" ^ tname
+                      ^ " in variant expression")}
+     | Some cdata -> (
+       (* 2. vname is a variant of it *)
+       match List.find_opt (fun (vstr, _) -> vstr = vname) cdata.variants with
+       | None ->
+          Error {loc=ex.decor;
+                 value=("Unknown variant " ^ vname ^ " of type "
+                        ^ mname ^ "::" ^ tname)}
+       | Some (_, tyopt) -> (
+         match tyopt with
+         | None -> 
+            (* 3. check if the variant takes a value or not *)
+            if Option.is_some eopt then
+              Error {loc=(Option.get eopt).decor;
+                     value="Variant " ^ tname ^ "|" ^ vname
+                           ^ " does not hold a value"}
+            else
+             (* NOTE: replacing with the type's actual module name here. *)
+              Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
+                  decor=gen_ttag cdata []}
+         | Some vtype -> (
+           match eopt with
+           | None -> 
+              Error {loc=ex.decor;
+                     value="Variant " ^ tname ^ "|" ^ vname
+                           ^ " requires a value"}
+           | Some e2 -> (
+             (* 4. typecheck the value (if it's not a declaration in a case) *)
+             if not declvar then 
+               match check_expr syms tenv e2 with 
+               | Error err -> Error err
+               (* 5. Check that the value type and variant type match *)
+               | Ok echecked ->
+                  if subtype_match echecked.decor vtype then
+                    Ok {e=ExpVariant ((cdata.in_module, tname), vname, Some echecked);
+                        decor=gen_ttag cdata []}
+                  else
+                    Error {loc=e2.decor;
+                           value="Value type " ^ typetag_to_string echecked.decor
+                                 ^ " Does not match variant type "
+                                 ^ typetag_to_string vtype}
+             else
+               Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
+                   decor=gen_ttag cdata []}
+             
+  )))))
+  | _ -> failwith "check_variant called without variant expr"
+
+
 (** Check for a redeclaration (name exists at same scope) *)
 (* I'm not using this yet...was a candidate for check_stmt *)
 let is_redecl varname syms =
@@ -421,7 +447,10 @@ type 'a stmt_result = ((typetag, 'a st_node) stmt, string located list)
 
 (** factored out declaration typechecking code (used by globals also) *)
 let typecheck_decl syms tenv (varname, tyopt, initopt) =
-  (* Should I factor this logic into a try_add symtable method? *)
+  if StrSet.mem varname reserved_names then
+    Error ("Reserved value name " ^ varname ^ " cannot be a variable name")
+  else 
+    (* Should I factor this logic into a try_add symtable method? *)
     match Symtable.findvar_opt varname syms with
     | Some (_, scope) when scope = syms.scopedepth ->
        Error ("Redeclaration of variable " ^ varname)
@@ -629,6 +658,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
   ))
 
   | StmtCase (matchexp, caseblocks, elseopt) -> (
+    (* check the top (match) expression. *)
     match check_expr syms tenv matchexp with
     | Error err -> Error [err]
     | Ok matchexp ->
@@ -638,76 +668,69 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
          match cblocks with
          | (cexp, cbody)::rest -> (
            let errout msg = Error [{value=msg; loc=cexp.decor}] in
-           match cexp.e with
+           (* the last piece, indepdendent of the type of match exp *)
+           let check_casebody cexp caseval cbody blocksyms = 
+             match check_stmt_seq blocksyms tenv cbody with
+             | Error errs -> Error errs
+             | Ok newcbody -> (
+               match check_cases rest (caseval::caseacc) with
+               | Ok blocks -> Ok ((cexp, newcbody)::blocks)
+               | Error errs -> Error errs
+             ) in
+           match cexp.e with 
+           (* expression-type-specific stuff starts here. *)
            | ExpVariant ((modname, tyname), varname, eopt) -> (
-              (* may want to factor out getting the type (result variable) *)
-              match TypeMap.find_opt (modname, tyname) tenv with
-              | None -> errout ("Unknown type " ^ modname ^ "::" ^ tyname)
-              | Some cdata ->
-                 let casetype = gen_ttag cdata [] in 
-                 if casetype <> mtype then
-                   errout ("Case type " ^ typetag_to_string casetype
-                           ^ " does not match match expression type "
-                           ^ typetag_to_string mtype)
-                 else (
-                   match List.find_opt (fun (vn, _) -> varname = vn)
-                           cdata.variants with
-                   | None -> errout ("Unknown variant type " 
-                                     ^ tyname ^ "|" ^ varname ^ " in case")
-                   | Some (_, vartyopt) -> (
-                     if List.exists ((=) varname) caseacc then 
-                       errout ("Duplicate variant case"
-                               ^ tyname ^ "|" ^ varname)
-                     else
-                       match eopt with (* result.fold? join? bind? *)
-                       | None -> (
-                          if Option.is_some vartyopt then
-                            errout ("Variant " ^ tyname ^ "|" ^ varname
-                                    ^ "holds a value that must be captured")
-                          else
-                            let blocksyms = Symtable.new_scope syms in
-                            match check_stmt_seq blocksyms tenv cbody with
-                            | Error errs -> Error errs
-                            | Ok newcbody -> (
-                               let newcexp =
-                                 {e=ExpVariant((modname, tyname), varname, None);
-                                  decor=matchexp.decor} in
-                               match check_cases rest (varname::caseacc) with
-                               | Ok blocks -> Ok ((newcexp, newcbody)::blocks)
-                               | Error errs -> Error errs
-                       ))
-                       | Some cvalexp -> (
-                         match vartyopt with
-                         | None -> 
-                            errout ("Variant " ^ tyname ^ "|" ^ varname
-                                    ^ " does not hold a value")
-                         | Some varty -> 
-                           match cvalexp.e with
-                           | ExpVar (cvar, []) -> (
-                             let blocksyms = Symtable.new_scope syms in
-                             Symtable.addvar blocksyms cvar {
-                                 symname=cvar;
-                                 symtype=varty;
-                                 var=false;
-                                 mut=false = varty.tclass.muttype; (*correct?*)
-                                 addr=None 
-                               };
-                             match check_stmt_seq blocksyms tenv cbody with
-                             | Error errs -> Error errs
-                             | Ok newcbody -> (
-                               let newcexp =
-                                 {e=ExpVariant((modname, tyname), varname,
-                                               Some {e=ExpVar(cvar, []);
-                                                     decor=varty});
-                                  decor=matchexp.decor} in
-                               match check_cases rest (varname::caseacc) with
-                               | Ok blocks -> Ok ((newcexp, newcbody)::blocks)
-                               | Error errs -> Error errs
-                           ))
-                           | _ -> errout ("Case value expression must be "
-                                          ^ "a single variable name")
-           ))))
-           | _ -> failwith "Case statements only for variants currently"
+             (* typecheck as an expression but skip the variable if any *)
+             match check_variant syms tenv cexp ~declvar:true with
+             | Error err -> Error [err]
+             | Ok checkedcexp -> (
+               let casetype = checkedcexp.decor in 
+               if casetype <> mtype then
+                 errout ("Case type " ^ typetag_to_string casetype
+                         ^ " does not match match expression type "
+                         ^ typetag_to_string mtype)
+               else (
+                 let (_, vartyopt) =
+                   List.find (fun (vn, _) -> varname = vn)
+                     casetype.tclass.variants in
+                 if List.exists ((=) varname) caseacc then 
+                   errout ("Duplicate variant case"
+                           ^ tyname ^ "|" ^ varname)
+                 else
+                   match eopt with (* result.fold? join? bind? *)
+                   | None -> 
+                      let newcexp =
+                        {e=ExpVariant((modname, tyname), varname, None);
+                         decor=matchexp.decor} in
+                      let blocksyms = Symtable.new_scope syms in
+                      check_casebody newcexp varname cbody blocksyms
+                   | Some cvalexp ->
+                      match cvalexp.e with
+                      | ExpVar (cvar, []) -> (
+                        let varty = Option.get vartyopt in
+                        let newcexp =
+                          {e=ExpVariant(
+                                 (modname, tyname), varname,
+                                 Some {e=ExpVar(cvar, []); decor=varty});
+                           decor=matchexp.decor} in
+                        let blocksyms = Symtable.new_scope syms in
+                        Symtable.addvar blocksyms cvar {
+                            symname=cvar;
+                            symtype=varty;
+                            var=false;
+                            mut=varty.tclass.muttype; (*correct?*)
+                            addr=None 
+                          };
+                        check_casebody newcexp varname cbody blocksyms
+                      )
+                      | _ -> errout ("Variant case value expression must "
+                                     ^ "be a single variable name")
+               )))
+               | _ -> (* ExpVar (varname, fields) -> *)
+                  (* look up in symtable *)
+                  (* if type is nullable... *)
+                  (* could be const or var expression but still have same type *)
+                  failwith "Case statements only for variants currently"
          )
          | [] ->
             (* check for exhaustiveness here, just by comparing lengths*)
@@ -824,95 +847,100 @@ let rec block_returns stlist =
 
 (** Check a procedure declaration and add it to the given symbol node. *)
 let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
-  (* check name for redeclaration *)
-  match Symtable.findproc_opt pdecl.name syms with
-  | Some (_, scope) when syms.scopedepth = scope ->
-     Error [{loc=pdecl.decor; value="Redeclaration of procedure " ^ pdecl.name}]
-  | _ -> (
-    (* Typecheck arguments *)
-    let argchecks = List.map (fun (_, _, texp) -> check_typeExpr tenv texp)
-                      pdecl.params in
-    if List.exists Result.is_error argchecks then
-      (* can't exactly use concat_errors here because typeExpr check
-       * errors are strings, not list. But should still simplify this. *)
-      let errs =
-        concat_map (
-            fun r -> match r with
-                     | Ok _ -> []
-                     | Error msg -> [{loc=pdecl.decor; value=msg}]
-          ) argchecks
-      in Error errs
-    else
-      let argtypes = concat_ok argchecks in
-      (* check that any mutability markers on parameters are allowable. *)
-      let rec check_mutparams argtypes params =
-        match (argtypes, params) with
-        | (argtype::argsrest, (mut, _, _)::paramsrest) ->
-           if mut && not argtype.tclass.muttype
-           then Error {loc=pdecl.decor;
-                       value="Type " ^ argtype.tclass.classname
-                             ^ " is immutable and cannot be passed mutable" }
-           else check_mutparams argsrest paramsrest
-        | ([], []) -> Ok ()
-        | _ -> failwith "BUG: param types and param list length mismatch"
-      in
-      match check_mutparams argtypes pdecl.params with
-      | Error err -> Error [err]
-      | Ok _ -> 
-         (* Build symbol table entries for params *)
-         let paramentries =
-           List.map2 (
-               fun (mut, paramname, _ (* typeExp, not needed*)) argtype ->
-               {symname = paramname; symtype=argtype;
-                var=false; mut=mut; addr=None}
-             ) pdecl.params argtypes
-         in
-         (* Build symbol table entries for all fields of all params, if any *)
-         let fieldentries =
-           let rec gen_field_entries paramroot parentstr (finfo: fieldInfo) = 
-             let fnamestr = parentstr ^ "." ^ finfo.fieldname in
-             {
-               symname=fnamestr;
-               symtype=finfo.fieldtype;
-               var=finfo.mut && paramroot.mut;
-               mut=finfo.mut && paramroot.mut; (* no diff for fields? *)
-               addr=None
-             }
-             :: List.concat_map
-                  (gen_field_entries paramroot fnamestr)
-                  finfo.fieldtype.tclass.fields
-           in paramentries
-              |> List.concat_map
-                   (fun pentry ->
-                     List.concat_map (gen_field_entries pentry pentry.symname)
-                       pentry.symtype.tclass.fields)
-         in
-         (* Typecheck return type *)
-         match check_typeExpr tenv pdecl.rettype with
-         | Error msg -> Error [{loc=pdecl.decor; value=msg}]
-         | Ok rttag -> (
-           (* Create procedure symtable entry.
-            * Don't add it to module symtable node here; caller does it. *)
-           let procentry =
-             (* may get rid of export later. For now, handy for testing modules *)
-             {procname=(if modname = "" || pdecl.export then pdecl.name
-                        else modname ^ "::" ^ pdecl.name);
-              rettype=rttag; fparams=paramentries} in
-           (* create new inner scope under the procedure, and add args *)
-           (* Woops, it creates a "dangling" scope if proc isn't defined *)
-           let procscope = Symtable.new_proc_scope syms procentry in
-           (* Should I add the proc to its own symbol table? Don't see why. *)
-           (* Did I do this so codegen for recursive calls "just works"? *)
-           Symtable.addproc procscope pdecl.name procentry;
-           List.iter (fun param ->
-               (* print_endline ("Adding param symbol " ^ param.symname); *)
-               Symtable.addvar procscope param.symname param) paramentries;
-           List.iter (fun pfield ->
-               Symtable.addvar procscope pfield.symname pfield) fieldentries;
-           Ok ({name=pdecl.name; params=pdecl.params;
-                rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
-               procentry)
-  ))
+  let errout msg = Error [{loc=pdecl.decor; value=msg}] in
+  if StrSet.mem pdecl.name reserved_procnames then
+    errout ("Reserved name " ^ pdecl.name ^ " cannot be a procedure name")
+  else 
+    (* check name for redeclaration *)
+    match Symtable.findproc_opt pdecl.name syms with
+    | Some (_, scope) when syms.scopedepth = scope ->
+       errout ("Redeclaration of procedure " ^ pdecl.name)
+    | _ -> (
+      (* Typecheck arguments *)
+      let argchecks = List.map (fun (_, _, texp) -> check_typeExpr tenv texp)
+                        pdecl.params in
+      if List.exists Result.is_error argchecks then
+        (* can't exactly use concat_errors here because typeExpr check
+         * errors are strings, not list. But should still simplify this. *)
+        let errs =
+          concat_map (
+              fun r -> match r with
+                       | Ok _ -> []
+                       | Error msg -> [{loc=pdecl.decor; value=msg}]
+            ) argchecks
+        in Error errs
+      else
+        let argtypes = concat_ok argchecks in
+        (* check that any mutability markers on parameters are allowable. *)
+        let rec check_mutparams argtypes params =
+          match (argtypes, params) with
+          | (argtype::argsrest, (mut, _, _)::paramsrest) ->
+             if mut && not argtype.tclass.muttype
+             then Error {loc=pdecl.decor;
+                         value="Type " ^ argtype.tclass.classname
+                               ^ " is immutable and cannot be passed mutable" }
+             else check_mutparams argsrest paramsrest
+          | ([], []) -> Ok ()
+          | _ -> failwith "BUG: param types and param list length mismatch"
+        in
+        match check_mutparams argtypes pdecl.params with
+        | Error err -> Error [err]
+        | Ok _ -> 
+           (* Build symbol table entries for params *)
+           let paramentries =
+             List.map2 (
+                 fun (mut, paramname, _ (* typeExp, not needed*)) argtype ->
+                 {symname = paramname; symtype=argtype;
+                  var=false; mut=mut; addr=None}
+               ) pdecl.params argtypes
+           in
+           (* Build symbol table entries for all fields of all params, if any *)
+           let fieldentries =
+             let rec gen_field_entries paramroot parentstr (finfo: fieldInfo) = 
+               let fnamestr = parentstr ^ "." ^ finfo.fieldname in
+               {
+                 symname=fnamestr;
+                 symtype=finfo.fieldtype;
+                 var=finfo.mut && paramroot.mut;
+                 mut=finfo.mut && paramroot.mut; (* no diff for fields? *)
+                 addr=None
+               }
+               :: List.concat_map
+                    (gen_field_entries paramroot fnamestr)
+                    finfo.fieldtype.tclass.fields
+             in paramentries
+                |> List.concat_map
+                     (fun pentry ->
+                       List.concat_map
+                         (gen_field_entries pentry pentry.symname)
+                         pentry.symtype.tclass.fields)
+           in
+           (* Typecheck return type *)
+           match check_typeExpr tenv pdecl.rettype with
+           | Error msg -> Error [{loc=pdecl.decor; value=msg}]
+           | Ok rttag -> (
+             (* Create procedure symtable entry.
+              * Don't add it to module symtable node here; caller does it. *)
+             let procentry =
+               (* may get rid of export later. For now, handy for testing modules *)
+               {procname=(if modname = "" || pdecl.export then pdecl.name
+                          else modname ^ "::" ^ pdecl.name);
+                rettype=rttag; fparams=paramentries} in
+             (* create new inner scope under the procedure, and add args *)
+             (* Woops, it creates a "dangling" scope if proc isn't defined *)
+             let procscope = Symtable.new_proc_scope syms procentry in
+             (* Should I add the proc to its own symbol table? Don't see why. *)
+             (* Did I do this so codegen for recursive calls "just works"? *)
+             Symtable.addproc procscope pdecl.name procentry;
+             List.iter (fun param ->
+                 (* print_endline ("Adding param symbol " ^ param.symname); *)
+                 Symtable.addvar procscope param.symname param) paramentries;
+             List.iter (fun pfield ->
+                 Symtable.addvar procscope pfield.symname pfield) fieldentries;
+             Ok ({name=pdecl.name; params=pdecl.params;
+                  rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
+                 procentry)
+    ))
 
 
 (** Check the body of a procedure whose header has already been checked 
