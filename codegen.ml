@@ -88,10 +88,19 @@ let rec gen_lltype context
                (* TODO: recursive types (check for non-recursive base case) *)
                | None -> fst (gen_lltype context types lltypes layout
                                 (TypeMap.find (mname, tname) types))
-             in (* create the array type if it is. TODO: nullable? *)
-             if fty.array
-             then (fieldname, array_type basetype 0, i, fty)
-             else (fieldname, basetype, i, fty))
+             in
+             (* check for non-base types and add them if needed. *)
+             (* TODO: decide how to deal with nested or both *)
+             (* first idea: array of nullable but no nullable arrays *)
+             let ty1 =
+               if fty.nullable then
+                 struct_type context [| nulltag_type; basetype |]
+               else basetype in
+             let fieldlltype =
+               (* placeholder; first we'll implement const-size arrays *)
+               if fty.array then array_type ty1 0
+               else ty1 in
+             (fieldname, fieldlltype, i, fty))
          ) fielddata in
      (* Create the mapping from field name to offset and type. *)
      (* do we still need the high-level type? maybe for lookup info. *)
@@ -108,8 +117,9 @@ let rec gen_lltype context
          (List.map (fun (_, lty, _, _) -> lty) ftypeinfo
           |> Array.of_list) false;
        (structtype, fieldmap)
+     (* variant case *)
      else if (cdata.variants <> []) then (
-       (* Compute max size of data field. *)
+       (* Compute max size of any of the variant subtypes. *)
        let maxsize =
          List.fold_left (fun max llvarty ->
              let typesize =
@@ -147,7 +157,9 @@ let ttag_to_llvmtype lltypes ttag =
   | Some basetype ->
      let with_null =
        if ttag.nullable then
-         struct_type context [| nulltag_type; basetype |]
+         (debug_print ("Generating struct for nullable type: "
+                      ^ typetag_to_string ttag); 
+         struct_type context [| nulltag_type; basetype |])
        else basetype in
      if ttag.array then
        array_type with_null 0  (* a stub for now, to give the idea. *)

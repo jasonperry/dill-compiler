@@ -44,6 +44,8 @@ rule token = parse  (* funny that it's called parse *)
   | ')'     { RPAREN }
   | '{'     { LBRACE }
   | '}'     { RBRACE }
+  | '['     { LSQUARE }
+  | ']'     { RSQUARE }
   | '*'     { TIMES }
   | '/'     { DIV }
   | '%'     { MOD }

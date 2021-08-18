@@ -26,6 +26,15 @@ begin
     printInt(res2);
   endif
 
+  var maybeFloat: Float?;
+  maybeFloat = 5.5;
+  var f: Float;
+  if (f ?= maybeFloat) then
+    printFloat(f);
+  else
+    printString("maybeFloat is null");
+  endif
+
 end main
 
 end null02

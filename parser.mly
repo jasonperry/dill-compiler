@@ -3,7 +3,7 @@
 %token <string> STRCONST
 %token <string> IDENT_LC
 %token <string> IDENT_UC
-%token LPAREN RPAREN LBRACE RBRACE
+%token LPAREN RPAREN LBRACE RBRACE LSQUARE RSQUARE
 %token PLUS MINUS TIMES DIV MOD
 %token UMINUS (* not lexed *)
 %token AMP PIPE CARAT TILDE
@@ -280,7 +280,7 @@ caseBlock:
 
 typeExp:
   (* typename plus possibly array, null markers *)
-  | mn=moduleName DCOLON tn=IDENT_UC qm=option(QMARK)
+  | mn=moduleName DCOLON tn=IDENT_UC (* array here *) qm=option(QMARK)
     { { modname=mn; classname=tn;
         nullable=Option.is_some qm } }
   | tn=IDENT_UC qm=option(QMARK)
