@@ -1,8 +1,9 @@
-module Elsif01 = 
+module elsif01 begin
 
-open Stdio;
+open stdio;
 
-export proc main() : Void = 
+export proc main()
+begin
 
    var i = 42;
 
@@ -22,4 +23,4 @@ export proc main() : Void =
 
 end main
 
-end Elsif01
+end elsif01

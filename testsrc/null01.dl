@@ -25,10 +25,10 @@ begin
   endif
 
   var maybe3: Int? = null;
-  if maybe3 then
-    printInt(1);
+  if maybe2 then
+    printString("not null");
   else
-    printInt(0);
+    printString("null");
   endif
 
   return 0;

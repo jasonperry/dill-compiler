@@ -66,10 +66,10 @@ type 'addr st_node = {
 
 let st_node_to_string node =
   let rec ts' pad nd = 
-    pad ^ string_of_int nd.scopedepth ^ "{ ("
+    pad ^ string_of_int nd.scopedepth ^ "{ vars: ("
     ^ String.concat ","
         (List.map (fun entry -> (snd entry).symname) (StrMap.bindings nd.syms))
-    ^ ")\n" ^ pad ^ "   ["
+    ^ ")\n" ^ pad ^ "   procs: ["
     ^ String.concat ","
         (List.map (fun entry -> (snd entry).procname) (StrMap.bindings nd.fsyms))
     ^ "]\n"

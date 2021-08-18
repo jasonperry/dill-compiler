@@ -1,14 +1,15 @@
 (* nullable type with conditional assignment *)
-module Null02 =
+module null02 begin
 
-open Stdio;
+open stdio;
 
-export proc main() : Void =
+export proc main()
+begin
   var maybeInt: Int?;
-  maybeInt = Null;
+  maybeInt = null;
   maybeInt = 5;
 
-  var maybe2 : Int? = Null;
+  var maybe2 : Int? = null;
   maybe2 = maybeInt;  (* value types, it's a copy (whew) *)
 
   (* Is it too implicit to assign an int to a nullable variable? 
@@ -27,4 +28,4 @@ export proc main() : Void =
 
 end main
 
-end Null02
+end null02

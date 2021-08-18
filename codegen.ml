@@ -183,9 +183,10 @@ let gen_varexp_alloca varentry fieldlist lltypes builder =
      get_field_alloca fieldlist varentry.symtype alloca
 
 
-(** Wrap a value in an outer type. Used for passing a specific case of a 
-  * union type (just nullable at first) *)
+(** Wrap a value in an outer type. Used for passing or returning a non-null 
+    value for a nullable type *)
 let promote_value the_val (* valtype *) outertype builder lltypes =
+  debug_print ("promote_value called");
   (* for now, just assume the outer type is nullable version. *)
   if not (outertype.nullable) then
     failwith "BUG: can only promote value to nullable type for now"
@@ -251,7 +252,13 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      (match eopt with
       | None -> ()
       | Some e ->
-         let expval = gen_expr the_module builder syms lltypes e in
+         (* Think we need to hint this to the variant subtype 
+          * (for instance, so "null" will be promoted *)
+         let expval =
+           let eval1 = gen_expr the_module builder syms lltypes e in
+           if e.decor <> subty then
+             promote_value eval1 subty builder lltypes
+           else eval1 in
          let valaddr = build_struct_gep structaddr 1 "varVal" builder in
          ignore (build_store expval valaddr builder)
      );
@@ -469,8 +476,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
           if rexp.decor = rettype then ev
           (* need to wrap the value if it's a subtype. *)
           else (
-            print_endline ("Calling promote_value for "
-                           ^ Llvm.string_of_llvalue ev);
+            debug_print ("Promoting return value "
+                         ^ Llvm.string_of_llvalue ev);
             promote_value ev rettype builder lltypes )
         in
         (* print_endline("got up to build_ret"); *)
@@ -619,7 +626,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
         (* however, need to insert conditional jump and jump-to-merge later *)
         let comp_bb = append_block context "casecomp" the_function in
         position_at_end comp_bb builder;
-        let blocksyms = (List.hd caseblock).decor in 
+        let blocksyms = (List.hd caseblock).decor in
+        debug_print (st_node_to_string blocksyms);
         let condval = gen_caseexp caseexp (* casebody_bb blocksyms *) in
         let casebody_bb = append_block context "casebody" the_function in
         (* Need the syms for the variable that's declared to hold the value *)

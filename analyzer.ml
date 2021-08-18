@@ -621,7 +621,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
            let elsifsyms = List.map snd elsifres in 
            match elseopt with 
            | None -> Ok {st=StmtIf (newcond, newthen, newelsifs, None);
-                         decor=thensyms}
+                         decor=syms (* thensyms *)}
            | Some elsebody -> 
               let elsesyms = Symtable.new_scope (* condsyms *) syms in
               match check_stmt_seq elsesyms tenv elsebody with
@@ -643,7 +643,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                      StrSet.fold StrSet.remove initted_by_all syms.uninit
                  );
                  Ok {st=StmtIf (newcond, newthen, newelsifs, Some newelse);
-                     decor=thensyms}
+                     decor=syms (* thensyms *)}
   ))))
 
   | StmtWhile (cond, body) -> (
@@ -721,6 +721,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                             mut=varty.tclass.muttype; (*correct?*)
                             addr=None 
                           };
+                        debug_print (st_node_to_string blocksyms);
                         check_casebody newcexp varname cbody blocksyms
                       )
                       | _ -> errout ("Variant case value expression must "
@@ -744,7 +745,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                       loc=stm.decor}] (* get location in else block instead? *)
             else 
               Ok []
-       in
+       in (* end check_cases *)
        match check_cases caseblocks [] with
        | Error errs -> Error errs
        | Ok newcblocks -> (
