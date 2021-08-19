@@ -419,9 +419,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* let varname = String.concat "." (v::flds) in *)
     let (entry, _) = Symtable.findvar varname syms in
     match ex.e with
-    (* For full-record assignment: desugar to individual assignments.
-     * Could we just build a const_struct value instead? I think it has to
-     * really be const *)
+    (* Assignment of a record expression: create and fill the struct. *)
     | ExpRecord fieldlist ->
        let recaddr =
          let varaddr = gen_varexp_alloca entry flds lltypes builder in

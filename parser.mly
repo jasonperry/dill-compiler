@@ -3,7 +3,7 @@
 %token <string> STRCONST
 %token <string> IDENT_LC
 %token <string> IDENT_UC
-%token LPAREN RPAREN LBRACE RBRACE LSQUARE RSQUARE
+%token LPAREN RPAREN LBRACE RBRACE LSQRB RSQRB
 %token PLUS MINUS TIMES DIV MOD
 %token UMINUS (* not lexed *)
 %token AMP PIPE CARAT TILDE

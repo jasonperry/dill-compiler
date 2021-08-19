@@ -5,7 +5,14 @@
 (menhir
   (modules parser)
   (flags -la 2)
+  ; (flags --table -la 2) ; not ready for that!
 )
+
+;; The target for saving menhir's stdout to parser_messages.ml
+;(rule
+; (targets parser_messages.ml)
+; (deps parser.messages parser.mly)
+; (action (with-stdout-to %{targets} (run menhir --compile-errors %{deps}))))
 
 (executable
   (name dillc)
@@ -19,6 +26,7 @@
     llvm_X86
     llvm.linker
     llvm.all_backends
+    ;menhirLib
   )
   (modules :standard) ;\ codegen)
 )

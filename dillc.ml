@@ -90,7 +90,7 @@ let parse_modspec channel filename =
     Parser.modspec Lexer.token buf
   with
   | exn -> handle_parse_errors filename buf exn
-
+  
 
 (** Try to open a given filename, searching paths *)
 let rec open_from_paths plist filename =
