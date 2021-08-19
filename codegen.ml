@@ -452,7 +452,10 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       if entry.symtype.nullable = ex.decor.nullable then
         (* indirection level is the same, so just directly assign the value *)
         ignore (build_store expval alloca builder)
-      else if ex.decor = null_ttag then (
+      else
+        let promotedval = promote_value expval entry.symtype builder lltypes in
+        ignore (build_store promotedval alloca builder)
+      (* else if ex.decor = null_ttag then (
         (* special case of null constant, just make a null tag *)
         print_endline "storing null value in nullable type";
         let nullval = const_int nulltag_type 0 in
@@ -470,7 +473,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
         (* let valaddr = build_struct_gep expval 1 "valaddr" builder in *)
         let realval = build_extractvalue expval 1 "realval" builder in
         (* build_load valaddr "realval" builder in *)
-        ignore (build_store realval alloca builder))
+        ignore (build_store realval alloca builder)) *)
   ))
 
   | StmtNop -> () (* will I need to generate so labels work? *)
