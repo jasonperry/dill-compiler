@@ -46,9 +46,15 @@ and typetag = {
     nullable: bool; (* will this be part of the classdata? *)
   }
 
-(** delete this if it turns out not to be needed. *)
-let is_record_type ttag =
-  ttag.tclass.fields <> []
+(* These are useful b/c you can't just check the fields to see if
+ * the "outermost" type is struct or variant *)
+let is_struct_type ttag =
+  (not ttag.array) && (not ttag.nullable) && ttag.tclass.fields <> []
+
+(* Hmm, should I make a nullable count as a variant type here? *)
+let is_variant_type ttag =
+  (not ttag.array) && (not ttag.nullable) && ttag.tclass.variants <> []
+    
 
 (*
 (** Should only need this for printing out, not internally. *)

@@ -220,6 +220,17 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
     build_load alloca "promotedval" builder
 
 
+(** Generate an equality comparison. This could get complicated. *)
+let gen_eqcomp val1 val2 valty builder =
+  if (type_of val1) = int_type then
+    build_icmp Icmp.Eq val1 val2 "eqcomp" builder
+  else if (type_of val2) = float_type then
+    build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
+  else
+    failwith ("Equality for type " ^ typetag_to_string valty
+              ^ " not supported yet")
+
+
 (** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
@@ -605,26 +616,27 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   )
 
   | StmtCase (matchexp, cblocks, elseopt) -> (
-    (* 1. generate value of matchexp *)
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
-    (*let match_bb = append_block context "caseexp" the_function in
-    ignore (build_br match_bb builder); *)
+    (* generate value of expression to match *)
     let matchval = gen_expr the_module builder syms lltypes matchexp in
-    let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
     (* Need to store for the match val also, to have the pointer  *)
     (* TODO: optimize to omit this if it's an enum-only variant *)
     let matchaddr =
       build_alloca (type_of matchval) "matchaddr" builder in
     ignore (build_store matchval matchaddr builder);
     let fieldmap =
-        match TypeMap.find_opt
-                (matchexp.decor.modulename, matchexp.decor.typename) lltypes with
-        | None -> None
-        | Some (_, fieldmap) -> Some fieldmap in
+      match TypeMap.find_opt (matchexp.decor.modulename,
+                              matchexp.decor.typename) lltypes with
+      | None -> None
+      | Some (_, fieldmap) -> Some fieldmap in
+    (* Get the conditional value for matching against the case. *)
     let gen_caseexp caseexp = 
       match caseexp.e with
       | ExpVariant (_, vname, _) ->
+         (* handle nullable here too, like a variant? *)
+         (* only compare the tags *)
+         let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
          let fieldmap = Option.get fieldmap in
          (* compare tag value of case to tag of the matchval *)
          let casetag = fst (StrMap.find vname fieldmap) in
@@ -632,7 +644,14 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
            Icmp.Eq (const_int varianttag_type casetag) matchtagval
            "casecomp" builder
       (* The load of the value into the variable is done in the block *)
-      | _ -> failwith "Only variant case codegen so far"
+      | _ ->
+         let caseval = gen_expr the_module builder syms lltypes caseexp in
+         (* wait, is this my first real equality gen? *)
+         (* maybe a gen_compare? *)
+         gen_eqcomp matchval caseval matchexp.decor builder
+         (* if it's nullable, we check that, otherwise equality *)
+         (* what if it's an ExpCall? Have to see if the return value is nullable *)
+         (* expCall's decor is the return type, right? *)
     in
     (* generate compare and block code, return the block pointers for jumps *)
     let gen_caseblock caseexp (caseblock: ('ed,'sd) stmt list) =
@@ -647,8 +666,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
         position_at_end casebody_bb builder;
         (* If variant holds a value, create alloca and load value *)
         (match caseexp.e with
-         | ExpVariant (_, vname, Some valexp) -> (
-           match valexp.e with
+         | ExpVariant (_, vname, Some valvar) -> (
+           match valvar.e with
            | ExpVar (varname, _) -> 
               let fieldmap = Option.get fieldmap in
               let casetype = snd (StrMap.find vname fieldmap) in
@@ -661,7 +680,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
               let structptr =
                 build_bitcast matchaddr (pointer_type varstructty)
                   "structptr" builder in
-              debug_print (string_of_llvalue structptr);
+              (* debug_print (string_of_llvalue structptr); *)
               (* load the value from the struct and store in the variable. *)
               let valptr = build_struct_gep structptr 1 "valptr" builder in
               let caseval = build_load valptr "caseval" builder in 

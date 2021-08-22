@@ -1,0 +1,33 @@
+(* non-variant case statement *)
+
+module case01 begin
+
+open stdio;
+
+export proc main() => Int
+begin
+  var u1: Int = 5;
+
+  case u1
+    of 4 then
+      printString("It's 4");
+    of 5 then
+      printString("It's 5");
+    else
+      printString("It's something else. I tell you what");
+  endcase
+
+  var x2: Float = 5.1;
+  case x2
+    of 5.2 then
+      printString("It's 5.2");
+    of 5.1 then
+      printString("It's 5.1");
+    else
+      printString("It ain't neither one");
+  endcase
+
+  return 0;
+end main
+
+end case01

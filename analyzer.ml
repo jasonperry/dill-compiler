@@ -49,6 +49,19 @@ let subtype_match (spectag: typetag) (gentag: typetag) =
   (* || List.exists ((=) spectag) gentag.tclass.variants *)
 
 
+(** Syntactically determine if an expression is constant *)
+let rec is_const_expr = function
+  (* if true, I could eval and replace it in the AST. But...
+   * what if numerics don't match the target? Let LLVM do it. *)
+  | ExpConst _ -> true
+  | ExpVar (_,_) -> false (* TODO: check in syms if it's a const *)
+  | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
+  | ExpUnop (_, e1) -> is_const_expr e1.e
+  | ExpRecord fieldlist ->
+     List.for_all (fun (_, e) -> is_const_expr e.e) fieldlist
+  | _ -> false
+
+
 (** Expression result type (remember that exprs have a type field) *)
 type expr_result = (typetag expr, string located) Stdlib.result
 
@@ -323,13 +336,18 @@ and check_variant syms tenv ex ~declvar =
                (* 5. Check that the value type and variant type match *)
                | Ok echecked ->
                   if subtype_match echecked.decor vtype then
-                    Ok {e=ExpVariant ((cdata.in_module, tname), vname, Some echecked);
-                        decor=gen_ttag cdata []}
+                    Ok {
+                        e=ExpVariant ((cdata.in_module, tname), vname,
+                                      Some echecked);
+                        decor=gen_ttag cdata []
+                      }
                   else
-                    Error {loc=e2.decor;
-                           value="Value type " ^ typetag_to_string echecked.decor
-                                 ^ " Does not match variant type "
-                                 ^ typetag_to_string vtype}
+                    Error {
+                        loc=e2.decor;
+                        value="Value type " ^ typetag_to_string echecked.decor
+                              ^ " Does not match variant type "
+                              ^ typetag_to_string vtype
+                      }
              else
                Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
                    decor=gen_ttag cdata []}
@@ -663,6 +681,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
     | Error err -> Error [err]
     | Ok matchexp ->
        let mtype = matchexp.decor in
+       (* check all case blocks, accumulating cases for exhaustiveness *)
        let rec check_cases (cblocks: ('ed expr * ('ed,'sd) stmt list) list)
                  caseacc =
          match cblocks with
@@ -677,6 +696,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                | Ok blocks -> Ok ((cexp, newcbody)::blocks)
                | Error errs -> Error errs
              ) in
+           (* 1. check the case expression *)
            match cexp.e with 
            (* expression-type-specific stuff starts here. *)
            | ExpVariant ((modname, tyname), varname, eopt) -> (
@@ -726,25 +746,50 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                       )
                       | _ -> errout ("Variant case value expression must "
                                      ^ "be a single variable name")
-               )))
-               | _ -> (* ExpVar (varname, fields) -> *)
-                  (* look up in symtable *)
-                  (* if type is nullable... *)
-                  (* could be const or var expression but still have same type *)
-                  failwith "Case statements only for variants currently"
+           )))
+           | caseexpr -> (* any other expression type *)
+              (* check that it's a constexpr *)
+              if not (is_const_expr caseexpr) then
+                errout "Case matches must be constant expressions"
+              else (
+                (* check expr and verify same type as matchexp *)
+                match check_expr syms tenv cexp with
+                | Error err -> Error [err]
+                | Ok checkedcexp ->
+                   let casetype = checkedcexp.decor in 
+                   (* if type is nullable... *)
+                   if casetype <> mtype then
+                     errout ("Case type " ^ typetag_to_string casetype
+                             ^ " does not match match expression type "
+                             ^ typetag_to_string mtype)
+                   else
+                     let blocksyms = Symtable.new_scope syms in
+                     check_casebody checkedcexp "" cbody blocksyms
+              )
          )
          | [] ->
-            (* check for exhaustiveness here, just by comparing lengths*)
-            if List.length caseacc < List.length mtype.tclass.variants
-               && Option.is_none elseopt then
-              Error [{value="Variant case statement is not exhaustive";
-                      loc=stm.decor}]
-            else if List.length caseacc = List.length mtype.tclass.variants
-                    && Option.is_some elseopt then
-              Error [{value="Unreachable else block; cases cover all variants";
-                      loc=stm.decor}] (* get location in else block instead? *)
-            else 
-              Ok []
+            if is_variant_type mtype then 
+              (* can I just set this to 2 if it's nullable? and add the cases 
+                  above for nullables *)
+              let nvariants = List.length mtype.tclass.variants in
+              (* check for exhaustiveness here, for now just by comparing lengths*)
+              if List.length caseacc < nvariants
+                 && Option.is_none elseopt then
+                Error [{value="Variant case statement is not exhaustive";
+                        loc=stm.decor}]
+              else if List.length caseacc = nvariants
+                      && Option.is_some elseopt then
+                Error [{value="Unreachable else block; "
+                              ^ "cases cover all variants";
+                        loc=stm.decor}] (* get location in ese block instead? *)
+              else
+                Ok []
+            else
+              if Option.is_none elseopt then
+                Error [{value="Non-variant case statements need an else block";
+                        loc=stm.decor}]
+              else 
+                Ok []
        in (* end check_cases *)
        match check_cases caseblocks [] with
        | Error errs -> Error errs
@@ -959,18 +1004,6 @@ let check_proc tenv (pdecl: 'addr st_node procdecl) proc =
      else
        (* procedure's decoration is its inner symbol table *)
        Ok {decl=pdecl; body=newslist; decor=procscope}
-
-
-let rec is_const_expr = function
-  (* if true, I could eval and replace it in the AST. But...
-   * what if numerics don't match the target? Let LLVM do it. *)
-  | ExpConst _ -> true
-  | ExpVar (_,_) -> false (* TODO: check in syms if it's a const *)
-  | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
-  | ExpUnop (_, e1) -> is_const_expr e1.e
-  | ExpRecord fieldlist ->
-     List.for_all (fun (_, e) -> is_const_expr e.e) fieldlist
-  | _ -> false
 
 
 (** Check a global declaration statement (needs const initializer) and
