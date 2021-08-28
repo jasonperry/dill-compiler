@@ -52,6 +52,7 @@ type var_expr = string * string list  (* field specifiers *)
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
+  | ExpVal of 'ed expr
   | ExpVar of var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   (* type, variant, initializer *)
@@ -223,9 +224,10 @@ let rec exp_to_string (e: 'a expr) =
   match e.e with
   | ExpConst (FloatVal f) -> Float.to_string f
   | ExpConst (IntVal i) -> Int.to_string i
-  | ExpConst (BoolVal b) -> if b then "True" else "False"
+  | ExpConst (BoolVal b) -> if b then "true" else "false"
   | ExpConst (StringVal s) -> "\"" ^ String.escaped s ^ "\""
-  | ExpConst NullVal -> "Null"
+  | ExpConst NullVal -> "null"
+  | ExpVal (e) -> "val(" ^ exp_to_string e ^ ")"
   | ExpVar (vn, flds) ->
      vn ^ if flds <> [] then "." ^ String.concat "." flds else ""
   | ExpRecord fl ->

@@ -292,6 +292,7 @@ expr:
   | LPAREN ex=expr RPAREN
     { ex }
   | ex=constExp
+  | ex=valExp
   | ex=recordExp
   | ex=variantExp
   | ex=opExp
@@ -317,6 +318,10 @@ constExp:
   | NULL
     { ExpConst (NullVal) }
 
+
+valExp:
+  | VAL LPAREN e=expr RPAREN
+    { ExpVal (e) }
 
 varExp:
   (* note that a method call could be preceded by a varExp *)

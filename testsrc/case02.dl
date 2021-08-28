@@ -1,0 +1,22 @@
+(* case statement with nullable *)
+
+module case02 begin
+
+open stdio;
+
+export proc main() => Int
+begin
+  var u1: Int? = 5;
+
+  case u1
+    of val(n) then
+      printString("It's not null");
+      printInt(n);
+    else
+      printString("It's null");
+  endcase
+
+  return 0;
+end main
+
+end case02

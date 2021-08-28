@@ -1,0 +1,19 @@
+(* using "val" to indicate nullable values *)
+module val01 begin
+
+open stdio;
+
+export proc main ()
+begin
+
+  var maybeI : Int = val(5); (* wrong type *)
+  maybeI = null;
+
+  var maybeJ = val(14.5);
+  maybeJ = null;
+
+  printString("things have been assigned");
+
+end main
+
+end val01

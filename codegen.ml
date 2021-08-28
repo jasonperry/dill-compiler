@@ -241,7 +241,9 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpConst (StringVal s) ->
      (* It will build the instruction /and/ return the ptr value *)
      build_global_stringptr s "sconst" builder
-
+  | ExpVal (e) ->
+     let evalue = gen_expr the_module builder syms lltypes e in
+     promote_value evalue ex.decor builder lltypes
   | ExpVar (varname, fields) -> (
     let (entry, _) = Symtable.findvar varname syms in
     (* it gets complicated with field chains; call out to helper function *)

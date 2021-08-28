@@ -81,6 +81,16 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
      Ok {e=ExpConst (FloatVal f); decor=float_ttag}
   | ExpConst (StringVal s) ->
      Ok {e=ExpConst (StringVal s); decor=string_ttag}
+  | ExpVal (expr) -> (
+     match check_expr syms tenv expr with
+     | Error eres -> Error eres
+     | Ok echecked ->
+        if echecked.decor.nullable then
+          Error {loc=ex.decor;
+                 value="Double-nullable typed expressions not allowed"}
+        else 
+          Ok { e=ExpVal(echecked);
+               decor={echecked.decor with nullable=true}})
   | ExpVar (varname, fields) -> (
     let varstr = exp_to_string ex in
     match Symtable.findvar_opt varstr syms with
@@ -756,9 +766,17 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                 match check_expr syms tenv cexp with
                 | Error err -> Error [err]
                 | Ok checkedcexp ->
-                   let casetype = checkedcexp.decor in 
-                   (* if type is nullable... *)
-                   if casetype <> mtype then
+                   let casetype = checkedcexp.decor in
+                   if mtype.nullable then
+                     if (casetype <> {mtype with nullable=false})
+                        && (casetype <> null_ttag) then
+                       errout ("Case type " ^ typetag_to_string casetype
+                               ^ " is not an instance of nullable match "
+                               ^ "expression type " ^ typetag_to_string mtype)
+                     else
+                       let blocksyms = Symtable.new_scope syms in
+                       check_casebody checkedcexp "" cbody blocksyms
+                   else if casetype <> mtype then
                      errout ("Case type " ^ typetag_to_string casetype
                              ^ " does not match match expression type "
                              ^ typetag_to_string mtype)
@@ -768,10 +786,12 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
               )
          )
          | [] ->
-            if is_variant_type mtype then 
+            if is_variant_type mtype || mtype.nullable then 
               (* can I just set this to 2 if it's nullable? and add the cases 
                   above for nullables *)
-              let nvariants = List.length mtype.tclass.variants in
+              let nvariants =
+                if mtype.nullable then 2
+                else List.length mtype.tclass.variants in
               (* check for exhaustiveness here, for now just by comparing lengths*)
               if List.length caseacc < nvariants
                  && Option.is_none elseopt then
@@ -784,7 +804,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                         loc=stm.decor}] (* get location in ese block instead? *)
               else
                 Ok []
-            else
+            else              
               if Option.is_none elseopt then
                 Error [{value="Non-variant case statements need an else block";
                         loc=stm.decor}]
