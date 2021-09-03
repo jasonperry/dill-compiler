@@ -12,6 +12,7 @@ begin
     of val(n) then
       printString("It's not null");
       printInt(n);
+    (* of null then (* a constant int shouldn't work *) *)
     else
       printString("It's null");
   endcase

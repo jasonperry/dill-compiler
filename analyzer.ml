@@ -757,6 +757,32 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                       | _ -> errout ("Variant case value expression must "
                                      ^ "be a single variable name")
            )))
+           (* val expression type, means a nullable *)
+           | ExpVal varexpr -> (
+              if not mtype.nullable then
+                errout "val case used with expression that is not nullable"
+              else
+                match varexpr.e with 
+                | ExpVar (valvar, []) -> (
+                  let valty = {mtype with nullable=false} in
+                  let newcexp =
+                    {e=ExpVal({e=ExpVar(valvar, []); decor=valty});
+                     decor=matchexp.decor} in
+                  (* Add the variable to the symtable *)
+                  let blocksyms = Symtable.new_scope syms in
+                  Symtable.addvar blocksyms valvar {
+                      symname=valvar;
+                      symtype=valty;
+                      var=false;
+                      mut=valty.tclass.muttype; (* yes, might want to poke it *)
+                      addr=None 
+                    };
+                  debug_print (st_node_to_string blocksyms);
+                  check_casebody newcexp valvar cbody blocksyms
+                )
+                | _ -> errout ("val expression must contain"
+                               ^ " a single variable name")
+           )
            | caseexpr -> (* any other expression type *)
               (* check that it's a constexpr *)
               if not (is_const_expr caseexpr) then
@@ -768,16 +794,21 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                 | Ok checkedcexp ->
                    let casetype = checkedcexp.decor in
                    if mtype.nullable then
-                     if (casetype <> {mtype with nullable=false})
-                        && (casetype <> null_ttag) then
-                       errout ("Case type " ^ typetag_to_string casetype
+                     (* at least for now, don't allow specific values of a 
+                        nullable *)
+                     if casetype <> null_ttag then
+                       errout ("Case of a nullable expression may only be "
+                               ^ "'null' or 'val()'")
+                     (* if (casetype <> {mtype with nullable=false})
+                        && (casetype <> null_ttag) then *)
+                         (* errout ("Case type " ^ typetag_to_string casetype
                                ^ " is not an instance of nullable match "
-                               ^ "expression type " ^ typetag_to_string mtype)
+                               ^ "expression type " ^ typetag_to_string mtype) *)
                      else
                        let blocksyms = Symtable.new_scope syms in
                        check_casebody checkedcexp "" cbody blocksyms
                    else if casetype <> mtype then
-                     errout ("Case type " ^ typetag_to_string casetype
+                     errout ("Case value type " ^ typetag_to_string casetype
                              ^ " does not match match expression type "
                              ^ typetag_to_string mtype)
                    else
@@ -795,7 +826,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
               (* check for exhaustiveness here, for now just by comparing lengths*)
               if List.length caseacc < nvariants
                  && Option.is_none elseopt then
-                Error [{value="Variant case statement is not exhaustive";
+                Error [{value="Case statement is not exhaustive";
                         loc=stm.decor}]
               else if List.length caseacc = nvariants
                       && Option.is_some elseopt then
