@@ -724,8 +724,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                    List.find (fun (vn, _) -> varname = vn)
                      casetype.tclass.variants in
                  if List.exists ((=) varname) caseacc then 
-                   errout ("Duplicate variant case"
-                           ^ tyname ^ "|" ^ varname)
+                   errout ("Duplicate variant case " ^ tyname ^ "|" ^ varname)
                  else
                    match eopt with (* result.fold? join? bind? *)
                    | None -> 
@@ -760,8 +759,10 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
            (* val expression type, means a nullable *)
            | ExpVal varexpr -> (
               if not mtype.nullable then
-                errout "val case used with expression that is not nullable"
-              else
+                errout "val() case can only be used with nullable expressions"
+              else if List.exists ((=) "val") caseacc then 
+                errout ("Duplicate val() case ")
+              else 
                 match varexpr.e with 
                 | ExpVar (valvar, []) -> (
                   let valty = {mtype with nullable=false} in
@@ -778,15 +779,18 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                       addr=None 
                     };
                   debug_print (st_node_to_string blocksyms);
-                  check_casebody newcexp valvar cbody blocksyms
+                  check_casebody newcexp "val" cbody blocksyms
                 )
                 | _ -> errout ("val expression must contain"
                                ^ " a single variable name")
            )
            | caseexpr -> (* any other expression type *)
               (* check that it's a constexpr *)
+              let cexpstr = exp_to_string cexp in
               if not (is_const_expr caseexpr) then
                 errout "Case matches must be constant expressions"
+              else if List.exists ((=) cexpstr) caseacc then 
+                errout ("Duplicate case value " ^ cexpstr)
               else (
                 (* check expr and verify same type as matchexp *)
                 match check_expr syms tenv cexp with
@@ -806,14 +810,14 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                                ^ "expression type " ^ typetag_to_string mtype) *)
                      else
                        let blocksyms = Symtable.new_scope syms in
-                       check_casebody checkedcexp "" cbody blocksyms
+                       check_casebody checkedcexp cexpstr cbody blocksyms
                    else if casetype <> mtype then
                      errout ("Case value type " ^ typetag_to_string casetype
                              ^ " does not match match expression type "
                              ^ typetag_to_string mtype)
                    else
                      let blocksyms = Symtable.new_scope syms in
-                     check_casebody checkedcexp "" cbody blocksyms
+                     check_casebody checkedcexp cexpstr cbody blocksyms
               )
          )
          | [] ->
@@ -837,7 +841,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                 Ok []
             else              
               if Option.is_none elseopt then
-                Error [{value="Non-variant case statements need an else block";
+                Error [{value="Case statements that are not for variant or "
+                              ^ "need an else block";
                         loc=stm.decor}]
               else 
                 Ok []

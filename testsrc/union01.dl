@@ -13,7 +13,6 @@ type Flags is variant
   | remote
   | gone;
 
-
 export proc main() => Int
 begin
   var u1: Num = Num|i(4);
@@ -23,17 +22,28 @@ begin
   (* var flag1 = Flags|remote; *)
   (* var x: Int = 4; *)
 
-  case u3
-    of Num|nan then 
-      printString("nan"); 
-    of Num|i(i) then
-      printInt(i);
-    of Num|f(f) then
-      printFloat(f);
-      (* printFloat(myf); *)
-    (* else
-      printString("leftovers"); *)
-  endcase
+  var i: Int = 0;
+  while i < 3 loop
+  
+    if i == 1 then
+      u1 = Num|f(5.5);
+    elsif i == 2 then
+      u1 = Num|nan;
+    endif
+  
+    case u1
+      of Num|nan then 
+        printString("nan"); 
+      of Num|i(i) then
+        printInt(i);
+      of Num|f(f) then
+        printFloat(f);
+        (* printFloat(myf); *)
+      (* else
+        printString("leftovers"); *)
+    endcase
+    i = i + 1;
+  endwhile
 
   var f1 = Flags|remote;
   case f1

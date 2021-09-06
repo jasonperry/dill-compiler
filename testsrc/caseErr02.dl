@@ -1,0 +1,44 @@
+(* case statement with nullable, repeated case errors *)
+
+module case02 begin
+
+open stdio;
+
+export proc main() => Int
+begin
+  var u1: Int? = null;
+  var u2: Int? = 5;
+
+  var i: Int = 14;
+
+  (* want this. *)
+  (* foreach u in {u1, u2} loop *)
+
+  case u1
+    of null then
+      printString("u1 is null.");
+    of null then (* a constant int shouldn't work *) 
+      printString("already said u1 is null");
+  endcase
+
+  case u2
+    of val(n) then
+      printString("u2 is not null. Value:");
+      printInt(n);
+    of val(n) then (* a constant int shouldn't work *) 
+      printString("u2 is null");
+  endcase
+
+  case i
+    of 14 then
+      printString("Yup, it's 14");
+    of 14 then
+      printString("Still 14");
+    else
+      printString("Not 14");
+  endcase
+
+  return 0;
+end main
+
+end case02

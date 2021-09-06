@@ -1,24 +1,24 @@
-module While01 = 
+module while01 begin
 
-import Stdio;
+import stdio;
 
 var i = 14;  (* try some global vars *)
 var j: Int = 0;
 
-export proc main() : Int = 
-
+export proc main() => Int
+begin
   while (i >= 0) loop
     j = 2*i+1;  (* declaring j each time through eats memory. Not good. 
                  * could the LLVM optimizer fix it? *)
-    Stdio::printInt(i);
+    stdio::printInt(i);
     i = i - 1;
-  endloop
+  endwhile
 
-  Stdio::printInt(i);
-  Stdio::printInt(j);
+  stdio::printInt(i);
+  stdio::printInt(j);
 
   return 0;
 
 end main
 
-end While01
+end while01
