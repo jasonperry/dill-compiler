@@ -195,7 +195,7 @@ let gen_varexp_alloca varentry fieldlist lltypes builder =
      get_field_alloca fieldlist varentry.symtype alloca
 
 
-(** Wrap a value in an outer type. Used for passing or returning a non-null 
+(** Wrap a value in an outer type. Used for passing or returning a 
     value for a nullable type *)
 let promote_value the_val (* valtype *) outertype builder lltypes =
   debug_print ("promote_value called");
@@ -203,6 +203,7 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
   if not (outertype.nullable) then
     failwith "BUG: can only promote value to nullable type for now"
   else
+    (* Note that this does allocate the struct type. *)
     let alloca = build_alloca
                    (ttag_to_llvmtype lltypes outertype)
                    "promotedaddr" builder in
@@ -468,7 +469,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       else
         let promotedval = promote_value expval entry.symtype builder lltypes in
         ignore (build_store promotedval alloca builder)
-      (* else if ex.decor = null_ttag then (
+  (* else if ex.decor = null_ttag then (
         (* special case of null constant, just make a null tag *)
         print_endline "storing null value in nullable type";
         let nullval = const_int nulltag_type 0 in
@@ -500,7 +501,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
             (Option.get stmt.decor.in_proc).rettype in
           let ev = gen_expr the_module builder syms lltypes rexp in
           if rexp.decor = rettype then ev
-          (* need to wrap the value if it's a subtype. *)
+                                         (* need to wrap the value if it's a subtype. *)
           else (
             debug_print ("Promoting return value "
                          ^ Llvm.string_of_llvalue ev);
@@ -563,15 +564,15 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let new_then_bb = insertion_block builder in
     (* elsif generating code *)
     let gen_elsif (cond, (block: (typetag, 'b) stmt list)) =
-        (* however, need to insert conditional jump and jump-to-merge later *)
-        let cond_bb = append_block context "elsifcond" the_function in
-        position_at_end cond_bb builder;
-        let then_bb = append_block context "elsifthen" the_function in
-        let blocksyms = (List.hd block).decor in
-        let condval = gen_cond cond then_bb blocksyms in
-        position_at_end then_bb builder;
-        List.iter (gen_stmt the_module builder lltypes) block;
-        (condval, cond_bb, then_bb, insertion_block builder) (* for jumps *)
+      (* however, need to insert conditional jump and jump-to-merge later *)
+      let cond_bb = append_block context "elsifcond" the_function in
+      position_at_end cond_bb builder;
+      let then_bb = append_block context "elsifthen" the_function in
+      let blocksyms = (List.hd block).decor in
+      let condval = gen_cond cond then_bb blocksyms in
+      position_at_end then_bb builder;
+      List.iter (gen_stmt the_module builder lltypes) block;
+      (condval, cond_bb, then_bb, insertion_block builder) (* for jumps *)
     in
     let elsif_blocks = List.map gen_elsif elsifs in
     (* generating dummy else block regardless. *)
@@ -622,7 +623,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let the_function = block_parent start_bb in
     (* generate value of expression to match *)
     let matchval = gen_expr the_module builder syms lltypes matchexp in
-    (* Need to store for the match val also, to have the pointer  *)
+    (* Need to store the match val also, to have the pointer  *)
     (* TODO: optimize to omit this if it's an enum-only variant *)
     let matchaddr =
       build_alloca (type_of matchval) "matchaddr" builder in
@@ -636,8 +637,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let gen_caseexp caseexp = 
       match caseexp.e with
       | ExpVariant (_, vname, _) ->
-         (* handle nullable here too, like a variant? *)
-         (* only compare the tags *)
+         (* only compare the tags; the load of the value into the
+            variable is done in the block body *)
          let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
          let fieldmap = Option.get fieldmap in
          (* compare tag value of case to tag of the matchval *)
@@ -645,54 +646,82 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          build_icmp
            Icmp.Eq (const_int varianttag_type casetag) matchtagval
            "casecomp" builder
-      (* The load of the value into the variable is done in the block *)
+      | ExpVal {e=ExpVar(_, _); decor=_} ->
+         (* 'val(x)' matches whenever the tag value is 1 (non-null) *)
+         let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
+         build_icmp
+           Icmp.Eq (const_int nulltag_type 1) matchtagval
+           "valcomp" builder
+      | ExpConst NullVal ->
+         let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
+         build_icmp
+           Icmp.Eq (const_int nulltag_type 0) matchtagval
+           "nullcomp" builder
+      (* if it's nullable, we check that, otherwise equality *)
       | _ ->
          let caseval = gen_expr the_module builder syms lltypes caseexp in
          (* wait, is this my first real equality gen? *)
          (* maybe a gen_compare? *)
          gen_eqcomp matchval caseval matchexp.decor builder
-         (* if it's nullable, we check that, otherwise equality *)
          (* what if it's an ExpCall? Have to see if the return value is nullable *)
          (* expCall's decor is the return type, right? *)
+         (* think we don't need to worry about this as long as they're constexprs *)
     in
     (* generate compare and block code, return the block pointers for jumps *)
     let gen_caseblock caseexp (caseblock: ('ed,'sd) stmt list) =
-        (* however, need to insert conditional jump and jump-to-merge later *)
-        let comp_bb = append_block context "casecomp" the_function in
-        position_at_end comp_bb builder;
-        let blocksyms = (List.hd caseblock).decor in
-        debug_print (st_node_to_string blocksyms);
-        let condval = gen_caseexp caseexp (* casebody_bb blocksyms *) in
-        let casebody_bb = append_block context "casebody" the_function in
-        (* Need the syms for the variable that's declared to hold the value *)
-        position_at_end casebody_bb builder;
-        (* If variant holds a value, create alloca and load value *)
-        (match caseexp.e with
-         | ExpVariant (_, vname, Some valvar) -> (
-           match valvar.e with
-           | ExpVar (varname, _) -> 
-              let fieldmap = Option.get fieldmap in
-              let casetype = snd (StrMap.find vname fieldmap) in
-              let caselltype = ttag_to_llvmtype lltypes casetype in
-              let alloca = build_alloca caselltype varname builder in
-              Symtable.set_addr blocksyms varname alloca;
-              (* cast the match value to the specific struct type. *)
-              let varstructty =
-                (struct_type context [| varianttag_type; caselltype |]) in
-              let structptr =
-                build_bitcast matchaddr (pointer_type varstructty)
-                  "structptr" builder in
-              (* debug_print (string_of_llvalue structptr); *)
-              (* load the value from the struct and store in the variable. *)
-              let valptr = build_struct_gep structptr 1 "valptr" builder in
-              let caseval = build_load valptr "caseval" builder in 
-              ignore (build_store caseval alloca builder)
-           | _ -> failwith "Shouldn't happen: no ExpVar in case"
-         )
-         | _ -> ()
-        ) ;
-        List.iter (gen_stmt the_module builder lltypes) caseblock;
-        (condval, comp_bb, casebody_bb, insertion_block builder)
+      (* however, need to insert conditional jump and jump-to-merge later *)
+      let comp_bb = append_block context "casecomp" the_function in
+      position_at_end comp_bb builder;
+      let blocksyms = (List.hd caseblock).decor in
+      debug_print (st_node_to_string blocksyms);
+      let condval = gen_caseexp caseexp (* casebody_bb blocksyms *) in
+      let casebody_bb = append_block context "casebody" the_function in
+      (* Need the syms for the variable that's declared to hold the value *)
+      position_at_end casebody_bb builder;
+      (* If variant holds a value, create alloca and load value *)
+      (match caseexp.e with
+       | ExpVariant (_, vname, Some valvar) -> (
+         match valvar.e with
+         | ExpVar (varname, _) -> 
+            let fieldmap = Option.get fieldmap in
+            let casetype = snd (StrMap.find vname fieldmap) in
+            let caselltype = ttag_to_llvmtype lltypes casetype in
+            (* trying with no new alloca, just cast and return the pointer. *)
+            (* let alloca = build_alloca caselltype varname builder in
+            Symtable.set_addr blocksyms varname alloca; *)
+            let varstructty =
+              (struct_type context [| varianttag_type; caselltype |]) in
+            (* cast the match value to the specific struct type. *)
+            let structptr =
+              build_bitcast matchaddr (pointer_type varstructty)
+                "structptr" builder in
+            let valptr = build_struct_gep structptr 1 "valptr" builder in
+            (* debug_print (string_of_llvalue structptr); *)
+            (* load the value from the struct and store in the variable. *)
+            (* Wait! If it's mutable don't I need to just make it the same
+               pointer instead? but if it's mutable wont' it be a pointer
+               type already? Not local records! ok, trying it... *)
+            (* let caseval = build_load valptr "caseval" builder in 
+            ignore (build_store caseval alloca builder) *)
+            Symtable.set_addr blocksyms varname valptr; 
+         | _ -> failwith "Shouldn't happen: no ExpVar in case"
+       )
+       | ExpVal({e=ExpVar(valvar, _); decor=_}) ->
+          (* let valtype = {matchexp.decor with nullable=false} in
+          let vallltype = ttag_to_llvmtype lltypes valtype in  *)
+          (* let alloca = build_alloca vallltype valvar builder in 
+          Symtable.set_addr blocksyms valvar alloca; *)
+          (* let varstructty =
+            (struct_type context [| nulltag_type; vallltype |]) in *)
+          (* trying what I asked about above; just get the pointer *)
+          let valptr = build_struct_gep matchaddr 1 "valptr" builder in
+          Symtable.set_addr blocksyms valvar valptr;
+       | _ ->
+          (* case doesn't set a variable, just emit the body *)
+          ()
+      ) ;
+      List.iter (gen_stmt the_module builder lltypes) caseblock;
+      (condval, comp_bb, casebody_bb, insertion_block builder)
     in
     let caseblocks = List.map (fun (ce, cb) -> gen_caseblock ce cb) cblocks in
     (* generate jump into first case comparison *)

@@ -6,16 +6,28 @@ open stdio;
 
 export proc main() => Int
 begin
-  var u1: Int? = 5;
+  var u1: Int? = null;
+  var u2: Int? = 5;
+
+  (* want this. *)
+  (* foreach u in {u1, u2} loop *)
 
   case u1
     of val(n) then
-      printString("It's not null");
+      printString("u1 is not null. Value:");
       printInt(n);
-    (* of null then (* a constant int shouldn't work *) *)
-    else
-      printString("It's null");
+    of null then (* a constant int shouldn't work *) 
+      printString("u1 is null");
   endcase
+
+  case u2
+    of val(n) then
+      printString("u2 is not null. Value:");
+      printInt(n);
+    of null then (* a constant int shouldn't work *) 
+      printString("u2 is null");
+  endcase
+
 
   return 0;
 end main
