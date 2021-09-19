@@ -43,7 +43,7 @@ and typetag = {
     paramtypes: typetag list; (* resolved generics. *)
     array: bool;   (* array type (going away) *)
     (* size: int;  (* 4 if a reference type? 8? *) *)
-    nullable: bool; (* will this be part of the classdata? *)
+    nullable: bool;
   }
 
 (* These are useful b/c you can't just check the fields to see if

@@ -1,0 +1,18 @@
+(* case with record types (requires equality) *)
+
+open complex;
+open stdio;
+
+proc main() => Int
+begin
+  var i1: Complex = { i=4.2, j=-3.0 };
+  case i1 
+    of { i=4.2, j=-3.0 } then
+      printString("That's it");
+    of { i=4.1, j=-3.0 } then
+      printString("Something slightly different");
+    else
+      printString("Something else entirely");
+  endcase
+  return 0;
+end main

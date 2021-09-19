@@ -793,7 +793,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                 errout ("Duplicate case value " ^ cexpstr)
               else (
                 (* check expr and verify same type as matchexp *)
-                match check_expr syms tenv cexp with
+                match check_expr syms tenv ~thint:(Some mtype) cexp with
                 | Error err -> Error [err]
                 | Ok checkedcexp ->
                    let casetype = checkedcexp.decor in
@@ -841,8 +841,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                 Ok []
             else              
               if Option.is_none elseopt then
-                Error [{value="Case statements that are not for variant or "
-                              ^ "need an else block";
+                Error [{value="Case statements that are not for variants or "
+                              ^ "nullables need an else block";
                         loc=stm.decor}]
               else 
                 Ok []

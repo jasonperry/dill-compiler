@@ -1,4 +1,4 @@
-(* first example of variant (formerly union) types *)
+(* variant (formerly union) types with case statements. *)
 module union01 begin
 
 open stdio;

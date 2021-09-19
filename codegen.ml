@@ -227,7 +227,8 @@ let gen_eqcomp val1 val2 valty builder =
     build_icmp Icmp.Eq val1 val2 "eqcomp" builder
   else if (type_of val2) = float_type then
     build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
-  else
+  else if is_struct_type valty then
+    (* let rec *)
     failwith ("Equality for type " ^ typetag_to_string valty
               ^ " not supported yet")
 
@@ -439,6 +440,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          let varaddr = gen_varexp_alloca entry flds lltypes builder in
          (* seemingly proper way: get the alloca to wherever the
             actual struct body is and do all the stores here. *)
+         (* could I replace this with promote_value? *)
          if entry.symtype.nullable then
            let tagaddr = build_struct_gep varaddr 0 "tagaddr" builder in
            ignore (build_store (const_int nulltag_type 1) tagaddr builder);
