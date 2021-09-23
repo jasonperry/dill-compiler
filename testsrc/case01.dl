@@ -1,4 +1,5 @@
 (* non-variant case statement *)
+(* variant case statement tests are in "union**.dl" *)
 
 module case01 begin
 

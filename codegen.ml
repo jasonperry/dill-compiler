@@ -227,11 +227,59 @@ let gen_eqcomp val1 val2 valty builder =
     build_icmp Icmp.Eq val1 val2 "eqcomp" builder
   else if (type_of val2) = float_type then
     build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
-  else if is_struct_type valty then
+  else (* if is_struct_type valty then *)
     (* let rec *)
+    (* for records, could I just dereference if needed and compare the 
+     * array directly? *)
     failwith ("Equality for type " ^ typetag_to_string valty
               ^ " not supported yet")
 
+
+(** Generate value of a constant expression for a global var initializer 
+    (and other constant expressions when we have them) *)
+let rec gen_constexpr_value lltypes (ex: typetag expr) =
+  (* How many types will this support? Might need a tenv later *)
+  if ex.decor = int_ttag then
+    match ex.e with
+    | ExpConst (IntVal n) -> const_int int_type n
+    | ExpUnop (OpNeg, e) -> const_neg (gen_constexpr_value lltypes e)
+    | ExpBinop (e1, op, e2) -> (
+      let c1 = gen_constexpr_value lltypes e1 in
+      let c2 = gen_constexpr_value lltypes e2 in
+      match op with (* TODO: make a map for these so don't need the long switch *)
+      | OpPlus -> const_add c1 c2
+      | OpMinus -> const_sub c1 c2
+      | OpTimes -> const_mul c1 c2
+      | OpDiv -> const_sdiv c1 c2
+      | _ -> failwith "Unimplemented Int const binop"
+    )
+    | _ -> failwith "Unimplemented Int const expression"
+  else if ex.decor = float_ttag then
+    match ex.e with
+    | ExpConst (FloatVal x) -> const_float float_type x
+    | ExpUnop (OpNeg, e) -> const_fneg (gen_constexpr_value lltypes e)
+    | _ -> failwith "Unimplemented Float const expression"
+  else if ex.decor = bool_ttag then
+    match ex.e with
+    | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
+    | _ -> failwith "Unsupported Bool const expression"
+  else
+    (* struct type *)
+    match ex.e with
+    | ExpRecord fieldlist -> 
+       (* Iterate over the fields and write the value in an llvalue array *)
+       let lltype = Lltenv.find_class_lltype (ex.decor.tclass) lltypes in
+       let fieldmap = Lltenv.find_class_fieldmap ex.decor.tclass lltypes in
+       let valarray = Array.make (List.length fieldlist)
+                        (const_int int_type 0) in
+       List.iter (fun (fname, fexp) ->
+         let (offset, _) = StrMap.find fname fieldmap in
+         let fieldval = gen_constexpr_value lltypes fexp in
+         Array.set valarray offset fieldval
+       ) fieldlist;
+       const_named_struct lltype valarray
+    | _ -> failwith "Unimplemented constexpr type"
+    
 
 (** Generate LLVM code for an expression *)
 let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
@@ -659,9 +707,10 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          build_icmp
            Icmp.Eq (const_int nulltag_type 0) matchtagval
            "nullcomp" builder
-      (* if it's nullable, we check that, otherwise equality *)
+      (* other value types. *)
       | _ ->
-         let caseval = gen_expr the_module builder syms lltypes caseexp in
+         let caseval = gen_constexpr_value lltypes caseexp in
+           (* gen_expr the_module builder syms lltypes caseexp in *)
          (* wait, is this my first real equality gen? *)
          (* maybe a gen_compare? *)
          gen_eqcomp matchval caseval matchexp.decor builder
@@ -805,42 +854,6 @@ let default_value ttag =
   (* else failwith ("Cannot generate default value for type "
                  ^ typetag_to_string ttag) *)
  *)
-
-(** Generate value of a constant expression for a global var initializer 
-    (and other constant expressions when we have them) *)
-let rec gen_constexpr_value lltypes (ex: typetag expr) =
-  (* How many types will this support? Might need a tenv later *)
-  if ex.decor = int_ttag then
-    match ex.e with
-    | ExpConst (IntVal n) -> const_int int_type n
-    | ExpUnop (OpNeg, e) -> const_neg (gen_constexpr_value lltypes e)
-    | _ -> failwith "Unsupported constant initializer, please add it"
-  else if ex.decor = float_ttag then
-    match ex.e with
-    | ExpConst (FloatVal x) -> const_float float_type x
-    | ExpUnop (OpNeg, e) -> const_fneg (gen_constexpr_value lltypes e)
-    | _ -> failwith "Unsupported constant initializer, please add it"
-  else if ex.decor = bool_ttag then
-    match ex.e with
-    | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
-    | _ -> failwith "Unsupported constant initializer, please add it"
-  else
-    (* struct type *)
-    match ex.e with
-    | ExpRecord fieldlist -> 
-       (* Iterate over the fields and write the value in an llvalue array *)
-       let lltype = Lltenv.find_class_lltype (ex.decor.tclass) lltypes in
-       let fieldmap = Lltenv.find_class_fieldmap ex.decor.tclass lltypes in
-       let valarray = Array.make (List.length fieldlist)
-                        (const_int int_type 0) in
-       List.iter (fun (fname, fexp) ->
-         let (offset, _) = StrMap.find fname fieldmap in
-         let fieldval = gen_constexpr_value lltypes fexp in
-         Array.set valarray offset fieldval
-       ) fieldlist;
-       const_named_struct lltype valarray
-    | _ -> failwith "BUG codegen: Unhandled constexpr type"
-    
 
 (** Generate code for a global variable declaration (and constant initializer,
     for now) *)

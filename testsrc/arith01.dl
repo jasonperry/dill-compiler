@@ -1,0 +1,21 @@
+(* arithmetic tests *)
+
+open stdio;
+
+proc main() => Int
+begin
+  var i1: Int = 3 * 4 - 2;
+  printInt(i1);
+  printString("Should be 10");
+  var i2: Int = 3 * (4-2);
+  printInt(i2);
+  printString("Should be 6");
+  var i3: Int = 4 - 2 * 3;
+  printInt(i3);
+  printString("Should be -2");
+  var i4: Int = (4 - 2) * 3;
+  printInt(i4);
+  printString("Should be 6");
+
+  return 0;
+end main
