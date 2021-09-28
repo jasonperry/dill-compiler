@@ -32,7 +32,8 @@ type 'addr st_entry = {
      * fields *)
     var: bool;
     (* However, function parameters are not vars, they can't be reassigned,
-     * but they might be mutable, so we do need separate fields *)
+     * but they might be mutable, so we do need separate fields 
+     * (it's not just part of the type) *)
     mut: bool;
     (* store an address (stack or heap) for code generation. *)
     addr: 'addr option

@@ -17,6 +17,8 @@ let void_type = void_type context
 let nulltag_type = i8_type context
 let varianttag_type = i32_type context
 
+let is_pointer_value llval = classify_type (type_of llval) = TypeKind.Pointer
+
 (* Implement comparison for typetag so we can make a map of them. *)
 (* Note: haven't done this yet, still using the string pair for basetype *)
 module TypeTag = struct
@@ -221,22 +223,52 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
     build_load alloca "promotedval" builder
 
 
-(** Generate an equality comparison. This could get complicated. *)
-let gen_eqcomp val1 val2 valty builder =
+(** Generate an equality comparison. This could get complex. *)
+let rec gen_eqcomp val1 val2 valty builder =
   if (type_of val1) = int_type then
     build_icmp Icmp.Eq val1 val2 "eqcomp" builder
   else if (type_of val2) = float_type then
     build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
-  else (* if is_struct_type valty then *)
-    (* let rec *)
+  else if is_struct_type valty then
+    let rec checkloop i prevcmp =
+      (* generate next field compare value, generate AND with previous *)
+      (* later: optimize to not need to generate a const starting value *)
+      if i = List.length valty.tclass.fields then
+        prevcmp
+      else
+        (* get the pointer. assume structs are pointers? *)
+        let field1val =
+          (* I'll have a separate comp for any pointer type, but is this more
+           * efficient for a pointer to a struct? *)
+          if is_pointer_value val1 then 
+            let field1ptr = build_struct_gep val1 i "f1ptr" builder in
+            build_load field1ptr "f1val" builder
+          else
+            build_extractvalue val1 i "f1val" builder in
+        let field2val = 
+          if is_pointer_value val2 then 
+            let field1ptr = build_struct_gep val2 i "f2ptr" builder in
+            build_load field1ptr "f2val" builder
+          else
+            build_extractvalue val2 i "f2val" builder in
+        (* might be good to make "fields" an array *)
+        let fieldtype = (List.nth valty.tclass.fields i).fieldtype in 
+        let cmpval = gen_eqcomp field1val field2val fieldtype builder in
+        (* Could using branches so we can short-circuit be faster? *)
+        let andval = build_and prevcmp cmpval "cmpand" builder in
+        checkloop (i+1) andval
+    in
+    checkloop 0 (const_int bool_type 1)
+  else
+    (* TODO: see if it's a pointer and try again *)
     (* for records, could I just dereference if needed and compare the 
-     * array directly? *)
+     * array directly? Don't think so in LLVM, that's a vector op. *)
     failwith ("Equality for type " ^ typetag_to_string valty
               ^ " not supported yet")
 
 
-(** Generate value of a constant expression for a global var initializer 
-    (and other constant expressions when we have them) *)
+(** Generate value of a constant expression. Currenly used for global var 
+    initializer and case branches *)
 let rec gen_constexpr_value lltypes (ex: typetag expr) =
   (* How many types will this support? Might need a tenv later *)
   if ex.decor = int_ttag then
@@ -394,6 +426,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
       | OpDiv -> build_fdiv e1val e2val "fdivtemp" builder
       | OpPlus -> build_fadd e1val e2val "faddtemp" builder
       | OpMinus -> build_fsub e1val e2val "fsubtemp" builder
+      | OpEq -> build_fcmp Fcmp.Oeq e1val e2val "feqtemp" builder
       | _ -> failwith "float binop Not implemented yet"
     else if e1.decor = bool_ttag then
       match op with
@@ -402,6 +435,9 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
       | OpEq -> build_icmp Icmp.Eq e1val e2val "beqtemp" builder
       | OpNe -> build_icmp Icmp.Ne e1val e2val "bnetemp" builder
       | _ -> failwith "BUG: type error in boolean binop"
+    (* Try to support equality comparison for everything. *)
+    else if op = OpEq then
+      gen_eqcomp e1val e2val e1.decor builder
     else
       failwith "unknown type for binary operation"
   )
@@ -918,8 +954,7 @@ let gen_proc the_module builder lltypes proc =
      List.iteri (fun i (_, varname, _) ->
          let entrybuilder =
            builder_at context (instr_begin (entry_block llfunc)) in
-         let is_pointer_arg =
-           classify_type (type_of (param llfunc i)) = TypeKind.Pointer in
+         let is_pointer_arg = is_pointer_value (param llfunc i) in
          let alloca =
            (* trying to lower this to just "is pointer" *)
            if is_pointer_arg then param llfunc i

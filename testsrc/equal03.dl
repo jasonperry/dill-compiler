@@ -1,0 +1,31 @@
+(* Equality comparison of variant types. *)
+
+open stdio;
+
+type Status is variant
+  | okey
+  | fubber
+;
+
+
+proc main() => Int
+begin
+  var s1 = Status|okey;
+  var s2 = Status|okey;
+  var s3 = Status|fubber;
+
+  if s1 == s2 then
+    printString("s1 and s2 are equal.");
+  else
+    printString("s1 and s2 are not equal.");
+  endif
+
+  if s1 == s3 then
+    printString("s1 and s3 are equal.");
+  else
+    printString("s1 and s3 are not equal.");
+  endif
+
+
+  return 0;
+end main

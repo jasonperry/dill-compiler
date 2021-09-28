@@ -1,0 +1,22 @@
+(* Equality comparison of mutable args (it's a pointer) *)
+
+open stdio;
+open complexMut;
+
+proc testIt(#c: Complex, d: Complex)
+begin
+  c.j = 2.0; (* make them equal by changing c. *)
+  if c == d then
+    printString("c and d are equal");
+  else
+    printString("c and d are not equal");
+  endif
+end testIt
+
+proc main() => Int
+begin
+  var c: Complex = {i=1.0, j=3.0};
+  var d: Complex = {i=1.0, j=2.0};
+  testIt(#c, d);
+  return 0;
+end main
