@@ -7,6 +7,10 @@ type Status is variant
   | fubber
 ;
 
+type Result is variant
+  | ok
+  | error: Int;
+
 
 proc main() => Int
 begin
@@ -26,6 +30,24 @@ begin
     printString("s1 and s3 are not equal.");
   endif
 
-
+  var r1 = Result|ok;
+  var r2 = Result|ok;
+  var r3 = Result|error(42);
+  var r4 = Result|error(43);
+  if r1 == r2 then
+    printString("r1 and r2 equal.");
+  else
+    printString("r1 and r2 not equal.");
+  endif
+  if r1 == r3 then
+    printString("r1 and r3 equal.");
+  else
+    printString("r1 and r3 not equal.");
+  endif
+  if r3 == r4 then
+    printString("r3 and r4 equal.");
+  else
+    printString("r3 and r4 not equal.");
+  endif
   return 0;
 end main

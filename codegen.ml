@@ -119,7 +119,7 @@ let rec gen_lltype context
          (List.map (fun (_, lty, _, _) -> lty) ftypeinfo
           |> Array.of_list) false;
        (structtype, fieldmap)
-     (* variant case *)
+     (* Variant case: struct of tag + optional byte array for the union *)
      else if (cdata.variants <> []) then (
        (* Compute max size of any of the variant subtypes. *)
        let maxsize =
@@ -259,7 +259,30 @@ let rec gen_eqcomp val1 val2 valty builder =
         checkloop (i+1) andval
     in
     checkloop 0 (const_int bool_type 1)
-  else
+  else if is_variant_type valty then
+    (* check tag, then load and cast the variable type if it exists and 
+       compare that. *)
+    let var1tag =
+      if is_pointer_value val1 then
+        let tagPtr = build_struct_gep val1 0 "tag1ptr" builder in
+        build_load tagPtr "tag1val" builder
+      else
+        build_extractvalue val1 0 "tag1val" builder in
+    let var2tag =
+      if is_pointer_value val2 then
+        let tagPtr = build_struct_gep val2 0 "tag2ptr" builder in
+        build_load tagPtr "tag2val" builder
+      else
+        build_extractvalue val2 0 "tag2val" builder in
+    let tagcmp = build_icmp Icmp.Eq var1tag var2tag "tagcomp" builder in
+    if Array.length (struct_element_types (type_of val1)) > 1 then 
+      (debug_print "variant has values in it, more compares needed";
+       (* need a runtime cast?! will be a wrong cast unless i branch... *)
+       tagcmp)
+
+    else 
+      tagcmp
+  else 
     (* TODO: see if it's a pointer and try again *)
     (* for records, could I just dereference if needed and compare the 
      * array directly? Don't think so in LLVM, that's a vector op. *)
