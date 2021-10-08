@@ -749,9 +749,9 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let the_function = block_parent start_bb in
     let then_bb = append_block context "then" the_function in
     let blocksyms = (List.hd thenblock).decor in
-    position_at_end start_bb builder; (* gen_cond was doing wrong? *)
+    position_at_end start_bb builder;
     let condval = gen_cond cond then_bb blocksyms in
-    let new_start_bb = insertion_block builder in (* fix? *)
+    let new_start_bb = insertion_block builder in (* cond may add bb's *)
     position_at_end then_bb builder;
     List.iter (gen_stmt the_module builder lltypes) thenblock;
     (* code insertion could add new blocks to the "then" block. *)
@@ -779,15 +779,13 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* position at end of else block. *)
     let new_else_bb = insertion_block builder in
     let merge_bb = append_block context "ifcont" the_function in
-    (* kaleidoscope inserts the phi here *)
-    (* position_at_end merge_bb builder; *)
-    position_at_end new_start_bb builder;
     (* Still loop to the /original/ then block! *)
     let firstelse =
       match elsif_blocks with
       | [] -> else_bb
       | (_, condblk, _, _) :: _ -> condblk in
-    (* Way down here, we finally build the first conditional! *)
+    (* Way down here, we finally build the top branch. *)
+    position_at_end new_start_bb builder;
     ignore (build_cond_br condval then_bb firstelse builder);
     position_at_end new_then_bb builder;
     ignore (build_br merge_bb builder);

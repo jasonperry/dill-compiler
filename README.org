@@ -38,9 +38,9 @@ include:
   being more explicit about structure than, say, Ruby or Lua. Semicolons
   as statement terminators. "As readable as possible, as verbose as
   necessary." Making code easy to type and even pronounce are also goals.
-- Eventually: generics with interface constraints. One can code against
-  concrete datatypes or interfaces, with type signatures that
-  clearly distinguish between those cases.
+- Eventually: generics. I originally thought of doing interface
+  constraints, but now am thinking of having no interfaces at all and
+  letting closure passing be used for generic operators.
 
-We'll see how far I get. The initial backend is LLVM, with a current
-target of x86_64.
+We'll see how far I get. The initial backend is LLVM, currently
+targeting only x86_64.

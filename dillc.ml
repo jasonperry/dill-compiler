@@ -119,7 +119,7 @@ let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
       | Some specfile ->
          let spec = parse_modspec specfile specfilename in
          let newmap = StrMap.add modname spec mmap in
-         List.fold_left load_import newmap spec.imports  
+         List.fold_left load_import newmap spec.imports
   in 
   List.fold_left load_import modmap istmts
 
@@ -135,7 +135,7 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
   (* TODO: need to build new type environment from this too *)
   let ispecs = load_imports cconfig ispecs parsedmod.imports in
   match Analyzer.check_module topsyms base_tenv ispecs parsedmod with
-  | Error errs -> Error errs
+  | Error errs -> Error (List.rev errs)
   | Ok (typed_mod, mod_tenv) ->
      if cconfig.print_symtable then
        print_string (Symtable1.st_node_to_string topsyms);
@@ -183,7 +183,6 @@ let gen_x86_machine () =
     (* got these features from the clang llvm output. *)
     (* TODO: figure out how to add pie feature. *)
     ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" target
-    
 
   
 (** Write a module to disk as LLVM IR text. *)

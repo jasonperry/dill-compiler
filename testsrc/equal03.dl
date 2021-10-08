@@ -14,7 +14,7 @@ type Result is variant
 
 proc main() => Int
 begin
-  (*var s1 = Status|okey;
+  var s1 = Status|okey;
   var s2 = Status|okey;
   var s3 = Status|fubber;
 
@@ -28,7 +28,7 @@ begin
     printString("s1 and s3 are equal.");
   else
     printString("s1 and s3 are not equal.");
-  endif *)
+  endif
 
   var r1 = Result|ok;
   var r2 = Result|ok;

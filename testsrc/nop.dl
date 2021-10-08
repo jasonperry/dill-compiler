@@ -1,11 +1,13 @@
-begin
+(* testing the nop statement *)
+open stdio;
 
-var x = 44;
+proc main() begin
 
-if (x < 50) then
-  nop;
-else
-  printInt(x);
-endif
+  var x = 44;
+  if (x < 50) then
+    nop;
+  else
+    printInt(x);
+  endif
 
-end
+end main
