@@ -45,13 +45,13 @@ begin
     i = i + 1;
   endwhile
 
-  var f1 = Flags|remote;
+  (* var f1 = Flags|remote;
   case f1
   of Flags|local then
     printString("local");
   else
     printString("not local");
-  endcase
+  endcase *)
 
   return 0;
 

@@ -46,6 +46,12 @@ and typetag = {
     nullable: bool;
   }
 
+let is_primitive_type ttag =
+  (* would it be better to just look for the fixed set of primitive types? 
+     Maybe not, because that will expand (Int64, etc.) *)
+  not ttag.array && not ttag.nullable
+  && ttag.tclass.fields = [] && ttag.tclass.variants = []
+  
 (* These are useful b/c you can't just check the fields to see if
  * the "outermost" type is struct or variant *)
 let is_struct_type ttag =

@@ -224,12 +224,8 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
 
 
 (** Generate an equality comparison. This could get complex. *)
-let rec gen_eqcomp val1 val2 valty builder =
-  if (type_of val1) = int_type then
-    build_icmp Icmp.Eq val1 val2 "eqcomp" builder
-  else if (type_of val2) = float_type then
-    build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
-  else if is_struct_type valty then
+let rec gen_eqcomp val1 val2 valty lltypes builder =
+  if is_struct_type valty then
     let rec checkloop i prevcmp =
       (* generate next field compare value, generate AND with previous *)
       (* later: optimize to not need to generate a const starting value *)
@@ -253,13 +249,13 @@ let rec gen_eqcomp val1 val2 valty builder =
             build_extractvalue val2 i "f2val" builder in
         (* might be good to make "fields" an array *)
         let fieldtype = (List.nth valty.tclass.fields i).fieldtype in 
-        let cmpval = gen_eqcomp field1val field2val fieldtype builder in
+        let cmpval = gen_eqcomp field1val field2val fieldtype lltypes builder in
         (* Could using branches so we can short-circuit be faster? *)
         let andval = build_and prevcmp cmpval "cmpand" builder in
         checkloop (i+1) andval
     in
     checkloop 0 (const_int bool_type 1)
-  else if is_variant_type valty then
+  else if is_variant_type valty then (
     (* check tag, then load and cast the variable type if it exists and 
        compare that. *)
     let var1tag =
@@ -274,20 +270,116 @@ let rec gen_eqcomp val1 val2 valty builder =
         build_load tagPtr "tag2val" builder
       else
         build_extractvalue val2 0 "tag2val" builder in
-    let tagcmp = build_icmp Icmp.Eq var1tag var2tag "tagcomp" builder in
-    if Array.length (struct_element_types (type_of val1)) > 1 then 
-      (debug_print "variant has values in it, more compares needed";
-       (* need a runtime cast?! will be a wrong cast unless i branch... *)
-       tagcmp)
-
+    if Array.length (struct_element_types (type_of val1)) == 1 then 
+      build_icmp Icmp.Eq var1tag var2tag "tagcomp" builder
+    else
+      (debug_print "variant has values in it, building out compare";
+       let start_bb = insertion_block builder in 
+       let parent_function = block_parent start_bb in
+       (* first "then", if the tag doesn't match *)
+       (* let first_then = append_block context "then" parent_function in *)
+       let ncases = List.length valty.tclass.variants in
+       let rec genblocks i =
+         if i == 0 then []
+         else
+           let condblock = append_block context "tagcond" parent_function in
+           position_at_end condblock builder; (* needed? *)
+           let thenblock =
+             append_block context ("tagthen_" ^ Int.to_string i) parent_function in
+           position_at_end thenblock builder;
+           condblock :: thenblock :: genblocks (i-1)
+       in
+       let caseblocks = genblocks ncases in
+       let cont_block = append_block context "caseeq_cont" parent_function in
+       debug_print ("Generated blocks for " ^ Int.to_string ncases ^ " cases.");
+       (* avoid nesting: "then" case is if they are unequal, second if it's 0, *)
+       position_at_end start_bb builder;
+       let tag_eq = build_icmp Icmp.Eq var1tag var2tag "tag_eq" builder in
+       ignore (build_cond_br tag_eq (List.hd caseblocks) cont_block builder);
+       let rec gen_caseblocks caseval blocks =
+         match blocks with
+         | [] -> []
+         | cond_bb :: then_bb :: rest -> (
+           position_at_end cond_bb builder;
+           let condval =
+             build_icmp Icmp.Eq (const_int varianttag_type caseval) var1tag
+               ("tagcmp_" ^ Int.to_string caseval) builder in
+           let next_bb = match rest with
+             | [] -> cont_block
+             | next_bb :: _ -> next_bb in
+           ignore (build_cond_br condval then_bb next_bb builder);
+           position_at_end then_bb builder;
+           (* cast, then compare *)
+           let variant = List.nth valty.tclass.variants caseval in
+           let compval, then_end_bb = 
+             match variant with 
+             | (_, Some varty) ->
+                debug_print "Variant has attached value, generating val compare...";
+                let llvarty = ttag_to_llvmtype lltypes varty in
+                (* generate the pointer to the variant's value *)
+                let gen_varval_ptr theval =
+                  let varptr =
+                    if is_pointer_value theval then
+                      build_struct_gep theval 1 "varptr" builder
+                    else
+                      (* Easiest way is just to store so we can cast a pointer *)
+                      let valalloca =
+                        build_alloca (ttag_to_llvmtype lltypes valty)
+                          "varstruct" builder in
+                      ignore (build_store theval valalloca builder);
+                      build_struct_gep valalloca 1 "varptr" builder
+                  in
+                  build_bitcast varptr (pointer_type llvarty)
+                    "typedvarp" builder
+                in 
+                let varval1 = gen_varval_ptr val1 in
+                let varval2 = gen_varval_ptr val2 in
+                let compval = gen_eqcomp varval1 varval2 varty lltypes builder in
+                let then_end_bb = insertion_block builder in
+                (compval, then_end_bb)
+             | (_, None) ->
+                debug_print ("no value attached to this case");
+                (const_int bool_type 1, then_bb)
+           in
+           position_at_end then_end_bb builder;
+           ignore (build_br cont_block builder);
+           debug_print ("Generated then block for case " ^ Int.to_string caseval);
+           (* The condition may jump to the merge block also; add to the phi list *)
+           if next_bb == cont_block then
+             (condval, cond_bb)
+             :: (compval, then_end_bb) :: gen_caseblocks (caseval+1) rest
+           else
+             (compval, then_end_bb) :: gen_caseblocks (caseval+1) rest)
+         | _ :: [] ->
+            failwith "BUG: odd number of case blocks"
+       in (* end gen_caseblocks *)
+       let phiList = 
+         (tag_eq, start_bb)
+         :: gen_caseblocks 0 caseblocks in
+       (* Yay, I get to make a phi! The phi is of all the compare results. *)
+       position_at_end cont_block builder;
+       debug_print "building phi value";
+       (* I wonder if the error is a bug in if-then? *)
+       let phi = build_phi phiList "finalcmp" builder in
+       phi
+  )) (* end of variant type equality code *)
+  else (* primitive type comparisons. check for pointer *)
+    let val1 = if is_pointer_value val1 then
+                 build_load val1 "val1" builder
+               else val1 in
+    let val2 = if is_pointer_value val2 then
+                 build_load val2 "val2" builder
+               else val2 in 
+    if (type_of val1) = int_type then
+      build_icmp Icmp.Eq val1 val2 "eqcomp" builder
+    else if (type_of val2) = float_type then
+      build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
     else 
-      tagcmp
-  else 
-    (* TODO: see if it's a pointer and try again *)
-    (* for records, could I just dereference if needed and compare the 
-     * array directly? Don't think so in LLVM, that's a vector op. *)
-    failwith ("Equality for type " ^ typetag_to_string valty
-              ^ " not supported yet")
+      (* TODO: see if it's a pointer and try again *)
+      (* for records, could I just dereference if needed and compare the 
+       * array directly? Don't think so in LLVM, that's a vector op. *)
+      failwith ("Equality for type " ^ typetag_to_string valty
+                ^ ": " ^ string_of_lltype (type_of val1) ^ " not supported yet")
 
 
 (** Generate value of a constant expression. Currenly used for global var 
@@ -346,14 +438,20 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpConst (StringVal s) ->
      (* It will build the instruction /and/ return the ptr value *)
      build_global_stringptr s "sconst" builder
+
   | ExpVal (e) ->
      let evalue = gen_expr the_module builder syms lltypes e in
      promote_value evalue ex.decor builder lltypes
+
   | ExpVar (varname, fields) -> (
     let (entry, _) = Symtable.findvar varname syms in
     (* it gets complicated with field chains; call out to helper function *)
     let alloca = gen_varexp_alloca entry fields lltypes builder in
-    build_load alloca varname builder
+    (* only load if primitive type? Oh, it breaks function signatures that 
+     * expect value types... and causes other crashes.*)
+    (* if is_primitive_type ex.decor then  *)
+      build_load alloca varname builder
+  (* else alloca *)
   )
 
   | ExpRecord _ (* fieldlist *) ->
@@ -378,7 +476,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      let structaddr = build_alloca structsubty "variantSubAddr" builder in 
      let tagaddr = build_struct_gep structaddr 0 "tag" builder in
      ignore (build_store (const_int varianttag_type tagval) tagaddr builder);
-     (* 3. generate code for expr if exists and plug in *)
+     (* 3. generate code for expr (if exists) and store in the value slot *)
      (match eopt with
       | None -> ()
       | Some e ->
@@ -392,12 +490,15 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
          let valaddr = build_struct_gep structaddr 1 "varVal" builder in
          ignore (build_store expval valaddr builder)
      );
-     (* 4. cast specific struct to the general struct and store *)
+     (* 4. cast specific struct to the general struct and load the whole thing *)
      (* It still wants the cast even if no value (because named struct?) *)
      let castedaddr = build_bitcast structaddr (pointer_type llvarty)
                         "varstruct" builder in
      let varval = build_load castedaddr "filledVariant" builder in
-     varval
+     varval 
+  (* it's stored anyway, so why not just use the pointer? *)
+  (* because semantics, and LLVM can elide load/store anyway. *)
+  (* castedaddr *)
          
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
@@ -460,7 +561,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
       | _ -> failwith "BUG: type error in boolean binop"
     (* Try to support equality comparison for everything. *)
     else if op = OpEq then
-      gen_eqcomp e1val e2val e1.decor builder
+      gen_eqcomp e1val e2val e1.decor lltypes builder
     else
       failwith "unknown type for binary operation"
   )
@@ -578,25 +679,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       else
         let promotedval = promote_value expval entry.symtype builder lltypes in
         ignore (build_store promotedval alloca builder)
-  (* else if ex.decor = null_ttag then (
-        (* special case of null constant, just make a null tag *)
-        print_endline "storing null value in nullable type";
-        let nullval = const_int nulltag_type 0 in
-        let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
-        ignore (build_store nullval tagaddr builder))
-      else if entry.symtype.nullable then (
-        (* the expval is the value type; create the full record. *)
-        let tagval = const_int nulltag_type 1 in
-        let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
-        ignore (build_store tagval tagaddr builder);
-        let valaddr = build_struct_gep alloca 1 "valaddr" builder in
-        ignore (build_store expval valaddr builder))
-      else ( (* THINK THIS IS NOT USED HERE ANYMORE *)
-        (* the expr is a struct? a pointer? gen_expr is never a pointer? *)
-        (* let valaddr = build_struct_gep expval 1 "valaddr" builder in *)
-        let realval = build_extractvalue expval 1 "realval" builder in
-        (* build_load valaddr "realval" builder in *)
-        ignore (build_store realval alloca builder)) *)
+  (* used to have all the special case handling code here *)
   ))
 
   | StmtNop -> () (* will I need to generate so labels work? *)
@@ -666,7 +749,9 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let the_function = block_parent start_bb in
     let then_bb = append_block context "then" the_function in
     let blocksyms = (List.hd thenblock).decor in
+    position_at_end start_bb builder; (* gen_cond was doing wrong? *)
     let condval = gen_cond cond then_bb blocksyms in
+    let new_start_bb = insertion_block builder in (* fix? *)
     position_at_end then_bb builder;
     List.iter (gen_stmt the_module builder lltypes) thenblock;
     (* code insertion could add new blocks to the "then" block. *)
@@ -691,11 +776,12 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
      | Some elseblock ->
         List.iter (gen_stmt the_module builder lltypes) elseblock
      | None -> ());
+    (* position at end of else block. *)
     let new_else_bb = insertion_block builder in
     let merge_bb = append_block context "ifcont" the_function in
     (* kaleidoscope inserts the phi here *)
     (* position_at_end merge_bb builder; *)
-    position_at_end start_bb builder;
+    position_at_end new_start_bb builder;
     (* Still loop to the /original/ then block! *)
     let firstelse =
       match elsif_blocks with
@@ -772,7 +858,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
            (* gen_expr the_module builder syms lltypes caseexp in *)
          (* wait, is this my first real equality gen? *)
          (* maybe a gen_compare? *)
-         gen_eqcomp matchval caseval matchexp.decor builder
+         gen_eqcomp matchval caseval matchexp.decor lltypes builder
          (* what if it's an ExpCall? Have to see if the return value is nullable *)
          (* expCall's decor is the return type, right? *)
          (* think we don't need to worry about this as long as they're constexprs *)
@@ -936,6 +1022,8 @@ let gen_fdecls the_module lltypes fsyms =
       let paramtypes =
         List.map (fun entry ->
             let ptype = ttag_to_llvmtype lltypes entry.symtype in
+            (* if is_primitive_type entry.symtype then ptype
+            else pointer_type ptype *) (* simplifying try *)
             (* make it the pointer type if it's passed mutable *)
             if entry.mut then
               if entry.symtype.nullable then
@@ -1050,5 +1138,5 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   gen_fdecls the_module lltypes modsyms.fsyms;
   (* Generate each of the procedures. *)
   List.iter (gen_proc the_module builder lltypes) modtree.procs;
-  Llvm_analysis.assert_valid_module the_module;
+  (* Llvm_analysis.assert_valid_module the_module; *)
   the_module
