@@ -14,7 +14,7 @@ end checkVariants
 proc main()
 begin
   var s1 = Status|error(43);
-  var res = checkVariants(s1, Status|error(42));
+  var res = checkVariants(s1, Status|error(43));
 
   if res then
     printString("Statuses are the same");

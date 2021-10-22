@@ -33,22 +33,23 @@ module TtagMap = Map.Make(TypeTag)
 module Lltenv = struct
   (* Think I can use fieldmap for both struct offsets and union tags. *)
   type fieldmap = (int * typetag) StrMap.t
-  (* Can I just take a typetag and pull in_module and classname out of
-     that, so I don't have to awkwardly pass pairs? Should be okay as
-     long as this is used only for looking up classes? *)
-  (* TypeMap.t: (module, typename) -> value *)
   type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
   let add strpair (llvarty, fmap) map = TypeMap.add strpair (llvarty, fmap) map
   (* Return just the LLVM type for a given type name. *)
   let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
-  let find_class_lltype tclass tmap =
-    fst (TypeMap.find (tclass.in_module, tclass.classname) tmap)
-  let find_class_fieldmap tclass tmap =
-    snd (TypeMap.find (tclass.in_module, tclass.classname) tmap)
+  (* Look up the base typename for a class. *)
   let find_lltype_opt tkey tmap =
     Option.map fst (TypeMap.find_opt tkey tmap)
-  (* Get the offset of a record field. *)
+  let find_class_lltype tclass tmap =
+    fst (TypeMap.find (tclass.in_module, tclass.classname) tmap)
+  (* Can I just take a typetag and pull in_module and classname out of
+     that, so I don't have to awkwardly pass pairs? Should be okay as
+     long as this is used only for looking up classes? *)
+  (* Get the mapping of fields to types for a struct type. *)
+  let find_class_fieldmap tclass tmap =
+    snd (TypeMap.find (tclass.in_module, tclass.classname) tmap)
+  (* Get the offset of a record field from a type's field map. *)
   let find_field tkey fieldname tmap =
     let (_, fmap) = TypeMap.find tkey tmap in
     StrMap.find fieldname fmap
@@ -375,7 +376,6 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
     else if (type_of val2) = float_type then
       build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
     else 
-      (* TODO: see if it's a pointer and try again *)
       (* for records, could I just dereference if needed and compare the 
        * array directly? Don't think so in LLVM, that's a vector op. *)
       failwith ("Equality for type " ^ typetag_to_string valty
@@ -525,8 +525,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpBinop (e1, op, e2) -> (
     let e1val = gen_expr the_module builder syms lltypes e1 in
     let e2val = gen_expr the_module builder syms lltypes e2 in
-    (* TODO: look up operator in classdata. Probably a variant type 
-     * for a built-in versus method. Though only codegen knows the instruction. *)
+    (* TODO: call implemented operator for type. (when we do operators) *)
     if e1.decor = int_ttag then
       match op with
       | OpTimes -> build_mul e1val e2val "imultemp" builder
@@ -625,8 +624,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
-      (* TODO If in a function, will need to build it in entry block,
-       * so it goes in the stack frame *)
+      (* TODO: If in a function, will need to build it in entry block,
+       * so we don't realloca *)
       builder_at context (instr_begin (insertion_block builder)) in
     let alloca = build_alloca allocatype varname blockstart in 
     Symtable.set_addr syms varname alloca;
@@ -1102,8 +1101,8 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   (* Llvm.set_target_triple ttriple the_module; *)
   Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) the_module;
   let builder = builder context in
-  (* Generate dict of llvm types from the type definitions. *)
-  (* TODO: imports - wait, really? but imported types seem to work fine... *)
+  (* Generate dict of llvm types from the tenv (imports are added to it by the 
+     analyzer.) *)
   let lltypes =
     TypeMap.fold (fun _ cdata lltenv ->
         (* fully-qualified typename now *)

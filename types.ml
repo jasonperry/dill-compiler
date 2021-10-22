@@ -37,12 +37,12 @@ and classData = {
 and typetag = {
     (* what to do for function type? *)
     modulename: string;
-    typename: string;  (* TODO: check if this will include ? *)
+    typename: string; 
     tclass: classData;
     (* Will I need an "unresolved" typetag for generics? *)
     paramtypes: typetag list; (* resolved generics. *)
-    array: bool;   (* array type (going away) *)
-    (* size: int;  (* 4 if a reference type? 8? *) *)
+    array: bool;   (* array type *)
+    (* size: int;  (* probably not here, might need a recursive flag *) *)
     nullable: bool;
   }
 

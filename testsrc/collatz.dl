@@ -18,7 +18,7 @@ begin
       endif
       count = count + 1;
       printInt(i);
-   endloop
+   endwhile
    return count; 
 end collatz
 

@@ -12,8 +12,7 @@ type Result is variant
   | error: Int;
 
 
-proc main() => Int
-begin
+proc main() => Int begin
   var s1 = Status|okey;
   var s2 = Status|okey;
   var s3 = Status|fubber;

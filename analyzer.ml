@@ -433,7 +433,7 @@ let check_condexp condsyms (tenv: typeenv) condexp =
            Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
                 decor=bool_ttag }
       else (
-        (* TODO: fix this concat to be consistent (maybe Symtable.get_exp_type) *)
+        (* Think is is ok... full field expression is in symtable. *)
         let varstr = String.concat "." (varname::flds) in
         match Symtable.findvar_opt varstr condsyms with
         | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
@@ -1168,9 +1168,10 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
        match check_variants variants [] with
        | Error elist -> Error elist
        | Ok variants ->
-          (* TODO: add constructors to function syms *)
-          (* add nullary constructors to variable symbol table?! They
-             are constants, I haven't handled those yet. *)
+          (* Value constructors are NOT currently function symbols. 
+             They are a separate type of expression. *)
+          (* Similarly, nullary constructors aren't added to the variable table. 
+             But they can be constexprs. *)
           Ok {
               classname = tdef.typename;
               in_module = modname;
@@ -1382,7 +1383,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
     (* I want to make all names fully qualified in the spec file. *)
     (* Idea: keep a map of module name->symtable and "open" symbol->module *)
     (* but anyway, do types need to remember which module they're defined in?
-     * then I can easily produce the unqual. name of any type. 
+     * then I can easily produce the unqualified name of any type. 
      * Same for symtable entries for procs. *)
     typedefs = the_mod.typedefs;
     globals =
@@ -1395,7 +1396,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
               { modname = vttag.modulename;
                 classname = vttag.typename;
-                nullable = false } (* TODO: fix for nullable *)
+                nullable = vttag.nullable } (* TODO: test this, was 'false' before *)
           }
         ) the_mod.globals;
     procdecls =
