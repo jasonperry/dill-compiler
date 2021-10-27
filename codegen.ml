@@ -36,6 +36,11 @@ module Lltenv = struct
   type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
   let add strpair (llvarty, fmap) map = TypeMap.add strpair (llvarty, fmap) map
+  (* Can I have a function to take a typetag and pull in_module and
+     classname out of that, so I don't have to awkwardly pass pairs?
+     Yes, could, but REMEMBER: the LLtenv is only used for looking up
+     *classes*.  Array and nullable types are generated at the point
+     of use. *)
   (* Return just the LLVM type for a given type name. *)
   let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
   (* Look up the base typename for a class. *)
@@ -43,9 +48,6 @@ module Lltenv = struct
     Option.map fst (TypeMap.find_opt tkey tmap)
   let find_class_lltype tclass tmap =
     fst (TypeMap.find (tclass.in_module, tclass.classname) tmap)
-  (* Can I just take a typetag and pull in_module and classname out of
-     that, so I don't have to awkwardly pass pairs? Should be okay as
-     long as this is used only for looking up classes? *)
   (* Get the mapping of fields to types for a struct type. *)
   let find_class_fieldmap tclass tmap =
     snd (TypeMap.find (tclass.in_module, tclass.classname) tmap)

@@ -45,6 +45,7 @@ type typeExpr = {
     classname: string;
     (* module, params, array, null *)
     nullable: bool;
+    array: bool
   }
 
 (** Type alias for an lvalue. Module name is currently concatted on. *)
@@ -56,6 +57,7 @@ type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpVar of var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   (* type, variant, initializer *)
+  | ExpSeq of 'ed expr list
   | ExpVariant of (string * string) * string * 'ed expr option
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
@@ -192,7 +194,8 @@ let rec typeExpr_to_string te =
      te.modname ^ "::"
    else "")
   ^ te.classname
-  ^ if te.nullable then "?" else ""
+  ^ (if te.nullable then "?" else "")
+  ^ (if te.array then "[]" else "") 
 
 and fieldDecl_to_string fd =
   (if fd.priv then "private " else "")
@@ -235,6 +238,8 @@ let rec exp_to_string (e: 'a expr) =
               (List.map (fun (fname, ex) ->
                    fname ^ "=" ^ exp_to_string ex) fl)
       ^ "}"
+  | ExpSeq vl ->
+     "{" ^ String.concat ", " (List.map exp_to_string vl) ^ "}"
   | ExpVariant ((mn, tn), vn, eopt) ->
      (if mn <> "" then mn ^ "::" else "")
      ^ tn ^ "|" ^ vn

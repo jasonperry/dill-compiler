@@ -114,6 +114,8 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
        check_recExpr syms tenv ttag ex
   )
 
+  | ExpSeq elist -> 
+
   | ExpVariant (_, _, _) ->
      check_variant syms tenv ex ~declvar:false
 
@@ -1396,7 +1398,8 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
               { modname = vttag.modulename;
                 classname = vttag.typename;
-                nullable = vttag.nullable } (* TODO: test this, was 'false' before *)
+                nullable = vttag.nullable; (* TODO: test this, was 'false' before *)
+                array = vttag.array }
           }
         ) the_mod.globals;
     procdecls =

@@ -167,7 +167,7 @@ procHeader:
        export=Option.is_some ex;
        rettype = (
 	 match rt with
-	 | None -> { modname = ""; classname="Void"; nullable=false }
+	 | None -> { modname = ""; classname="Void"; nullable=false; array=false }
 	 | Some te -> te )
       }
     }
@@ -280,12 +280,14 @@ caseBlock:
 
 typeExp:
   (* typename plus possibly array, null markers *)
-  | mn=moduleName DCOLON tn=IDENT_UC (* array here *) qm=option(QMARK)
+  | mn=moduleName DCOLON tn=IDENT_UC qm=option(QMARK) arr=option(pair(LSQRB,RSQRB))
     { { modname=mn; classname=tn;
-        nullable=Option.is_some qm } }
-  | tn=IDENT_UC qm=option(QMARK)
+        nullable=Option.is_some qm;
+	array=Option.is_some arr } }
+  | tn=IDENT_UC qm=option(QMARK) arr=option(pair(LSQRB,RSQRB))
     { { modname=""; classname=tn;
-        nullable=Option.is_some qm } }
+        nullable=Option.is_some qm;
+	array=Option.is_some arr } }
 
 (* Expressions are what evaluates to a value. *)
 expr:
@@ -294,6 +296,7 @@ expr:
   | ex=constExp
   | ex=valExp
   | ex=recordExp
+  | ex=seqExp
   | ex=variantExp
   | ex=opExp
   | ex=callExp
@@ -318,7 +321,6 @@ constExp:
   | NULL
     { ExpConst (NullVal) }
 
-
 valExp:
   | VAL LPAREN e=expr RPAREN
     { ExpVal (e) }
@@ -337,6 +339,10 @@ varName:
 recordExp:
   | LBRACE fl=separated_list(COMMA, fieldAssign) RBRACE
     { ExpRecord fl }
+
+seqExp:
+  | LSQRB vl=separated_list(COMMA, expr) RSQRB
+    { ExpSeq vl }
 
 variantExp: (* Now using pairs everywhere for type names *)
   | mn=moduleName DCOLON tn=IDENT_UC PIPE vn=IDENT_LC
