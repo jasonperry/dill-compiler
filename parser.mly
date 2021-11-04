@@ -341,7 +341,7 @@ recordExp:
     { ExpRecord fl }
 
 seqExp:
-  | LSQRB vl=separated_list(COMMA, expr) RSQRB
+  | LSQRB vl=separated_nonempty_list(COMMA, expr) RSQRB
     { ExpSeq vl }
 
 variantExp: (* Now using pairs everywhere for type names *)

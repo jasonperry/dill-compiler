@@ -501,7 +501,9 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   (* it's stored anyway, so why not just use the pointer? *)
   (* because semantics, and LLVM can elide load/store anyway. *)
   (* castedaddr *)
-         
+
+  | ExpSeq _ -> failwith "No codegen for array expressions yet"
+
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
      * for optimization. *)
