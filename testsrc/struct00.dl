@@ -8,7 +8,7 @@ type Complex is struct
   mut j: Float;
 
 
-export proc main() : Void
+export proc main() 
 begin
 
   var cpx: Complex;

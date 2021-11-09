@@ -61,6 +61,8 @@ let rec is_const_expr = function
   | ExpUnop (_, e1) -> is_const_expr e1.e
   | ExpRecord fieldlist ->
      List.for_all (fun (_, e) -> is_const_expr e.e) fieldlist
+  | ExpSeq elist ->
+     List.for_all (fun e -> is_const_expr e.e) elist
   | _ -> false
 
 

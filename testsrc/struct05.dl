@@ -1,0 +1,25 @@
+(* creating a second struct variable *)
+module struct01 begin
+
+open stdio;
+
+type Complex is struct
+  mut i: Float,
+  mut j: Float;
+
+
+export proc main()
+begin
+
+  var cpx: Complex = {i=2.0, j=1.111};
+  (* cpx = {i=4.0, j=-1.53}; *)
+  var c2: Complex = cpx;
+  cpx.i = 3.0;
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+  printFloat(c2.i);
+  printFloat(c2.j);
+
+end main
+
+end struct01

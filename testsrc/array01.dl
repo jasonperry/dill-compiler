@@ -1,0 +1,15 @@
+(* first test case of arrays *)
+
+open stdio;
+
+proc main() => Int
+begin
+  var a: Int[] = [8,7,6,5,4]; (* { func(i) => 8-i } *)
+  var i: Int = 0;
+  while i < 5 loop
+    printInt(a[i]);
+    (* printInt(4); *)
+    i = i + 1;
+  endwhile
+  return 0;
+end main

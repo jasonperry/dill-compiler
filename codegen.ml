@@ -152,6 +152,7 @@ let rec gen_lltype context
      ) else
        failwith ("BUG: unknown class type " ^ cdata.classname ^ "in codegen")
 
+
 (** Use a type tag to generate the LLVM type from the base type. *)
 let ttag_to_llvmtype lltypes ttag =
   (* find_opt only for debugging. *)
@@ -160,25 +161,26 @@ let ttag_to_llvmtype lltypes ttag =
   | None -> failwith ("BUG: no lltype found for " ^ ttag.modulename
                       ^ "::" ^ ttag.typename)
   | Some basetype ->
-     let with_null =
+     let ttag_with_null =
        if ttag.nullable then
          (debug_print ("Generating struct for nullable type: "
                       ^ typetag_to_string ttag); 
          struct_type context [| nulltag_type; basetype |])
        else basetype in
      if ttag.array then
-       array_type with_null 0  (* a stub for now, to give the idea. *)
+       struct_type context
+         [| int_type; pointer_type (array_type ttag_with_null 0) |]
      else
-       with_null
+       ttag_with_null
 
 
-(** Generate LLVM allocation for a varexp from symtable entry and fields *)
+(** Find the target address of a varexp from symtable entry and fields *)
 (* Seems I need to do this once to get the load from the field offset. 
  * But after that, to optimize, I could store the field alloca back in 
    the symtable *)
-let gen_varexp_alloca varentry fieldlist lltypes builder =
+let get_varexp_alloca varentry fieldlist lltypes builder =
   match varentry.addr with 
-  | None -> failwith ("BUG: gen_varexp_alloca: alloca address not present for "
+  | None -> failwith ("BUG: get_varexp_alloca: alloca address not present for "
                       ^ varentry.symname)
   | Some alloca ->
      (* traverse record fields to generate final alloca for store. *)
@@ -448,7 +450,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpVar (varname, fields) -> (
     let (entry, _) = Symtable.findvar varname syms in
     (* it gets complicated with field chains; call out to helper function *)
-    let alloca = gen_varexp_alloca entry fields lltypes builder in
+    let alloca = get_varexp_alloca entry fields lltypes builder in
     (* only load if primitive type? Oh, it breaks function signatures that 
      * expect value types... and causes other crashes.*)
     (* if is_primitive_type ex.decor then  *)
@@ -457,6 +459,7 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   )
 
   | ExpRecord _ (* fieldlist *) ->
+     (* TODO: allow it as long as I know the hint! *)
      failwith "Struct literal codegen not implemented in non-assignment context"
 
   | ExpVariant ((tymod, tyname), variant, eopt) ->
@@ -502,7 +505,30 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   (* because semantics, and LLVM can elide load/store anyway. *)
   (* castedaddr *)
 
-  | ExpSeq _ -> failwith "No codegen for array expressions yet"
+  | ExpSeq elist ->
+     let eltType = ttag_to_llvmtype lltypes (List.hd elist).decor in
+     (* alloca for the raw array data. *)
+     let alloca = build_array_alloca eltType
+                    (const_int int_type (List.length elist)) "arrdata"
+                    builder in
+     List.iteri (fun i e ->
+         let v = gen_expr the_module builder syms lltypes e in
+         let ep = build_gep alloca [|const_int int_type i|] "i" builder in
+         ignore (build_store v ep builder)
+       ) elist;
+     (* create the struct *)
+     let structalloca = build_alloca (ttag_to_llvmtype lltypes ex.decor)
+                          "array_struct" builder in
+     let lenptr = build_struct_gep structalloca 0 "lenptr" builder in
+     let dataptr = build_struct_gep structalloca 1 "dataptr" builder in
+     (* cast the pointer so the type matches *)
+     let dataptr = build_bitcast dataptr (pointer_type (type_of alloca))
+                      "arrptr" builder in
+     ignore (build_store (const_int int_type (List.length elist))
+               lenptr builder);
+     ignore (build_store alloca dataptr builder);
+     build_load structalloca "array_struct" builder
+     
 
   | ExpUnop (op, e1) -> (
     (* there are const versions of the ops I could try to put in later, 
@@ -629,7 +655,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
       (* TODO: If in a function, will need to build it in entry block,
-       * so we don't realloca *)
+       * so we don't reallocate in loops *)
       builder_at context (instr_begin (insertion_block builder)) in
     let alloca = build_alloca allocatype varname blockstart in 
     Symtable.set_addr syms varname alloca;
@@ -646,9 +672,10 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let (entry, _) = Symtable.findvar varname syms in
     match ex.e with
     (* Assignment of a record expression: create and fill the struct. *)
+    (* TODO: hopefully supercede this with more general record expression gen. *)
     | ExpRecord fieldlist ->
        let recaddr =
-         let varaddr = gen_varexp_alloca entry flds lltypes builder in
+         let varaddr = get_varexp_alloca entry flds lltypes builder in
          (* seemingly proper way: get the alloca to wherever the
             actual struct body is and do all the stores here. *)
          (* could I replace this with promote_value? *)
@@ -672,7 +699,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     | _ -> (
       let expval = gen_expr the_module builder syms lltypes ex in
       let alloca =
-        gen_varexp_alloca entry flds lltypes builder in
+        get_varexp_alloca entry flds lltypes builder in
       (* print_endline (Llvm.string_of_llvalue alloca); *)
       (* handle string type specially (for now) *)
       (* cases to handle nullable types *)
@@ -734,7 +761,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
              { st=StmtDecl (varname, None, None); decor=blocksyms };
          let (entry, _) = Symtable.findvar varname blocksyms in
          let alloca =
-           gen_varexp_alloca entry flds lltypes builder in
+           get_varexp_alloca entry flds lltypes builder in
          let realval = build_extractvalue condval 1 "condval" builder in
          (* build_load valaddr "realval" builder in *)
          ignore (build_store realval alloca builder);
