@@ -321,17 +321,28 @@ constExp:
   | NULL
     { ExpConst (NullVal) }
 
-valExp:
+valExp: (* does this need to be its own production? an old mistake? *)
   | VAL LPAREN e=expr RPAREN
     { ExpVal (e) }
 
 varExp:
-  (* note that a method call could be preceded by a varExp *)
-  | mn=moduleName DCOLON v=varName fl=list(preceded(DOT, varName))
-    { (mn ^ "::" ^ v, fl) }
-  | v=varName fl=list(preceded(DOT, varName))
-    { (v, fl) }
-    (* { ExpVar (v, fl) } *)
+  (* we don't wrap this in the variant ExpVar because it's used in 
+   * various places, such as a CallExp *)
+  | mn=moduleName DCOLON iv=indexedVar fl=list(preceded(DOT, indexedVar))
+    { ((mn ^ "::" ^ (fst iv), snd iv), fl) }
+  | iv=indexedVar fl=list(preceded(DOT, indexedVar))
+    { (iv, fl) }
+
+indexedVar:
+  | v=varName LSQRB e=expr RSQRB 
+    { (v, Some e) }
+  | v=varName
+    { (v, None) }
+
+(* indexOp:
+  (* will it conflict with seqExp? *)
+  | LSQRB e=expr RSQRB
+    { e } *)
 
 varName:
   vn=IDENT_LC { vn }
@@ -417,10 +428,10 @@ argList:
 	       ) al }
 
 nullAssnExp:  (* This needs lookahead, will it work? *)
-  | VAR v=varName COLON ty=typeExp NULLASSIGN e=expr
-    { ExpNullAssn (true, (v,[]), Some ty, e) }
-  | VAR v=varName NULLASSIGN e=expr
-    { ExpNullAssn (true, (v,[]), None, e) }
+  | VAR vn=varName COLON ty=typeExp NULLASSIGN e=expr
+    { ExpNullAssn (true, ((vn, None),[]), Some ty, e) }
+  | VAR vn=varName NULLASSIGN e=expr
+    { ExpNullAssn (true, ((vn, None),[]), None, e) }
   | ve=varExp NULLASSIGN e=expr
     { ExpNullAssn (false, ve, None, e) }
 (*  | dec=option(VAR) v=varName NULLASSIGN e=expr

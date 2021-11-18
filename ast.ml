@@ -48,13 +48,10 @@ type typeExpr = {
     array: bool
   }
 
-(** Type alias for an lvalue. Module name is currently concatted on. *)
-type var_expr = string * string list  (* field specifiers *)
-
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
-  | ExpVal of 'ed expr
-  | ExpVar of var_expr
+  | ExpVal of 'ed expr (* for a paren-wrapped expr. don't need *)
+  | ExpVar of 'ed var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   (* type, variant, initializer *)
   | ExpSeq of 'ed expr list
@@ -63,14 +60,21 @@ type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * (bool * 'ed expr) list (* proc name, mut * value list *)
   (* the bool is true if declaring a new var *)
-  | ExpNullAssn of bool * var_expr * typeExpr option * 'ed expr
+  | ExpNullAssn of bool * 'ed var_expr * typeExpr option * 'ed expr
+
+(** Type for an lvalue. Module name is currently concatted on
+    (I guess because local symtables store them that way).  *)
+(* The first element is special because it's the symbol table lookup. *)
+(* The optional expression is indexing [] *)
+and 'ed var_expr = (string * 'ed expr option) * (string * 'ed expr option) list
 
 (** Decorated expression type *)
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
+
 type ('ed,'sd) raw_stmt = 
   | StmtDecl of string * typeExpr option * 'ed expr option
-  | StmtAssign of var_expr * 'ed expr
+  | StmtAssign of 'ed var_expr * 'ed expr
   | StmtNop
   | StmtReturn of 'ed expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
@@ -222,6 +226,9 @@ and typedef_to_string tdef =
     )
   ^ ";\n"
 
+
+
+
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
   match e.e with
@@ -231,8 +238,7 @@ let rec exp_to_string (e: 'a expr) =
   | ExpConst (StringVal s) -> "\"" ^ String.escaped s ^ "\""
   | ExpConst NullVal -> "null"
   | ExpVal (e) -> "val(" ^ exp_to_string e ^ ")"
-  | ExpVar (vn, flds) ->
-     vn ^ if flds <> [] then "." ^ String.concat "." flds else ""
+  | ExpVar vexpr -> varExpr_to_string vexpr
   | ExpRecord fl ->
       "{" ^ String.concat ", "
               (List.map (fun (fname, ex) ->
@@ -254,12 +260,21 @@ let rec exp_to_string (e: 'a expr) =
          (List.map (fun (mut, ex) ->
               (if mut then "#" else "") ^ exp_to_string ex) args)
      ^ ")"
-  | ExpNullAssn (decl, (v,fl), tyopt, e) ->
+  | ExpNullAssn (decl, vexp, tyopt, e) ->
      (if decl then "var " else "")
-     ^ v ^ String.concat "." (v::fl)
+     ^ varExpr_to_string vexp
      ^ Option.fold ~none:""
          ~some:(fun ty -> ": " ^ typeExpr_to_string ty) tyopt
      ^ " ?= " ^ exp_to_string e
+
+and varExpr_to_string (vi, fl) = 
+  let indexed_to_string (vn, eopt) =
+    vn ^ (match eopt with
+          | Some e -> "[" ^ exp_to_string e ^ "]"
+          | None -> "")
+  in
+  String.concat "." (List.map indexed_to_string (vi::fl))
+
 
 let rec stmt_to_string st = 
       match st.st with
@@ -272,8 +287,8 @@ let rec stmt_to_string st =
             | Some e -> " = " ^ exp_to_string e
             | None -> "")
          ^ ";\n"
-      | StmtAssign ((v, fl), e) ->
-         v ^ String.concat "." (v::fl) ^ " = "
+      | StmtAssign (vexpr, e) ->
+         varExpr_to_string vexpr ^ " = "
          ^ exp_to_string e ^ ";\n"
       | StmtNop -> "nop;\n"
       | StmtReturn (Some e) -> "return " ^ exp_to_string e ^ ";\n"

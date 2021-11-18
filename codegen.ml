@@ -508,12 +508,12 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpSeq elist ->
      let eltType = ttag_to_llvmtype lltypes (List.hd elist).decor in
      (* alloca for the raw array data. *)
-     let alloca = build_array_alloca eltType
+     let datalloca = build_array_alloca eltType
                     (const_int int_type (List.length elist)) "arrdata"
                     builder in
      List.iteri (fun i e ->
          let v = gen_expr the_module builder syms lltypes e in
-         let ep = build_gep alloca [|const_int int_type i|] "i" builder in
+         let ep = build_gep datalloca [|const_int int_type i|] "i" builder in
          ignore (build_store v ep builder)
        ) elist;
      (* create the struct *)
@@ -522,11 +522,11 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      let lenptr = build_struct_gep structalloca 0 "lenptr" builder in
      let dataptr = build_struct_gep structalloca 1 "dataptr" builder in
      (* cast the pointer so the type matches *)
-     let dataptr = build_bitcast dataptr (pointer_type (type_of alloca))
+     let dataptr = build_bitcast dataptr (pointer_type (type_of datalloca))
                       "arrptr" builder in
      ignore (build_store (const_int int_type (List.length elist))
                lenptr builder);
-     ignore (build_store alloca dataptr builder);
+     ignore (build_store datalloca dataptr builder);
      build_load structalloca "array_struct" builder
      
 
