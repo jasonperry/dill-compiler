@@ -28,12 +28,11 @@ let base_tenv =
 type 'addr st_entry = {
     symname: string;
     symtype: typetag;
-    (* 'var' is what's checked for any local assignment (including to record 
-     * fields *)
+    (* 'var' is what's checked for any local assignment *)
     var: bool;
-    (* However, function parameters are not vars, they can't be reassigned,
+    (* Function parameters are not vars, they can't be reassigned,
      * but they might be mutable, so we do need separate fields 
-     * (it's not just part of the type) *)
+     * (it's not part of the type but the symbol) *)
     mut: bool;
     (* store an address (stack or heap) for code generation. *)
     addr: 'addr option
@@ -56,7 +55,8 @@ type 'addr st_node = {
     mutable fsyms: 'addr st_procentry StrMap.t;  (* No overloading! *)
     (* vars declared but not initted in this scope. *)
     mutable uninit: StrSet.t;
-    (* vars from higher scope that are initted in this scope. *)
+    (* vars from higher scope that are initted in this scope.
+       Need this for analyzing if all if or case blocks init a value *)
     mutable parent_init: StrSet.t;
     (* The root node has no parent *)
     parent: 'addr st_node option; 

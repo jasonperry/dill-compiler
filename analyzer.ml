@@ -85,6 +85,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
      Ok {e=ExpConst (FloatVal f); decor=float_ttag}
   | ExpConst (StringVal s) ->
      Ok {e=ExpConst (StringVal s); decor=string_ttag}
+
   | ExpVal (expr) -> (
      match check_expr syms tenv expr with
      | Error eres -> Error eres
@@ -95,16 +96,73 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
         else 
           Ok { e=ExpVal(echecked);
                decor={echecked.decor with nullable=true}})
-  | ExpVar (varname, fields) -> (
-    let varstr = exp_to_string ex in
+
+  | ExpVar ((varstr, ixopt), fields) -> (
+    (* let varstr = exp_to_string ex in *)
     match Symtable.findvar_opt varstr syms with
-    | Some (ent, _) ->
+    | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
+    | Some (entry, _) -> (
        if StrSet.mem varstr syms.uninit then
          Error {loc=ex.decor;
                 value="Variable " ^ varstr ^ " may not be initialized"}
-       else 
-         Ok { e=ExpVar (varname, fields); decor=ent.symtype }
-    | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
+       else
+         (* Now need to do proper field checking *)
+         (* first, make sure var is array type if has index expr. *)
+         if Option.is_some ixopt && not entry.symtype.array then
+           Error {loc=ex.decor; value="Index expression on non-array type"
+                                      ^ typetag_to_string entry.symtype}
+         else 
+           (* first, check index expression if any *)
+           let check_indexexp ixopt =
+             match ixopt with
+             | None -> Ok None
+             | Some ixexp -> 
+                match check_expr syms tenv ixexp with
+                | Error err -> Error err
+                | Ok checked_ixexp ->
+                   if checked_ixexp.decor <> int_ttag then
+                     Error {loc=ex.decor;
+                            value="Index expression must have integer type"}
+                   else Ok (Some checked_ixexp) in
+           match check_indexexp ixopt with 
+           | Error err -> Error err
+           | Ok ixopt -> (
+             let headtype =
+               if Option.is_some ixopt then
+                 {entry.symtype with array=false}
+               else entry.symtype
+             in 
+             (* second, recursively check fields. return fields & type *)
+             let rec check_fields prevty fields =
+               match fields with
+               | [] -> Ok ([], prevty)
+               | (fname, ixopt)::rest -> (
+                 match get_ttag_field prevty fname with
+                 | None -> 
+                    Error {loc=ex.decor;
+                           value="Field " ^ fname ^ "does not belong to type "
+                                 ^ typetag_to_string prevty}
+                 | Some finfo ->
+                    if Option.is_some ixopt && not finfo.fieldtype.array then
+                      Error {loc=ex.decor;
+                             value="Index expression on non-array type"
+                                   ^ typetag_to_string finfo.fieldtype}
+                    else 
+                      let fieldty = finfo.fieldtype in
+                      match check_indexexp ixopt with
+                      | Error err -> Error err
+                      | Ok ixopt -> (
+                        match check_fields fieldty rest with
+                        | Ok (checked_fields, finalty) ->
+                           Ok ((fname, ixopt)::checked_fields, finalty)
+                        | Error err -> Error err
+               ))
+           in
+           match check_fields headtype fields with
+           | Error err -> Error err
+           | Ok (checked_fields, expty) -> 
+           Ok { e=ExpVar ((varstr, ixopt), checked_fields); decor=expty })
+    )
   )
 
   | ExpRecord _ -> (
@@ -282,7 +340,8 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
   | ExpRecord flist ->
      let cdata = ttag.tclass in 
      (* make a map from the fields to their types. *)
-     (* Should probably leave it as a list in the ClassInfo, for ordering. *)
+     (* Need to do this here to remove them. *)
+     (* Definitely leave it as a list in the ClassInfo, for ordering. *)
      let fdict = List.fold_left (fun s (fi: fieldInfo) ->
                      StrMap.add fi.fieldname fi.fieldtype s)
                    StrMap.empty
@@ -391,6 +450,45 @@ and check_variant syms tenv ex ~declvar =
   )))))
   | _ -> failwith "check_variant called without variant expr"
 
+(** lvalue checking code for assignment contexts. Also removes from
+   uninitialized symbols set. *)
+and check_lvalue syms tenv (((varname, ixopt), flds) as varexpr) loc =
+      match Symtable.findvar_opt varname syms with
+    | None -> Error {loc=loc; value="Undefined variable " ^ varname}
+    | Some (varsym, scope) -> (
+      (* Check the lvalue (new), first setting as initted if applicable. *)
+      if Option.is_none ixopt && flds = [] then
+        (syms.uninit <- StrSet.remove varname syms.uninit;
+         if scope < syms.scopedepth then 
+           (* initialized from parent scope *)
+           syms.parent_init <- StrSet.add varname syms.parent_init
+        );
+      match check_expr syms tenv {e=ExpVar varexpr; decor=loc} with
+      | Error err -> Error err
+      | Ok lvalexp -> 
+         (* util function to check if an lvalue is assignable *)
+         let rec is_assignable varsym prevmut prevty flds = 
+           (* if symbol isn't  mutable it shouldn't be touched at all *)
+           if not varsym.mut then false else
+                  (* it can be non-var but still mutable *)
+             match flds with
+             | [] -> prevmut
+             | (fname, _)::rest ->
+                match get_ttag_field prevty fname with
+                | None -> failwith "BUG: field not found"
+                | Some finfo ->
+                   (* array indexes keep the mutability of the var/field *)
+                   is_assignable varsym finfo.mut finfo.fieldtype rest
+         in 
+         if not (is_assignable varsym varsym.var varsym.symtype flds) then
+           Error {loc=loc;
+                  value="Assignment to immutable l-value "
+                         ^ exp_to_string lvalexp}
+         else
+           Ok lvalexp
+    )             
+
+
 
 (** Check for a redeclaration (name exists at same scope) *)
 (* I'm not using this yet...was a candidate for check_stmt *)
@@ -402,7 +500,7 @@ let is_redecl varname syms =
 
 (** Recursively add record fields to a symbol table. Used by 
     StmtDecl, ExpNullAssn, check_globdecl, and add_imports. *)
-let rec add_field_sym syms varname initted (finfo: fieldInfo) =
+(* let rec add_field_sym syms varname initted (finfo: fieldInfo) =
   (* instead of adding nested scope for record fields,
    * we just add "var.field" symbols *)
   let varstr = varname ^ "." ^ finfo.fieldname in
@@ -416,12 +514,12 @@ let rec add_field_sym syms varname initted (finfo: fieldInfo) =
   (* recursively add fields-of-fields *)
   let cdata = finfo.fieldtype.tclass in
   List.iter (add_field_sym syms varstr initted) cdata.fields
-
+ *) 
 
 (** Conditionals can include an assignment, so handle them specially. *)
-let check_condexp condsyms (tenv: typeenv) condexp =
+let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
   match condexp.e with
-  | ExpNullAssn (decl, ((varname, flds) as varexp), tyopt, ex) -> (
+  | ExpNullAssn (decl, (((varname, ixopt), flds) as varexp), tyopt, ex) -> (
     match check_expr condsyms tenv ex with
     | Error err -> Error err
     | Ok ({e=_; decor=ety} as goodex) -> (
@@ -429,53 +527,55 @@ let check_condexp condsyms (tenv: typeenv) condexp =
         Error { loc=condexp.decor;
                 value="Nullable assignment '?=' requires a nullable value" }
       else if decl then
-        (* if a var, add it to the symbol table (down below). 
-         * It can't be a redeclaration, it's the first thing in the scope! *)
-        let tycheck = 
-          match tyopt with
-          | None -> Ok ()
-          | Some tyexp -> ( (* could check this as a Decl *)
-            print_endline "Yes type expression for null assignment";
-            match check_typeExpr tenv tyexp with
-            | Error msg -> Error {loc=condexp.decor; value=msg}
-            | Ok dty when dty <> {ety with nullable=false} ->
-               Error {loc=condexp.decor;
-                      value="Declared type " ^ typetag_to_string dty
-                            ^ " for variable " ^ varname
-                            ^ " does not match nullable initializer type "
-                            ^ typetag_to_string ety}
-            | Ok _ -> Ok ()
-          ) in
-        match tycheck with
-        | Error e -> Error e
-        | Ok _ -> 
-           (* add the variable (and its fields recursively to symbols. *)
-           (* Caller will hold the modified 'condsyms' node *)
-           Symtable.addvar condsyms varname
-             {symname=varname; symtype={ety with nullable=false}; var=true;
-              mut=ety.tclass.muttype; addr=None};
-           (* print_endline ("Adding field symbols for " ^ varname); *)
-           List.iter (add_field_sym condsyms varname true) ety.tclass.fields;
-           Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
-                decor=bool_ttag }
+        if Option.is_some ixopt || flds <> [] then
+          Error {loc=condexp.decor;
+                 value="var declaration must be a single name"}
+        else 
+          (* if a var, add it to the symbol table (down below). 
+           * It can't be a redeclaration, it's the first thing in the scope! *)
+          let tycheck = 
+            match tyopt with
+            | None -> Ok ()
+            | Some tyexp -> ( (* could check this as a Decl *)
+              match check_typeExpr tenv tyexp with
+              | Error msg -> Error {loc=condexp.decor; value=msg}
+              | Ok dty when dty <> {ety with nullable=false} ->
+                 Error {loc=condexp.decor;
+                        value="Declared type " ^ typetag_to_string dty
+                              ^ " for variable " ^ varname
+                              ^ " does not match nullable initializer type "
+                              ^ typetag_to_string ety}
+              | Ok _ -> Ok ()
+            ) in
+          match tycheck with
+          | Error e -> Error e
+          | Ok _ -> 
+             (* add the variable to symbols. Caller will hold the modified 
+                'condsyms' node *)
+             Symtable.addvar condsyms varname
+               {symname=varname; symtype={ety with nullable=false}; var=true;
+                mut=ety.tclass.muttype; addr=None};
+             (* rebuild the name-only varexp so it has the result type. *)
+             Ok { e=ExpNullAssn (decl, ((varname, None), []), tyopt, goodex);
+                  decor=bool_ttag }
       else (
-        (* Think is is ok... full field expression is in symtable. *)
-        let varstr = String.concat "." (varname::flds) in
-        match Symtable.findvar_opt varstr condsyms with
-        | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
-        | Some (ent, _) ->
-           if ent.symtype <> {ety with nullable=false} then
-             Error { loc=condexp.decor;
-                     value="Type mismatch in nullable assignment ("
-                           ^ typetag_to_string ent.symtype ^ ", "
-                           ^ typetag_to_string ety ^ ")" }
-           else (
-             (* remove assigned variable from uninit'ed set. *)
-             condsyms.uninit <- StrSet.remove varname condsyms.uninit;
-             Ok { e=ExpNullAssn (decl, varexp, tyopt, goodex);
-                  decor=bool_ttag })
-      )
-  ))
+        (* Non-decl case, must now check the lvalue expression *)
+        match check_lvalue condsyms tenv varexp condexp.decor with
+           | Error err -> Error err
+           | Ok {e=newlval; decor=lvalty} -> 
+              if lvalty <> {ety with nullable=false} then
+                Error { loc=condexp.decor;
+                        value="Type mismatch in nullable assignment ("
+                              ^ typetag_to_string lvalty ^ ", "
+                              ^ typetag_to_string ety ^ ")" }
+              else (
+                match newlval with
+                | ExpVar lval ->
+                   Ok { e=ExpNullAssn (decl, lval, tyopt, goodex);
+                        decor=bool_ttag }
+                | _ -> failwith "Bug: lval expression not ExpVar"
+              )
+  )))
   | _ -> (
      (* Otherwise, it has to be bool *)
      match check_expr condsyms tenv condexp with
@@ -560,55 +660,36 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
              mut=vty.tclass.muttype; addr=None};
           if Option.is_none e2opt then
             syms.uninit <- StrSet.add v syms.uninit;
-          (* add symtable info for record fields, if any. *)
-          let the_classdata = vty.tclass in
+          (* add symtable info for record fields, if any. Not anymore! *)
+          (* let the_classdata = vty.tclass in
           List.iter (add_field_sym syms v (Option.is_some e2opt))
-            the_classdata.fields;
+            the_classdata.fields; *)
           Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
   )
 
-  | StmtAssign ((v, fl), e) -> (
-    (* Typecheck e, look up v, make sure types match *)
-    (* Switched to look up v's type first, for records. *)
-    let varstr = String.concat "." (v::fl) in
-    match Symtable.findvar_opt varstr syms with
-    | None -> Error [{loc=stm.decor; value="Unknown variable or field " ^ varstr}]
-    | Some (sym, scope) -> (
-      (* Passing the type hint takes care of records! *)
-      match check_expr syms tenv ~thint:(Some sym.symtype) e with
+  | StmtAssign (varexpr, e) -> (
+    match check_lvalue syms tenv varexpr stm.decor with
+    | Error err -> Error [err]
+    | Ok ({e=newlval; decor=lvalty} as lvalexp) -> 
+       (* check rhs expression *)
+       match check_expr syms tenv ~thint:(Some lvalty) e with
        | Error err -> Error [err]
        | Ok ({e=_; decor=ettag} as te) -> 
-          (* Typecheck is here *)
-          if not (subtype_match ettag sym.symtype) then
+          (* value-assignee typecheck *)
+          if not (subtype_match ettag lvalty) then
             Error [{loc=stm.decor;
-                    value="Assignment type mismatch: "
-                          ^ " variable " ^ varstr ^ " of type " 
-                          ^ typetag_to_string sym.symtype ^ " can't store "
+                    value="Assignment type mismatch: l-value "
+                          ^ exp_to_string lvalexp ^ " of type " 
+                          ^ typetag_to_string lvalty ^ " can't store "
                           ^ typetag_to_string ettag}]
-          (* only check var here, not mut, because lvalues have their own 
-           * symbol table entries with "var". *)
-          else if sym.var = false then
-            Error [{loc=stm.decor;
-                    value="Assignment to immutable var/field " ^ varstr}]
-          else (
-            (* remove variable (and record fields if any) from unitialized. *)
-            syms.uninit <- StrSet.remove varstr syms.uninit;
-            (match te.e with
-             | ExpRecord flist ->
-                List.iter (fun (fname, _) ->
-                    syms.uninit <-
-                      StrSet.remove (varstr ^ "." ^ fname) syms.uninit) flist
-             | _ -> ());
-            if scope < syms.scopedepth then 
-              (* print_string
-                ("Initializing variable from parent scope: " ^ v ^ "\n");
-               *)
-              syms.parent_init <- StrSet.add varstr syms.parent_init;
-            Ok {st=StmtAssign ((v, fl), te); decor=syms}
-          )
-  ))
+          else
+            match newlval with
+            | ExpVar lval ->
+                   Ok {st=StmtAssign (lval, te); decor=syms}
+            | _ -> failwith "Bug: lval expression not ExpVar"
+  )
 
-  | StmtNop -> Ok {st=StmtNop; decor=syms}
+   | StmtNop -> Ok {st=StmtNop; decor=syms}
 
   | StmtReturn eopt -> (
     (* checks that type is return type of the enclosing function, 
@@ -724,7 +805,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
          | (cexp, cbody)::rest -> (
            let errout msg = Error [{value=msg; loc=cexp.decor}] in
            (* the last piece, indepdendent of the type of match exp *)
-           let check_casebody cexp caseval cbody blocksyms = 
+           let check_casebody (cexp: typetag expr) caseval cbody blocksyms = 
              match check_stmt_seq blocksyms tenv cbody with
              | Error errs -> Error errs
              | Ok newcbody -> (
@@ -735,7 +816,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
            (* 1. check the case expression *)
            match cexp.e with 
            (* expression-type-specific stuff starts here. *)
-           | ExpVariant ((modname, tyname), varname, eopt) -> (
+           | ExpVariant ((modname, tyname), vntname, eopt) -> (
              (* typecheck as an expression but skip the variable if any *)
              match check_variant syms tenv cexp ~declvar:true with
              | Error err -> Error [err]
@@ -746,43 +827,44 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                          ^ " does not match match expression type "
                          ^ typetag_to_string mtype)
                else (
-                 let (_, vartyopt) =
-                   List.find (fun (vn, _) -> varname = vn)
+                 (* get type of this specific case's value, if it has one *)
+                 let (_, vnttyopt) =
+                   List.find (fun (vn, _) -> vntname = vn)
                      casetype.tclass.variants in
-                 if List.exists ((=) varname) caseacc then 
-                   errout ("Duplicate variant case " ^ tyname ^ "|" ^ varname)
+                 if List.exists ((=) vntname) caseacc then 
+                   errout ("Duplicate variant case " ^ tyname ^ "|" ^ vntname)
                  else
                    match eopt with (* result.fold? join? bind? *)
                    | None -> 
                       let newcexp =
-                        {e=ExpVariant((modname, tyname), varname, None);
+                        {e=ExpVariant((modname, tyname), vntname, None);
                          decor=matchexp.decor} in
                       let blocksyms = Symtable.new_scope syms in
-                      check_casebody newcexp varname cbody blocksyms
+                      check_casebody newcexp vntname cbody blocksyms
                    | Some cvalexp ->
                       match cvalexp.e with
-                      | ExpVar (cvar, []) -> (
-                        let varty = Option.get vartyopt in
-                        let newcexp =
+                      | ExpVar ((cvar, None), []) -> (
+                        let vntty = Option.get vnttyopt in
+                        let (newcexp: typetag expr) =
                           {e=ExpVariant(
-                                 (modname, tyname), varname,
-                                 Some {e=ExpVar(cvar, []); decor=varty});
+                                 (modname, tyname), vntname,
+                                 Some {e=ExpVar((cvar, None), []); decor=vntty});
                            decor=matchexp.decor} in
                         let blocksyms = Symtable.new_scope syms in
                         Symtable.addvar blocksyms cvar {
                             symname=cvar;
-                            symtype=varty;
+                            symtype=vntty;
                             var=false;
-                            mut=varty.tclass.muttype; (*correct?*)
+                            mut=vntty.tclass.muttype; (*correct?*)
                             addr=None 
                           };
                         debug_print (st_node_to_string blocksyms);
-                        check_casebody newcexp varname cbody blocksyms
+                        check_casebody newcexp vntname cbody blocksyms
                       )
                       | _ -> errout ("Variant case value expression must "
                                      ^ "be a single variable name")
            )))
-           (* val expression type, means a nullable *)
+           (* val() expression type, to match any non-null nullable *)
            | ExpVal varexpr -> (
               if not mtype.nullable then
                 errout "val() case can only be used with nullable expressions"
@@ -790,10 +872,10 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                 errout ("Duplicate val() case ")
               else 
                 match varexpr.e with 
-                | ExpVar (valvar, []) -> (
+                | ExpVar ((valvar, None), []) -> (
                   let valty = {mtype with nullable=false} in
-                  let newcexp =
-                    {e=ExpVal({e=ExpVar(valvar, []); decor=valty});
+                  let (newcexp: typetag expr) =
+                    {e=ExpVal({e=ExpVar((valvar, None), []); decor=valty});
                      decor=matchexp.decor} in
                   (* Add the variable to the symtable *)
                   let blocksyms = Symtable.new_scope syms in
@@ -1112,7 +1194,7 @@ let check_globdecl syms tenv modname gstmt =
            mut=vty.tclass.muttype;
            addr=None
          };
-       List.iter (add_field_sym syms gstmt.varname true) vty.tclass.fields;
+       (* List.iter (add_field_sym syms gstmt.varname true) vty.tclass.fields; *)
        Ok {varname=gstmt.varname; typeexp=gstmt.typeexp;
            init=e2opt; decor=syms}
   )
@@ -1262,8 +1344,8 @@ let add_imports syms tenv specs istmts =
                  symname = fullname; symtype = ttag; 
                  var = true; mut=ttag.tclass.muttype; addr = None
                };
-             (* Add field initializers too. *)
-             List.iter (add_field_sym syms refname true) ttag.tclass.fields;
+             (* Add field initializers too. Not anymuer! *)
+             (* List.iter (add_field_sym syms refname true) ttag.tclass.fields; *)
              (* Don't think we want to add both names in this context. *)
              (* if refname <> fullname then
                 Symtable.addvar syms fullname entry; *)

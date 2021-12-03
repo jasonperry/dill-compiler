@@ -321,7 +321,7 @@ constExp:
   | NULL
     { ExpConst (NullVal) }
 
-valExp: (* does this need to be its own production? an old mistake? *)
+valExp: 
   | VAL LPAREN e=expr RPAREN
     { ExpVal (e) }
 

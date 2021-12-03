@@ -28,7 +28,7 @@ and classData = {
     (* implements: string list;  *)
     (* When we do generics, need to link params to the field type variables. 
        (possibly just by var name) *)
-    fields: fieldInfo list;
+    fields: fieldInfo list; (* should be map? *)
     variants: (string * typetag option) list (* variant name and type if any *)
   }
 
@@ -45,6 +45,14 @@ and typetag = {
     (* size: int;  (* probably not here, might need a recursive flag *) *)
     nullable: bool;
   }
+
+let get_cdata_field cdata fname =
+  List.find_opt (fun (fi: fieldInfo) -> fi.fieldname = fname) cdata.fields
+
+(** Determine if a type has a field; array and nullable can't have fields *)
+let get_ttag_field ttag fname =
+  if ttag.array || ttag.nullable then None
+  else get_cdata_field ttag.tclass fname
 
 let is_primitive_type ttag =
   (* would it be better to just look for the fixed set of primitive types? 

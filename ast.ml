@@ -50,11 +50,11 @@ type typeExpr = {
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
-  | ExpVal of 'ed expr (* for a paren-wrapped expr. don't need *)
+  | ExpVal of 'ed expr (* builtin val(v) to match non-null nullable *)
   | ExpVar of 'ed var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
-  (* type, variant, initializer *)
   | ExpSeq of 'ed expr list
+  (* module name, type name, variant name, initializer *)
   | ExpVariant of (string * string) * string * 'ed expr option
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
