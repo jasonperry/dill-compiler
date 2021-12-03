@@ -17,8 +17,8 @@ include:
   vs. reference types; also, this language is meant to be higher-level
   than languages requiring manual notation of references. The hope is
   that with mutation tracking, it will be straightforward for the
-  compiler to determine that behavior will be correct and use values or
-  references as appropriate for efficiency.
+  compiler to correctly use values or references as appropriate for
+  efficiency.
 - Struct and variant types, generative type aliases
 - All concrete types are datatypes; there are no classes (containers
   for a type and methods), though there is method call syntax. Method
@@ -33,11 +33,12 @@ include:
   signatures. This is strictly a compiler feature, that is, signatures
   are not part of the language definition proper; what a module exposes
   is completely specified by its source.
-- Keyword-based block syntax instead of curly braces. Some pains have
-  been taken to be more concise than Pascal/Ada syntax, while still
-  being more explicit about structure than, say, Ruby or Lua. Semicolons
-  as statement terminators. "As readable as possible, as verbose as
-  necessary." Making code easy to type and even pronounce are also goals.
+- Keyword-based block syntax instead of curly braces. Keywords should
+  "do work" of clarifying structure, e.g. "endif" and not just
+  "end". Still, we try to be more concise than Pascal/Ada
+  syntax. Semicolons as statement terminators. "As readable as
+  possible, as verbose as necessary." Making code easy to type and even
+  pronounce are also goals.
 - Eventually: generics. I originally thought of doing interface
   constraints, but now am thinking of having no interfaces at all and
   letting closure passing be used for generic operators.
