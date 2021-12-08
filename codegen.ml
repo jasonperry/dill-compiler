@@ -163,13 +163,13 @@ let ttag_to_llvmtype lltypes ttag =
   | Some basetype ->
      let ttag_with_null =
        if ttag.nullable then
-         (debug_print ("Generating struct for nullable type: "
-                      ^ typetag_to_string ttag); 
-         struct_type context [| nulltag_type; basetype |])
+         (* (debug_print ("Generating struct for nullable type: "
+                      ^ typetag_to_string ttag);  *)
+         struct_type context [| nulltag_type; basetype |]
        else basetype in
      if ttag.array then
        struct_type context
-         [| int_type; (*pointer_type*) (array_type ttag_with_null 0) |]
+         [| int_type; pointer_type (array_type ttag_with_null 0) |]
      else
        ttag_with_null
 
@@ -421,10 +421,13 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
          | Some ixexpr ->
             let ixval = gen_expr the_module builder syms lltypes ixexpr in
             debug_print (string_of_llvalue ixval);
-            let arrfield = build_struct_gep alloca 1 "arrayfield" builder in
-            debug_print (string_of_llvalue arrfield);
-            (* !!! To follow the pointer you just gep to the 0th element! *)
-            (build_gep arrfield [|(const_int int_type 0); ixval|] 
+            (* alloca is the address of the struct. *)
+            let datafield = build_struct_gep alloca 1 "datafield" builder in
+            debug_print (string_of_llvalue datafield);
+            (* have to load to get the actual pointer to the llvm array *)
+            let dataptr = build_load datafield "dataptr" builder in 
+            (* gep to the 0th element first to "follow the pointer" *)
+            (build_gep dataptr [|(const_int int_type 0); ixval|]  
                "elementtptr" builder,
              {parentty with array=false})
        in 

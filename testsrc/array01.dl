@@ -5,10 +5,11 @@ open stdio;
 proc main() => Int
 begin
   var a: Int[] = [8,7,6,5,4]; (* { func(i) => 8-i } *)
-  (* a = [145,33,44,15,43]; *)
+  a = [145,33,44,15,43];
   a[2] = 14;
   var i: Int = 0;
   while i < 5 loop  (* soon: a.length *)
+    a[i] = a[i] + 1;
     printInt(a[i]);
     i = i + 1;
   endwhile
