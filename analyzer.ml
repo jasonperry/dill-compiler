@@ -468,12 +468,12 @@ and check_lvalue syms tenv (((varname, ixopt), flds) as varexpr) loc =
       | Ok lvalexp -> 
          (* util function to check if an lvalue is assignable *)
          let rec is_assignable varsym prevmut prevty flds = 
-           (* if symbol isn't  mutable it shouldn't be touched at all *)
-           if not varsym.mut then false else
                   (* it can be non-var but still mutable *)
-             match flds with
-             | [] -> prevmut
-             | (fname, _)::rest ->
+           match flds with
+           | [] -> prevmut
+           | (fname, _)::rest ->
+              (* if symbol isn't mutable, fields can never be changed *)
+              if not varsym.mut then false else
                 match get_ttag_field prevty fname with
                 | None -> failwith "BUG: field not found"
                 | Some finfo ->

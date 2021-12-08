@@ -31,7 +31,7 @@ module TtagMap = Map.Make(TypeTag)
 
 (* dressed-up type environment to store lltype + field/tag offsets. *)
 module Lltenv = struct
-  (* Think I can use fieldmap for both struct offsets and union tags. *)
+  (* fieldmap is used for both struct offsets and union tags. *)
   type fieldmap = (int * typetag) StrMap.t
   type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
@@ -102,7 +102,7 @@ let rec gen_lltype context
                  struct_type context [| nulltag_type; basetype |]
                else basetype in
              let fieldlltype =
-               (* placeholder; first we'll implement const-size arrays *)
+               (* placeholder; should be my two-entry array record, right? *)
                if fty.array then array_type ty1 0
                else ty1 in
              (fieldname, fieldlltype, i, fty))
@@ -169,37 +169,9 @@ let ttag_to_llvmtype lltypes ttag =
        else basetype in
      if ttag.array then
        struct_type context
-         [| int_type; pointer_type (array_type ttag_with_null 0) |]
+         [| int_type; (*pointer_type*) (array_type ttag_with_null 0) |]
      else
        ttag_with_null
-
-
-(** Find the target address of a varexp from symtable entry and fields *)
-(* Seems I need to do this once to get the load from the field offset. 
- * But after that, to optimize, I could store the field alloca back in 
-   the symtable *)
-let get_varexp_alloca varentry fieldlist lltypes builder =
-  match varentry.addr with 
-  | None -> failwith ("BUG: get_varexp_alloca: alloca address not present for "
-                      ^ varentry.symname)
-  | Some alloca ->
-     (* traverse record fields to generate final alloca for store. *)
-     (* BIG IDEA: symtable for record itself, only tenv for subfields.
-      *  Hope it works because you only need the offset, not the address. *)
-     let rec get_field_alloca flds parentty alloca =
-       match flds with
-       | [] -> alloca
-       | fld::rest -> 
-          (* Get just the class of parent type so we can find its field info. *)
-          (* Later: handle array indexing. *)
-          let ptypekey = (parentty.modulename, parentty.typename) in
-          (* Look up field offset in Lltenv, emit gep *)
-          let offset, fieldtype = Lltenv.find_field ptypekey fld lltypes in
-          let alloca = build_struct_gep alloca offset "field" builder in
-          (*  Propagate field's typetag to next iteration *)
-          get_field_alloca rest fieldtype alloca
-     in
-     get_field_alloca fieldlist varentry.symtype alloca
 
 
 (** Wrap a value in an outer type. Used for passing or returning a 
@@ -432,8 +404,48 @@ let rec gen_constexpr_value lltypes (ex: typetag expr) =
     | _ -> failwith "Unimplemented constexpr type"
     
 
+(** Find the target address of a varexp from symtable entry and fields *)
+let rec get_varexp_alloca the_module builder varexp syms lltypes =
+  let ((varname, ixopt), fields) = varexp in
+  let (entry, _) =  Symtable.findvar varname syms in
+  match entry.addr with 
+  | None -> failwith ("BUG: get_varexp_alloca: alloca address not present for "
+                      ^ entry.symname)
+  | Some alloca ->
+     (* traverse indices and record fields to generate the final alloca. *)
+     let rec get_field_alloca flds ixopt parentty alloca =
+       (* index expression first; strip off array type after indexing *)
+       let (alloca, newty) =
+         match ixopt with
+         | None -> (alloca, parentty)
+         | Some ixexpr ->
+            let ixval = gen_expr the_module builder syms lltypes ixexpr in
+            debug_print (string_of_llvalue ixval);
+            let arrfield = build_struct_gep alloca 1 "arrayfield" builder in
+            debug_print (string_of_llvalue arrfield);
+            (* !!! To follow the pointer you just gep to the 0th element! *)
+            (build_gep arrfield [|(const_int int_type 0); ixval|] 
+               "elementtptr" builder,
+             {parentty with array=false})
+       in 
+       match flds with
+       | [] -> (alloca, newty)
+       | (fld, ixopt)::rest -> 
+          (* Get just the class of parent type so we can find its field info.
+             Analysis determined it's not a nullable. *)
+          let ptypekey = (parentty.modulename, parentty.typename) in
+          (* Look up field offset in Lltenv, emit gep *)
+          let offset, fieldtype = Lltenv.find_field ptypekey fld lltypes in
+          let alloca = build_struct_gep alloca offset "field" builder in
+          (* TODO: wait, if it's array do I have to load? Could I just check
+             if a pointer type? *)
+          (*  Propagate field's typetag to next iteration *)
+          get_field_alloca rest ixopt fieldtype alloca
+     in
+     get_field_alloca fields ixopt entry.symtype alloca
+
 (** Generate LLVM code for an expression *)
-let rec gen_expr the_module builder syms lltypes (ex: typetag expr) = 
+and gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
   | ExpConst NullVal -> const_int nulltag_type 0 (* maybe used now *)
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
@@ -447,14 +459,14 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
      let evalue = gen_expr the_module builder syms lltypes e in
      promote_value evalue ex.decor builder lltypes
 
-  | ExpVar (varname, fields) -> (
-    let (entry, _) = Symtable.findvar varname syms in
-    (* it gets complicated with field chains; call out to helper function *)
-    let alloca = get_varexp_alloca entry fields lltypes builder in
+  | ExpVar (((varname, _), _) as varexp) -> (
+    (* gets complicated with arrays and fields; call out to helper function *)
+    let (alloca, _) =
+      get_varexp_alloca the_module builder varexp syms lltypes in
     (* only load if primitive type? Oh, it breaks function signatures that 
      * expect value types... and causes other crashes.*)
     (* if is_primitive_type ex.decor then  *)
-      build_load alloca varname builder
+      build_load alloca (varname ^ "-expr") builder
   (* else alloca *)
   )
 
@@ -526,6 +538,9 @@ let rec gen_expr the_module builder syms lltypes (ex: typetag expr) =
                       "arrptr" builder in
      ignore (build_store (const_int int_type (List.length elist))
                lenptr builder);
+     (* this didn't help. *)
+     (* let datalloca = build_gep datalloca [| const_int int_type 0 |]
+                       "0ptr" builder in *) 
      ignore (build_store datalloca dataptr builder);
      build_load structalloca "array_struct" builder
      
@@ -664,52 +679,46 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     | Some initexp ->
        (* desugar to an assignment statement to avoid duplication. *)
        gen_stmt the_module builder lltypes
-         {st=StmtAssign ((varname, []), initexp); decor=syms}
+         {st=StmtAssign (((varname, None), []), initexp); decor=syms}
   )
 
-  | StmtAssign ((varname, flds), ex) -> (
-    (* let varname = String.concat "." (v::flds) in *)
-    let (entry, _) = Symtable.findvar varname syms in
+  | StmtAssign (varexp, ex) -> (
+    let alloca, vetype =
+      get_varexp_alloca the_module builder varexp syms lltypes in
     match ex.e with
     (* Assignment of a record expression: create and fill the struct. *)
     (* TODO: hopefully supercede this with more general record expression gen. *)
     | ExpRecord fieldlist ->
        let recaddr =
-         let varaddr = get_varexp_alloca entry flds lltypes builder in
          (* seemingly proper way: get the alloca to wherever the
             actual struct body is and do all the stores here. *)
          (* could I replace this with promote_value? *)
-         if entry.symtype.nullable then
-           let tagaddr = build_struct_gep varaddr 0 "tagaddr" builder in
+         if vetype.nullable then
+           let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
            ignore (build_store (const_int nulltag_type 1) tagaddr builder);
-           build_struct_gep varaddr 1 "recaddr" builder
-         else varaddr
+           build_struct_gep alloca 1 "recaddr" builder
+         else alloca
        in 
        List.iter (fun (fname, fexp) ->
            (* have to use the map from fields to nums *)
            let fexpval = gen_expr the_module builder syms lltypes fexp in
            let fieldaddr =
              build_struct_gep recaddr
-               (fst (Lltenv.find_field (entry.symtype.modulename,
-                                        entry.symtype.typename)
+               (fst (Lltenv.find_field (vetype.modulename,
+                                        vetype.typename)
                        fname lltypes)) "fieldaddr" builder in
            ignore (build_store fexpval fieldaddr builder)
          ) fieldlist
     (* normal single-value assignment: generate the expression. *)
     | _ -> (
       let expval = gen_expr the_module builder syms lltypes ex in
-      let alloca =
-        get_varexp_alloca entry flds lltypes builder in
-      (* print_endline (Llvm.string_of_llvalue alloca); *)
-      (* handle string type specially (for now) *)
       (* cases to handle nullable types *)
-      if entry.symtype.nullable = ex.decor.nullable then
+      if vetype.nullable = ex.decor.nullable then
         (* indirection level is the same, so just directly assign the value *)
         ignore (build_store expval alloca builder)
       else
-        let promotedval = promote_value expval entry.symtype builder lltypes in
+        let promotedval = promote_value expval vetype builder lltypes in
         ignore (build_store promotedval alloca builder)
-  (* used to have all the special case handling code here *)
   ))
 
   | StmtNop -> () (* will I need to generate so labels work? *)
@@ -746,22 +755,21 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* TODO: factor this out to use in while loops too *)
     let gen_cond cond thenbb blocksyms =
       match cond.e with
-      | ExpNullAssn (isdecl, (varname, flds), _, nullexp) ->
+      | ExpNullAssn (isdecl, (((varname, _), _) as varexp), _, nullexp) ->
          let condval = gen_expr the_module builder syms lltypes nullexp in
          let nulltag = build_extractvalue condval 0 "nulltag" builder in
          (* Need an icmp instruction because tag value isn't i1 anymore. *)
          let condres =
            build_icmp Icmp.Ne
              nulltag (const_int nulltag_type 0) "condres" builder in
-         (* construct a new declaration if needed, then generate code
+         (* desugar a new declaration if needed, then generate code
           * to store the non-null condition result value *)
          position_at_end thenbb builder;
          if isdecl then
            gen_stmt the_module builder lltypes 
              { st=StmtDecl (varname, None, None); decor=blocksyms };
-         let (entry, _) = Symtable.findvar varname blocksyms in
-         let alloca =
-           get_varexp_alloca entry flds lltypes builder in
+         let (alloca, _) =
+           get_varexp_alloca the_module builder varexp blocksyms lltypes in
          let realval = build_extractvalue condval 1 "condval" builder in
          (* build_load valaddr "realval" builder in *)
          ignore (build_store realval alloca builder);
@@ -906,7 +914,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       (match caseexp.e with
        | ExpVariant (_, vname, Some valvar) -> (
          match valvar.e with
-         | ExpVar (varname, _) -> 
+         | ExpVar ((varname, _), _) -> 
             let fieldmap = Option.get fieldmap in
             let casetype = snd (StrMap.find vname fieldmap) in
             let caselltype = ttag_to_llvmtype lltypes casetype in
@@ -930,7 +938,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
             Symtable.set_addr blocksyms varname valptr; 
          | _ -> failwith "Shouldn't happen: no ExpVar in case"
        )
-       | ExpVal({e=ExpVar(valvar, _); decor=_}) ->
+       | ExpVal({e=ExpVar((valvar, _), _); decor=_}) ->
           (* let valtype = {matchexp.decor with nullable=false} in
           let vallltype = ttag_to_llvmtype lltypes valtype in  *)
           (* let alloca = build_alloca vallltype valvar builder in 
@@ -943,7 +951,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
        | _ ->
           (* case doesn't set a variable, just emit the body *)
           ()
-      ) ;
+      );
       List.iter (gen_stmt the_module builder lltypes) caseblock;
       (condval, comp_bb, casebody_bb, insertion_block builder)
     in
