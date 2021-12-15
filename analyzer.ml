@@ -176,25 +176,32 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
        check_recExpr syms tenv ttag ex
   )
 
-  | ExpSeq elist ->
-     let checked_elist = List.map (check_expr syms tenv ~thint:thint) elist in
-     (* parser ensures no empty list expressions *)
-     let elist_errors = List.filter Result.is_error checked_elist in
-     if elist_errors <> [] then
-       (* Just throw the first error for now *)
-       List.hd elist_errors
-     else
-       let elist = concat_ok checked_elist in
-       let etype = (List.hd elist).decor in
-       let types_equal = List.for_all (fun (e: typetag expr) ->
-                             e.decor = etype) elist in
-       if not types_equal then
-         Error {loc=ex.decor;
-                value="Inconsistent types in array expression"}
-       else
-         (* Note: won't work with array of arrays. *)
-         Ok {e=ExpSeq elist; decor = {etype with array=true}}
-                                                                     
+  | ExpSeq elist -> (
+     match thint with
+     | None -> Error
+                 {loc=ex.decor;
+                  value="Unable to determine sequence type in this context"}
+     | Some seqty ->
+        let eltty: typetag = {seqty with array=false} in 
+        let checked_elist =
+          List.map (check_expr syms tenv ~thint:(Some eltty)) elist in
+        (* parser ensures no empty list expressions *)
+        let elist_errors = List.filter Result.is_error checked_elist in
+        if elist_errors <> [] then
+          (* Just throw the first error for now *)
+          List.hd elist_errors
+        else
+          let elist = concat_ok checked_elist in
+          (* let eltty = (List.hd elist).decor in *)
+          let types_equal = List.for_all (fun (e: typetag expr) ->
+                                e.decor = eltty) elist in
+          if not types_equal then
+            Error {loc=ex.decor;
+                   value="Inconsistent types in array expression"}
+          else
+            (* Note: won't work with array of arrays. *)
+            Ok {e=ExpSeq elist; decor = {eltty with array=true}}
+  )                                                
   (* typecheck and all make sure they're the same type. *)
   (* return type is array of, or special sequence type to be more general? *) 
      

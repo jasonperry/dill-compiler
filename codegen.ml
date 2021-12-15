@@ -482,7 +482,9 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
            build_struct_gep recaddr
              (fst (Lltenv.find_field typekey fname lltypes))
              "fieldaddr" builder in
-         ignore (build_store fexpval fieldaddr builder)
+         (* ignore (build_store fexpval fieldaddr builder); *)
+         debug_print (string_of_llvalue
+                        (build_store fexpval fieldaddr builder));
        ) fieldlist;
      build_load recaddr "recordval" builder
 
@@ -532,28 +534,32 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
 
   | ExpSeq elist ->
      let eltType = ttag_to_llvmtype lltypes (List.hd elist).decor in
-     (* alloca for the raw array data. *)
+     debug_print ("eltType: " ^ typetag_to_string ((List.hd elist).decor));
+     debug_print ("eltType: " ^ string_of_lltype eltType);
+     (* alloca for the raw array data. why is it including the  *)
      let datalloca = build_array_alloca eltType
                     (const_int int_type (List.length elist)) "arrdata"
                     builder in
      List.iteri (fun i e ->
          let v = gen_expr the_module builder syms lltypes e in
          let ep = build_gep datalloca [|const_int int_type i|] "i" builder in
-         ignore (build_store v ep builder)
+         debug_print(string_of_llvalue (build_store v ep builder));
        ) elist;
      (* create the struct *)
      let structalloca = build_alloca (ttag_to_llvmtype lltypes ex.decor)
                           "array_struct" builder in
      let lenptr = build_struct_gep structalloca 0 "lenptr" builder in
      let dataptr = build_struct_gep structalloca 1 "dataptr" builder in
-     (* cast the pointer so the type matches *)
+     debug_print ("(a) " ^ string_of_llvalue dataptr);
+     (* cast the 0-length array pointer to the sized type of the data *)
      let dataptr = build_bitcast dataptr (pointer_type (type_of datalloca))
-                      "arrptr" builder in
+                     "arrptr" builder in
+     debug_print ("(b) " ^ string_of_llvalue dataptr);
      ignore (build_store (const_int int_type (List.length elist))
                lenptr builder);
      (* this didn't help. *)
      (* let datalloca = build_gep datalloca [| const_int int_type 0 |]
-                       "0ptr" builder in *) 
+                       "0ptr" builder in *)
      ignore (build_store datalloca dataptr builder);
      build_load structalloca "array_struct" builder
      
@@ -679,6 +685,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* print_string ("looking up " ^ varname ^ " for decl codegen\n"); *)
     let (entry, _) = Symtable.findvar varname syms in
     let allocatype = ttag_to_llvmtype lltypes entry.symtype in
+    debug_print("allocatype for decl: " ^ string_of_lltype allocatype);
     (* Need to save the result? Don't think so, I'll grab it for stores. *)
     (* position_builder (instr_begin (insertion_block builder)) builder; *)
     let blockstart =
@@ -698,41 +705,18 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtAssign (varexp, ex) -> (
     let alloca, vetype =
       get_varexp_alloca the_module builder varexp syms lltypes in
-    (*match ex.e with
-    (* Assignment of a record expression: create and fill the struct. *)
-    (* TODO: hopefully supercede this with more general record expression gen. *)
-    | ExpRecord fieldlist ->
-       let recaddr =
-         (* seemingly proper way: get the alloca to wherever the
-            actual struct body is and do all the stores here. *)
-         (* could I replace this with promote_value? *)
-         if vetype.nullable then
-           let tagaddr = build_struct_gep alloca 0 "tagaddr" builder in
-           ignore (build_store (const_int nulltag_type 1) tagaddr builder);
-           build_struct_gep alloca 1 "recaddr" builder
-         else alloca
-       in 
-       List.iter (fun (fname, fexp) ->
-           (* have to use the map from fields to nums *)
-           let fexpval = gen_expr the_module builder syms lltypes fexp in
-           let fieldaddr =
-             build_struct_gep recaddr
-               (fst (Lltenv.find_field (vetype.modulename,
-                                        vetype.typename)
-                       fname lltypes)) "fieldaddr" builder in
-           ignore (build_store fexpval fieldaddr builder)
-         ) fieldlist
-    (* normal single-value assignment: generate the expression. *)
-    | _ -> ( *)
-      let expval = gen_expr the_module builder syms lltypes ex in
-      (* cases to handle nullable types *)
-      if vetype.nullable = ex.decor.nullable then
-        (* indirection level is the same, so just directly assign the value *)
-        ignore (build_store expval alloca builder)
-      else
-        let promotedval = promote_value expval vetype builder lltypes in
-        ignore (build_store promotedval alloca builder)
-  ) (* ) *)
+    debug_print ("LVALUE addr: " ^ string_of_llvalue alloca);
+    let expval = gen_expr the_module builder syms lltypes ex in
+    debug_print ("Generated expr of type " ^ string_of_lltype (type_of expval));
+    debug_print ("Alloca type: " ^ string_of_lltype (type_of alloca));
+    (* cases to handle nullable types *)
+    if vetype.nullable = ex.decor.nullable then
+      (* indirection level is the same, so just directly assign the value *)
+      ignore (build_store expval alloca builder)
+    else
+      let promotedval = promote_value expval vetype builder lltypes in
+      ignore (build_store promotedval alloca builder)
+  )
 
   | StmtNop -> () (* will I need to generate so labels work? *)
 
