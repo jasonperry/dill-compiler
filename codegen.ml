@@ -440,8 +440,6 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           (* Look up field offset in Lltenv, emit gep *)
           let offset, fieldtype = Lltenv.find_field ptypekey fld lltypes in
           let alloca = build_struct_gep alloca offset "field" builder in
-          (* TODO: wait, if it's array do I have to load? Could I just check
-             if a pointer type? *)
           (*  Propagate field's typetag to next iteration *)
           get_field_alloca rest ixopt fieldtype alloca
      in
@@ -473,9 +471,21 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
   (* else alloca *)
   )
 
-  | ExpRecord _ (* fieldlist *) ->
-     (* TODO: allow it as long as I know the hint! *)
-     failwith "Struct literal codegen not implemented in non-assignment context"
+  | ExpRecord fieldlist ->
+     let typekey = (ex.decor.modulename, ex.decor.typename) in
+     let llty = Lltenv.find_lltype typekey lltypes in
+     let recaddr = build_alloca llty "recaddr" builder in
+     List.iter (fun (fname, fexp) ->
+         (* have to use the map from fields to nums *)
+         let fexpval = gen_expr the_module builder syms lltypes fexp in
+         let fieldaddr =
+           build_struct_gep recaddr
+             (fst (Lltenv.find_field typekey fname lltypes))
+             "fieldaddr" builder in
+         ignore (build_store fexpval fieldaddr builder)
+       ) fieldlist;
+     build_load recaddr "recordval" builder
+
 
   | ExpVariant ((tymod, tyname), variant, eopt) ->
      debug_print ("Generating variant expression code for " ^ tyname);
@@ -688,7 +698,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtAssign (varexp, ex) -> (
     let alloca, vetype =
       get_varexp_alloca the_module builder varexp syms lltypes in
-    match ex.e with
+    (*match ex.e with
     (* Assignment of a record expression: create and fill the struct. *)
     (* TODO: hopefully supercede this with more general record expression gen. *)
     | ExpRecord fieldlist ->
@@ -713,7 +723,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
            ignore (build_store fexpval fieldaddr builder)
          ) fieldlist
     (* normal single-value assignment: generate the expression. *)
-    | _ -> (
+    | _ -> ( *)
       let expval = gen_expr the_module builder syms lltypes ex in
       (* cases to handle nullable types *)
       if vetype.nullable = ex.decor.nullable then
@@ -722,7 +732,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       else
         let promotedval = promote_value expval vetype builder lltypes in
         ignore (build_store promotedval alloca builder)
-  ))
+  ) (* ) *)
 
   | StmtNop -> () (* will I need to generate so labels work? *)
 

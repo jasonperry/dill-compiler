@@ -140,7 +140,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                  match get_ttag_field prevty fname with
                  | None -> 
                     Error {loc=ex.decor;
-                           value="Field " ^ fname ^ "does not belong to type "
+                           value="Field " ^ fname ^ " does not belong to type "
                                  ^ typetag_to_string prevty}
                  | Some finfo ->
                     if Option.is_some ixopt && not finfo.fieldtype.array then
@@ -671,7 +671,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
     match check_lvalue syms tenv varexpr stm.decor with
     | Error err -> Error [err]
     | Ok ({e=newlval; decor=lvalty} as lvalexp) -> 
-       (* check rhs expression *)
+       (* check rhs expression, giving type hint *)
        match check_expr syms tenv ~thint:(Some lvalty) e with
        | Error err -> Error [err]
        | Ok ({e=_; decor=ettag} as te) -> 

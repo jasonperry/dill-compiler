@@ -1,0 +1,16 @@
+(* nullable struct value *)
+module null05 begin
+
+open stdio;
+open complex;
+
+export proc main ()
+begin
+   var c: Complex? = {i=1.4, j=-3.3};
+   if (var creal ?= c) then
+      printFloat(creal.i);
+   endif
+   c = null; 
+end main
+
+end null05

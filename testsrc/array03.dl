@@ -1,0 +1,17 @@
+(* array of user-defined type *)
+
+open stdio;
+open complex;
+
+proc main() => Int
+begin
+  var a: Complex[] = [{i=4.4,j=3.3}, {i=5.5,j=6.6}];
+  a[1] = {i=7.7, j=8.8};
+  var i: Int = 0;
+  while i < 2 loop 
+    printFloat(a[i].i);
+    printFloat(a[i].j);
+    i = i + 1;
+  endwhile
+  return 0;
+end main

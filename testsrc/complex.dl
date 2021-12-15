@@ -1,4 +1,4 @@
-(* Struct initialized at declaration. *)
+(* Immutable type to import into other modules *)
 module complex begin
 
 
