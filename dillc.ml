@@ -175,14 +175,15 @@ let write_module_native filename modcode machine =
 let gen_x86_machine () = 
   Llvm_all_backends.initialize (); (* was _X86 *)
   let open Llvm_target in
-  let ttriple = "x86_64-pc-linux-gnu" in
+  (* let ttriple = "x86_64-pc-linux-gnu" in *)
+  let ttriple = Target.default_triple () in 
   let target = Target.by_triple ttriple in
   Llvm_target.TargetMachine.create
     ~triple:ttriple
-    ~cpu:"generic"
+    (* ~cpu:"generic"
     (* got these features from the clang llvm output. *)
     (* TODO: figure out how to add pie feature. *)
-    ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" target
+    ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" *) target
 
   
 (** Write a module to disk as LLVM IR text. *)
