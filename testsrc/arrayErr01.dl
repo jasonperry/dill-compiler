@@ -1,0 +1,11 @@
+(* uninit array error *)
+
+open stdio;
+
+proc main() => Int
+begin
+  var a: Int[];
+  (* a = [3,5,7]; *)
+  printInt(a[0]);
+  return 0;
+end main

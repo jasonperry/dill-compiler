@@ -1,10 +1,10 @@
 (* if/else test, else block exists, no elsifs *)
-module If01 =
+module if01 begin
 
-open Stdio;
+open stdio;
 
-export proc main(): Void = 
-
+export proc main()
+begin
    var x = 10;
    if (x == 11) then
       x = x + 1;
@@ -16,4 +16,4 @@ export proc main(): Void =
 
 end main
 
-end If01
+end if01

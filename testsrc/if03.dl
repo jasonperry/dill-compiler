@@ -1,5 +1,8 @@
 (* if/else test, conditional assignment *)
 
+open stdio;
+
+proc main()
 begin
 
 var x = 11;
@@ -13,4 +16,4 @@ endif
 
 printFloat(y);
 
-end
+end main

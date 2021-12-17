@@ -1,5 +1,8 @@
 (* if/else test, else block exists, no elsifs *)
 
+open stdio;
+
+proc main()
 begin
 
 var x = 10;
@@ -9,4 +12,4 @@ endif
 
 printInt(x);  (* 10 *)
 
-end
+end main

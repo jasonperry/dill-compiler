@@ -10,7 +10,7 @@ begin
   maybeInt = 5;     (* test both kinds of store *)
 
   var maybe2 : Int? = null;
-  maybe2 = maybeInt;  (* value types, it's a copy (whew) *)
+  (* maybe2 = maybeInt; *)  (* value types, it's a copy (whew) *)
 
   (* Is it too implicit to assign an int to a nullable variable? 
    * That was kinda my whole point, to make nullables more usable *)

@@ -1,0 +1,32 @@
+(* Struct comparison test *)
+module structCmp01 begin
+
+open stdio;
+
+type Complex is struct
+  i: Float,
+  j: Float;
+
+
+export proc main()
+begin
+
+  var cpx: Complex = {i=2.0, j=1.111};
+  var cpx2: Complex = {i=2.0, j=1.11};
+  var cpx3: Complex = {i=2.0, j=1.11};
+  (* cpx = {i=4.0, j=-1.53}; *)
+  if cpx == cpx2 then
+    printString("1 and 2 are equal");
+  else
+    printString("1 and 2 are not equal");
+  endif
+
+  if cpx2 == cpx3 then
+    printString("2 and 3 are equal");
+  else
+    printString("2 and 3 are not equal");
+  endif
+
+end main
+
+end structCmp01

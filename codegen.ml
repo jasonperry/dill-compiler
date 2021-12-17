@@ -759,9 +759,12 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          let condres =
            build_icmp Icmp.Ne
              nulltag (const_int nulltag_type 0) "condres" builder in
+         (* need to save start_bb's position before adding code to 
+            the then block *)
+         let start_block = insertion_block builder in
+         position_at_end thenbb builder;
          (* desugar a new declaration if needed, then generate code
           * to store the non-null condition result value *)
-         position_at_end thenbb builder;
          if isdecl then
            gen_stmt the_module builder lltypes 
              { st=StmtDecl (varname, None, None); decor=blocksyms };
@@ -770,6 +773,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          let realval = build_extractvalue condval 1 "condval" builder in
          (* build_load valaddr "realval" builder in *)
          ignore (build_store realval alloca builder);
+         (* restore the insertion point to the end of start_bb *)
+         position_at_end start_block builder;
          condres
       | _ ->
          let condval = gen_expr the_module builder syms lltypes cond in
@@ -786,7 +791,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let blocksyms = (List.hd thenblock).decor in
     position_at_end start_bb builder;
     let condval = gen_cond cond then_bb blocksyms in
-    let new_start_bb = insertion_block builder in (* cond may add bb's *)
+    (* need this because a (variant) comparison in the cond can add bb's *)
+    let new_start_bb = insertion_block builder in 
     position_at_end then_bb builder;
     List.iter (gen_stmt the_module builder lltypes) thenblock;
     (* code insertion could add new blocks to the "then" block. *)

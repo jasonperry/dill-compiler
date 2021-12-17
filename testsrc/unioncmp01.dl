@@ -1,0 +1,30 @@
+(* passing unions to a function (literal and as variables) *)
+
+open stdio;
+
+type Status is variant
+  | ok
+  | error: Int;
+
+proc checkVariants(s1: Status, s2: Status) => Bool
+begin
+  return s1 == s2;
+end checkVariants
+
+proc main()
+begin
+  var s1 = Status|error(43);
+  var res = checkVariants(s1, Status|error(43));
+
+  if s1 == Status|error(43) then
+    printString("same");
+  else
+    printString("different");
+  endif
+
+  if res then
+    printString("Statuses are the same");
+  else
+    printString("Statuses are different");
+  endif
+end main

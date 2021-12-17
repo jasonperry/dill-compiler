@@ -130,9 +130,8 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) =
   let topsyms : Llvm.llvalue st_node = Symtable.make_empty () in 
   (* don't need to create import or module syms, analyzer does *)
   (* We pass in the headers from the AST here,
-   ( so the analyzer doesn't have to call back out. *)
-  (* Imports are folded together. *)
-  (* TODO: need to build new type environment from this too *)
+     so the analyzer doesn't have to call back out. 
+     The analyzer creates its own type environment. *)
   let ispecs = load_imports cconfig ispecs parsedmod.imports in
   match Analyzer.check_module topsyms base_tenv ispecs parsedmod with
   | Error errs -> Error (List.rev errs)
@@ -172,7 +171,7 @@ let write_module_native filename modcode machine =
     machine;
   print_endline ("Wrote object code file " ^ outfilename)
 
-let gen_x86_machine () = 
+let gen_target_machine () = 
   Llvm_all_backends.initialize (); (* was _X86 *)
   let open Llvm_target in
   (* let ttriple = "x86_64-pc-linux-gnu" in *)
@@ -180,10 +179,11 @@ let gen_x86_machine () =
   let target = Target.by_triple ttriple in
   Llvm_target.TargetMachine.create
     ~triple:ttriple
+    ~reloc_mode:RelocMode.PIC (* unless statically linked? *)
     (* ~cpu:"generic"
     (* got these features from the clang llvm output. *)
-    (* TODO: figure out how to add pie feature. *)
-    ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" *) target
+    ~features:"+cx8,+fxsr,+mmx,+sse,+sse2,+x87" *)
+    target
 
   
 (** Write a module to disk as LLVM IR text. *)
@@ -251,7 +251,7 @@ let () =
         if not cconfig.typecheck_only then (
           debug_print "* codegen stage reached";
           let open Llvm_target in
-          let machine = gen_x86_machine () in
+          let machine = gen_target_machine () in
           let layout = TargetMachine.data_layout machine in
           let modcode, header = codegen cconfig tenv syms layout typedmod in
           (* should we set this before codegen? *)
