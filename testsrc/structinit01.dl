@@ -1,0 +1,22 @@
+(* Struct initialized piecewise. Code to analyze this will be pretty
+sophisticated. *)
+module struct01 begin
+
+open stdio;
+
+type Complex is struct
+  i: Float,
+  j: Float;
+
+
+export proc main()
+begin
+  var cpx: Complex; (*  = {i=2.0, j=1.111}; *)
+  (* cpx = {i=4.0, j=-1.53}; *)
+  cpx.i = 3.0;
+  cpx.j = -1.7;
+  (* printFloat(cpx.i);
+  printFloat(cpx.j); *)
+end main
+
+end struct01

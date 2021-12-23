@@ -7,12 +7,18 @@ proc main() => Int
 begin
   var a: Complex[] = [{i=4.4,j=3.3}, {i=5.5,j=6.6}];
   a[1] = {i=7.7, j=8.8};
+  var x: Complex = {i=4.3, j=2.2};
+  var b: Complex[] = [x, {i=4.4, j=-0.9}, x];
   (* a[0].i = 1.9; (* needs mutable *) *)
   var i: Int = 0;
   while i < 2 loop 
     printFloat(a[i].i);
     printFloat(a[i].j);
+    printFloat(b[i].i);
+    printFloat(b[i].j);
     i = i + 1;
   endwhile
+  printFloat(b[2].i);
+  printFloat(b[2].j);
   return 0;
 end main

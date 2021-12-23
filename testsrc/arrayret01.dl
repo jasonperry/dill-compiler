@@ -1,0 +1,17 @@
+(* returning an array value *)
+
+open stdio;
+
+proc arrayRet() => Float[]
+begin
+  var x: Float[] = [2.3, 3.4, 4.5, 5.6];
+  return x;
+end arrayRet
+
+proc main()
+begin
+  var ra = arrayRet();
+  printFloat(ra[0]);  (* works mysteriously even if stack allocated *)
+  printFloat(ra[3]);  (* definitely requires heap allocation *)
+  return;
+end main

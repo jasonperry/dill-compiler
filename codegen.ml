@@ -537,7 +537,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
      debug_print ("eltType: " ^ typetag_to_string ((List.hd elist).decor));
      debug_print ("eltType: " ^ string_of_lltype eltType);
      (* alloca for the raw array data. why is it including the  *)
-     let datalloca = build_array_alloca eltType
+     let datalloca = (* build_array_alloca *) build_array_malloc eltType
                     (const_int int_type (List.length elist)) "arrdata"
                     builder in
      List.iteri (fun i e ->

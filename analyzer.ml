@@ -465,6 +465,7 @@ and check_lvalue syms tenv (((varname, ixopt), flds) as varexpr) loc =
     | Some (varsym, scope) -> (
       (* Check the lvalue (new), first setting as initted if applicable. *)
       if Option.is_none ixopt && flds = [] then
+        (* This will be expanded to update the specific field's uninit status. *)
         (syms.uninit <- StrSet.remove varname syms.uninit;
          if scope < syms.scopedepth then 
            (* initialized from parent scope *)
