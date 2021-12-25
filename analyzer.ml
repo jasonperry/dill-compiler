@@ -478,7 +478,8 @@ and check_lvalue syms tenv (((varname, ixopt), flds) as varexpr) loc =
          let rec is_assignable varsym prevmut prevty flds = 
                   (* it can be non-var but still mutable *)
            match flds with
-           | [] -> prevmut
+           (* still not sure if this is right for array fields *)
+           | [] -> prevmut || (varsym.symtype.array && varsym.mut)
            | (fname, _)::rest ->
               (* if symbol isn't mutable, fields can never be changed *)
               if not varsym.mut then false else
@@ -487,15 +488,17 @@ and check_lvalue syms tenv (((varname, ixopt), flds) as varexpr) loc =
                 | Some finfo ->
                    (* array indexes keep the mutability of the var/field *)
                    is_assignable varsym finfo.mut finfo.fieldtype rest
-         in 
+         in
+         (* Arrays received as args are not vars but their elements 
+            can be assigned if passed mutable. *)
+         (* still not right, you can't assign to the whole array *)
          if not (is_assignable varsym varsym.var varsym.symtype flds) then
            Error {loc=loc;
                   value="Assignment to immutable l-value "
                          ^ exp_to_string lvalexp}
          else
            Ok lvalexp
-    )             
-
+    )
 
 
 (** Check for a redeclaration (name exists at same scope) *)
@@ -562,7 +565,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
                 'condsyms' node *)
              Symtable.addvar condsyms varname
                {symname=varname; symtype={ety with nullable=false}; var=true;
-                mut=ety.tclass.muttype; addr=None};
+                mut=(ety.tclass.muttype || ety.array); addr=None};
              (* rebuild the name-only varexp so it has the result type. *)
              Ok { e=ExpNullAssn (decl, ((varname, None), []), tyopt, goodex);
                   decor=bool_ttag }
@@ -665,7 +668,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
           (* Everything is Ok, create symbol table structures. *)
           Symtable.addvar syms v
             {symname=v; symtype=vty; var=true;
-             mut=vty.tclass.muttype; addr=None};
+             mut=(vty.tclass.muttype || vty.array); addr=None};
           if Option.is_none e2opt then
             syms.uninit <- StrSet.add v syms.uninit;
           (* add symtable info for record fields, if any. Not anymore! *)
@@ -1090,10 +1093,11 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
       else
         let argtypes = concat_ok argchecks in
         (* check that any mutability markers on parameters are allowable. *)
-        let rec check_mutparams argtypes params =
+        let rec check_mutparams (argtypes: typetag list) params =
           match (argtypes, params) with
           | (argtype::argsrest, (mut, _, _)::paramsrest) ->
-             if mut && not argtype.tclass.muttype
+             (* arrays are mutable. Should I make a helper function for this? *)
+             if mut && not argtype.array && not argtype.tclass.muttype
              then Error {loc=pdecl.decor;
                          value="Type " ^ argtype.tclass.classname
                                ^ " is immutable and cannot be passed mutable" }
