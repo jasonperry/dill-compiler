@@ -152,16 +152,20 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                       match check_indexexp ixopt with
                       | Error err -> Error err
                       | Ok ixopt -> (
-                        match check_fields fieldty rest with
+                        match check_fields
+                                {fieldty
+                                with array=fieldty.array && (Option.is_none ixopt)}
+                                rest with
                         | Ok (checked_fields, finalty) ->
                            Ok ((fname, ixopt)::checked_fields, finalty)
                         | Error err -> Error err
                ))
-           in
-           match check_fields headtype fields with
-           | Error err -> Error err
-           | Ok (checked_fields, expty) -> 
-           Ok { e=ExpVar ((varstr, ixopt), checked_fields); decor=expty })
+             in
+             debug_print(typetag_to_string headtype);
+             match check_fields headtype fields with
+             | Error err -> Error err
+             | Ok (checked_fields, expty) -> 
+                Ok { e=ExpVar ((varstr, ixopt), checked_fields); decor=expty })
     )
   )
 
@@ -374,10 +378,10 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
                 value=("Unknown record field name or double init: " ^ fname)
               }
          | Some ftype -> 
-             (* recurse if it's a recExpr *)
+             (* recurse if it's a recExpr...could I get away with not? *)
              let res = match fexp.e with
                | ExpRecord _ -> check_recExpr syms tenv ftype fexp
-               | _ -> check_expr syms tenv fexp in
+               | _ -> check_expr syms tenv ~thint:(Some ftype) fexp in
              match res with 
              | Error err -> Error err
              | Ok eres ->
