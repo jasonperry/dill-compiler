@@ -11,7 +11,7 @@ exception CodegenError of string
 (* Trying not to make a new context per module. OK so far. *)
 let context = global_context() 
 let float_type = double_type context
-let int_type = i32_type context
+let int_type = i64_type context
 let bool_type = i1_type context
 let void_type = void_type context
 let nulltag_type = i8_type context
@@ -1121,7 +1121,7 @@ let gen_proc the_module builder lltypes proc =
        (* if return_type (type_of llfunc) = void_type then ( *)
        if fentry.rettype = void_ttag then ( 
          ignore (build_ret_void builder);
-         if !_debug then Llvm_analysis.view_function_cfg llfunc;
+         (* if !_debug then Llvm_analysis.view_function_cfg llfunc; *)
          Llvm_analysis.assert_valid_function llfunc 
        )
        else (

@@ -6,8 +6,9 @@ open stdio;
 export proc main()
 begin
 
-  printInt(collatz::collatz(6171)); (* 261 steps *)
-
+  (* printInt(collatz::collatz(6171)); (* 261 steps *) *)
+  printInt(collatz::collatz(837799)); (* 524 steps, overflows int32 *)  
+  (* printInt(collatz::collatz(596310)); *)
 end main
 
 end import01

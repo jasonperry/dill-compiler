@@ -2,10 +2,11 @@
 // later, have a stdlib module that's always opened.
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdbool.h>
 
-void printInt(int n) {
-  printf("%d\n", n);
+void printInt(int64_t n) {
+  printf("%ld\n", n);
   return;
 }
 

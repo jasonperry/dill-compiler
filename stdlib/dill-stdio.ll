@@ -9,23 +9,23 @@ target triple = "x86_64-pc-linux-gnu"
 %struct._IO_wide_data = type opaque
 %struct.nullstr = type { i8, i8* }
 
-@.str = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1
+@.str = private unnamed_addr constant [5 x i8] c"%ld\0A\00", align 1
 @.str.1 = private unnamed_addr constant [4 x i8] c"%f\0A\00", align 1
 @stdin = external global %struct._IO_FILE*, align 8
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
-define dso_local void @printInt(i32 %0) #0 {
-  %2 = alloca i32, align 4
-  store i32 %0, i32* %2, align 4
-  %3 = load i32, i32* %2, align 4
-  %4 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str, i64 0, i64 0), i32 %3)
+define dso_local void @"stdio::printInt"(i64 %0) #0 {
+  %2 = alloca i64, align 8
+  store i64 %0, i64* %2, align 8
+  %3 = load i64, i64* %2, align 8
+  %4 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.str, i64 0, i64 0), i64 %3)
   ret void
 }
 
 declare i32 @printf(i8*, ...) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
-define dso_local void @printFloat(double %0) #0 {
+define dso_local void @"stdio::printFloat"(double %0) #0 {
   %2 = alloca double, align 8
   store double %0, double* %2, align 8
   %3 = load double, double* %2, align 8
@@ -34,7 +34,7 @@ define dso_local void @printFloat(double %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
-define dso_local void @printString(i8* %0) #0 {
+define dso_local void @"stdio::printString"(i8* %0) #0 {
   %2 = alloca i8*, align 8
   store i8* %0, i8** %2, align 8
   %3 = load i8*, i8** %2, align 8
@@ -45,7 +45,7 @@ define dso_local void @printString(i8* %0) #0 {
 declare i32 @puts(i8*) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
-define dso_local { i8, i8* } @Stdio_getLine() #0 {
+define dso_local { i8, i8* } @"stdio::getLine"() #0 {
   %1 = alloca %struct.nullstr, align 8
   %2 = alloca i8*, align 8
   %3 = alloca i64, align 8
@@ -79,13 +79,15 @@ define dso_local { i8, i8* } @Stdio_getLine() #0 {
 
 declare i64 @getline(i8**, i64*, %struct._IO_FILE*) #1
 
-attributes #0 = { noinline nounwind optnone sspstrong uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
-attributes #1 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #0 = { noinline nounwind optnone sspstrong uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 
-!llvm.module.flags = !{!0, !1, !2}
-!llvm.ident = !{!3}
+!llvm.module.flags = !{!0, !1, !2, !3, !4}
+!llvm.ident = !{!5}
 
 !0 = !{i32 1, !"wchar_size", i32 4}
 !1 = !{i32 7, !"PIC Level", i32 2}
 !2 = !{i32 7, !"PIE Level", i32 2}
-!3 = !{!"clang version 11.1.0"}
+!3 = !{i32 7, !"uwtable", i32 1}
+!4 = !{i32 7, !"frame-pointer", i32 2}
+!5 = !{!"clang version 13.0.0"}
