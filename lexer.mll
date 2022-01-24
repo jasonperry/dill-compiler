@@ -36,8 +36,8 @@ rule token = parse  (* funny that it's called parse *)
   | "\""
     { string (Buffer.create 80) lexbuf }  
   | iconst as i
-    (* TODO: checking for 32-bit fit. Maybe bigints later! *)
-    { ICONST (int_of_string i) }
+   (* OCaml seems to use 63-bit ints now. *)
+    { ICONST (Int64.of_string i) }
   | fconst as f
     { FCONST (float_of_string f) }
   | '('     { LPAREN }

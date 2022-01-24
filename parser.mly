@@ -1,4 +1,4 @@
-%token <int> ICONST  (* TODO: change to int32 *)
+%token <Int64.t> ICONST
 %token <float> FCONST
 %token <string> STRCONST
 %token <string> IDENT_LC

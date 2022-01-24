@@ -4,7 +4,7 @@
 
 type consttype =
   | FloatVal of float
-  | IntVal of int  (* TODO: make int32 to avoid OCaml 31-bit ints *)
+  | IntVal of Int64.t
   | BoolVal of bool
   | StringVal of string
   | NullVal
@@ -233,7 +233,7 @@ and typedef_to_string tdef =
 let rec exp_to_string (e: 'a expr) =
   match e.e with
   | ExpConst (FloatVal f) -> Float.to_string f
-  | ExpConst (IntVal i) -> Int.to_string i
+  | ExpConst (IntVal i) -> Int64.to_string i
   | ExpConst (BoolVal b) -> if b then "true" else "false"
   | ExpConst (StringVal s) -> "\"" ^ String.escaped s ^ "\""
   | ExpConst NullVal -> "null"

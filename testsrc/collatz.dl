@@ -6,18 +6,19 @@ proc collatz(n: Int) => Int
 begin
    var i = n;
    var count = 0;
-   printInt(i);
+   (* printInt(i); *)
    while i != 1 loop
       if i % 2 == 0 then
          i = i/2;
       else
          i = 3*i + 1;
          if i < 0 then
-	    return -1;  (* detect overflow *)
+	    printString("Overflow");
+	    return -1;
 	 endif
       endif
       count = count + 1;
-      printInt(i);
+      (* printInt(i); *)
    endwhile
    return count; 
 end collatz

@@ -1,0 +1,20 @@
+(* find successive longest collatz sequences *)
+open collatz;
+open stdio;
+
+proc main()
+begin
+  var max: Int = 0;
+  var steps: Int;
+  var i: Int = 1;
+  while true loop
+     steps = collatz(i);
+     if steps > max then
+       max = steps;
+       printInt(i);
+       printInt(steps);
+       printString("----");
+     endif
+     i = i + 1;
+   endwhile
+end main

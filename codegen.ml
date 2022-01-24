@@ -364,7 +364,7 @@ let rec gen_constexpr_value lltypes (ex: typetag expr) =
   (* How many types will this support? Might need a tenv later *)
   if ex.decor = int_ttag then
     match ex.e with
-    | ExpConst (IntVal n) -> const_int int_type n
+    | ExpConst (IntVal n) -> const_of_int64 int_type n true
     | ExpUnop (OpNeg, e) -> const_neg (gen_constexpr_value lltypes e)
     | ExpBinop (e1, op, e2) -> (
       let c1 = gen_constexpr_value lltypes e1 in
@@ -450,7 +450,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
   match ex.e with
   | ExpConst NullVal -> const_int nulltag_type 0 (* maybe used now *)
   | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
-  | ExpConst (IntVal i) -> const_int int_type i
+  | ExpConst (IntVal i) -> const_of_int64 int_type i true (* signed *)
   | ExpConst (FloatVal f) -> const_float float_type f
   | ExpConst (StringVal s) ->
      (* It will build the instruction /and/ return the ptr value *)
