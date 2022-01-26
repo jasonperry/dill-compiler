@@ -1,0 +1,11 @@
+(* array length operator *)
+
+open stdio;
+
+proc main() => Int
+begin
+  var a: Float[] = [1.1,8.8,7.7,6.6,5.5,4.4,3.3]; (* { func(i) => 8-i } *)
+  a[5] = 14.9;                                (* [ func(i) begin return 8-i; end] *)
+  printInt(a.length);
+  return 0;
+end main

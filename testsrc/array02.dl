@@ -5,8 +5,8 @@ open stdio;
 proc main() => Int
 begin
   var a: Float[] = [8.8,7.7,6.6,5.5,4.4,3.3]; (* { func(i) => 8-i } *)
-  a[5] = 14.9;
-  var i: Int = 0;
+  a[5] = 14.9;                                (* [ func(i) begin return 8-i; end] *)
+  var i: Int = 0;                             (* [ i => 8-i ]; *)
   while i < 6 loop  (* soon: a.length *)
     printFloat(a[i]);
     i = i + 1;

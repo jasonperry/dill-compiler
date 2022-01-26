@@ -46,35 +46,6 @@ and typetag = {
     nullable: bool;
   }
 
-let get_cdata_field cdata fname =
-  List.find_opt (fun (fi: fieldInfo) -> fi.fieldname = fname) cdata.fields
-
-(** Determine if a type has a field; array and nullable can't have fields *)
-let get_ttag_field ttag fname =
-  if ttag.array || ttag.nullable then None
-  else get_cdata_field ttag.tclass fname
-
-let is_primitive_type ttag =
-  (* would it be better to just look for the fixed set of primitive types? 
-     Maybe not, because that will expand (Int64, etc.) *)
-  not ttag.array && not ttag.nullable
-  && ttag.tclass.fields = [] && ttag.tclass.variants = []
-  
-(* These are useful b/c you can't just check the fields to see if
- * the "outermost" type is struct or variant *)
-let is_struct_type ttag =
-  (not ttag.array) && (not ttag.nullable) && ttag.tclass.fields <> []
-
-(* Hmm, should I make a nullable count as a variant type here? *)
-let is_variant_type ttag =
-  (not ttag.array) && (not ttag.nullable) && ttag.tclass.variants <> []
-    
-
-(*
-(** Should only need this for printing out, not internally. *)
-let typename (ttag: typetag) =
-  ttag.modulename ^ "::" ^ ttag.typename
- *)
 
 (** Generate a type for a typetag for a class (and later, specify generics *)
 let gen_ttag (classdata: classData) _ (* mapping to type vars *) =
@@ -131,3 +102,43 @@ let string_class = { classname="String"; in_module=""; muttype=false;
                      params=[]; fields=[]; variants=[] }
 let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)
+
+
+                           (* helper functions *)
+
+(** Try to fetch field info from a classdata. *)
+let get_cdata_field cdata fname =
+  List.find_opt (fun (fi: fieldInfo) -> fi.fieldname = fname) cdata.fields
+
+(** Try to fetch field info from a typetag *)
+let get_ttag_field ttag fname =
+  if ttag.nullable then None
+  else if ttag.array then (
+    if fname = "length" then
+      Some { fieldname="length"; priv=false; mut=false; fieldtype=int_ttag }
+    else None
+  )
+  else get_cdata_field ttag.tclass fname
+
+
+let is_primitive_type ttag =
+  (* would it be better to just look for the fixed set of primitive types? 
+     Maybe not, because that will expand (Int64, etc.) *)
+  not ttag.array && not ttag.nullable
+  && ttag.tclass.fields = [] && ttag.tclass.variants = []
+  
+(* These are useful b/c you can't just check the fields to see if
+ * the "outermost" type is struct or variant *)
+let is_struct_type ttag =
+  (not ttag.array) && (not ttag.nullable) && ttag.tclass.fields <> []
+
+(* Hmm, should I make a nullable count as a variant type here? *)
+let is_variant_type ttag =
+  (not ttag.array) && (not ttag.nullable) && ttag.tclass.variants <> []
+    
+
+(*
+(** Should only need this for printing out, not internally. *)
+let typename (ttag: typetag) =
+  ttag.modulename ^ "::" ^ ttag.typename
+ *)

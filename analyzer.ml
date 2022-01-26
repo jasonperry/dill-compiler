@@ -127,6 +127,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
            match check_indexexp ixopt with 
            | Error err -> Error err
            | Ok ixopt -> (
+             (* get type of expression apart from array *)
              let headtype =
                if Option.is_some ixopt then
                  {entry.symtype with array=false}

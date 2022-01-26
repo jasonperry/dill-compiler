@@ -33,6 +33,7 @@ module TtagMap = Map.Make(TypeTag)
 module Lltenv = struct
   (* fieldmap is used for both struct offsets and union tags. *)
   type fieldmap = (int * typetag) StrMap.t
+  (* Maps modulename, typename pair to the LLVM type and field map. *)
   type t = (lltype * fieldmap) TypeMap.t  
   let empty: t = TypeMap.empty
   let add strpair (llvarty, fmap) map = TypeMap.add strpair (llvarty, fmap) map
@@ -437,12 +438,18 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           (* Get just the class of parent type so we can find its field info.
              Analysis determined it's not a nullable. *)
           let ptypekey = (parentty.modulename, parentty.typename) in
-          (* Look up field offset in Lltenv, emit gep *)
-          let offset, fieldtype = Lltenv.find_field ptypekey fld lltypes in
-          let alloca = build_struct_gep alloca offset "field" builder in
-          (*  Propagate field's typetag to next iteration *)
-          get_field_alloca rest ixopt fieldtype alloca
+          (* If array length, it has no further fields, we're done. *)
+          (* the test for = "length" should be redundant. *)
+          if parentty.array && fld = "length" then
+            (build_struct_gep alloca 0 "length" builder, int_ttag)
+          else
+            (* Look up field offset in Lltenv, emit gep *)
+            let offset, fieldtype = Lltenv.find_field ptypekey fld lltypes in
+            let alloca = build_struct_gep alloca offset "field" builder in
+            (*  Propagate field's typetag to next iteration *)
+            get_field_alloca rest ixopt fieldtype alloca
      in
+     (* top-level call *)
      get_field_alloca fields ixopt entry.symtype alloca
 
 (** Generate LLVM code for an expression *)

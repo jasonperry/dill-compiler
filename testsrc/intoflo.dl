@@ -11,9 +11,7 @@ begin
   endwhile
   printInt(x-1); (* should be largest positive *)
 
-  var y: Int = 4500300200100;
-  printInt(y);
-  y = 9223372036854775807; (* max 64-bit *)
+  var y = 9223372036854775807; (* max 64-bit *)
   printInt(y);
 
 end main
