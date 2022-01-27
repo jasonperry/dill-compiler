@@ -7,11 +7,64 @@ target triple = "x86_64-pc-linux-gnu"
 %struct._IO_marker = type opaque
 %struct._IO_codecvt = type opaque
 %struct._IO_wide_data = type opaque
+%struct.int_array = type { i64, i64* }
 %struct.nullstr = type { i8, i8* }
 
 @.str = private unnamed_addr constant [5 x i8] c"%ld\0A\00", align 1
 @.str.1 = private unnamed_addr constant [4 x i8] c"%f\0A\00", align 1
 @stdin = external global %struct._IO_FILE*, align 8
+
+; Function Attrs: noinline nounwind optnone sspstrong uwtable
+define dso_local { i64, i64* } @"stdio::initIntArray"(i64 %0, i64 %1) #0 {
+  %3 = alloca %struct.int_array, align 8
+  %4 = alloca i64, align 8
+  %5 = alloca i64, align 8
+  %6 = alloca i32, align 4
+  store i64 %0, i64* %4, align 8
+  store i64 %1, i64* %5, align 8
+  %7 = load i64, i64* %4, align 8
+  %8 = getelementptr inbounds %struct.int_array, %struct.int_array* %3, i32 0, i32 0
+  store i64 %7, i64* %8, align 8
+  %9 = load i64, i64* %4, align 8
+  %10 = mul i64 %9, 8
+  %11 = call noalias align 16 i8* @malloc(i64 %10) #3
+  %12 = bitcast i8* %11 to i64*
+  %13 = getelementptr inbounds %struct.int_array, %struct.int_array* %3, i32 0, i32 1
+  store i64* %12, i64** %13, align 8
+  store i32 0, i32* %6, align 4
+  br label %14
+
+14:                                               ; preds = %26, %2
+  %15 = load i32, i32* %6, align 4
+  %16 = sext i32 %15 to i64
+  %17 = load i64, i64* %4, align 8
+  %18 = icmp slt i64 %16, %17
+  br i1 %18, label %19, label %29
+
+19:                                               ; preds = %14
+  %20 = load i64, i64* %5, align 8
+  %21 = getelementptr inbounds %struct.int_array, %struct.int_array* %3, i32 0, i32 1
+  %22 = load i64*, i64** %21, align 8
+  %23 = load i32, i32* %6, align 4
+  %24 = sext i32 %23 to i64
+  %25 = getelementptr inbounds i64, i64* %22, i64 %24
+  store i64 %20, i64* %25, align 8
+  br label %26
+
+26:                                               ; preds = %19
+  %27 = load i32, i32* %6, align 4
+  %28 = add nsw i32 %27, 1
+  store i32 %28, i32* %6, align 4
+  br label %14, !llvm.loop !6
+
+29:                                               ; preds = %14
+  %30 = bitcast %struct.int_array* %3 to { i64, i64* }*
+  %31 = load { i64, i64* }, { i64, i64* }* %30, align 8
+  ret { i64, i64* } %31
+}
+
+; Function Attrs: nounwind
+declare noalias align 16 i8* @malloc(i64) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local void @"stdio::printInt"(i64 %0) #0 {
@@ -22,7 +75,7 @@ define dso_local void @"stdio::printInt"(i64 %0) #0 {
   ret void
 }
 
-declare i32 @printf(i8*, ...) #1
+declare i32 @printf(i8*, ...) #2
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local void @"stdio::printFloat"(double %0) #0 {
@@ -42,7 +95,7 @@ define dso_local void @"stdio::printString"(i8* %0) #0 {
   ret void
 }
 
-declare i32 @puts(i8*) #1
+declare i32 @puts(i8*) #2
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local { i8, i8* } @"stdio::getLine"() #0 {
@@ -77,10 +130,12 @@ define dso_local { i8, i8* } @"stdio::getLine"() #0 {
   ret { i8, i8* } %17
 }
 
-declare i64 @getline(i8**, i64*, %struct._IO_FILE*) #1
+declare i64 @getline(i8**, i64*, %struct._IO_FILE*) #2
 
 attributes #0 = { noinline nounwind optnone sspstrong uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #1 = { nounwind "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #2 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #3 = { nounwind }
 
 !llvm.module.flags = !{!0, !1, !2, !3, !4}
 !llvm.ident = !{!5}
@@ -91,3 +146,5 @@ attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protect
 !3 = !{i32 7, !"uwtable", i32 1}
 !4 = !{i32 7, !"frame-pointer", i32 2}
 !5 = !{!"clang version 13.0.0"}
+!6 = distinct !{!6, !7}
+!7 = !{!"llvm.loop.mustprogress"}

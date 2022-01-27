@@ -1,9 +1,23 @@
-// functions always available in the top-level of dill.
-// later, have a stdlib module that's always opened.
+// low-level standard library functions for Dill
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+
+struct int_array {
+  int64_t length;
+  int64_t* data;
+};
+
+struct int_array initIntArray(int64_t length, int64_t value) {
+  struct int_array a;
+  a.length = length;
+  a.data = malloc(length * sizeof(int64_t));
+  for (int i=0; i < length; i++)
+    a.data[i] = value;
+  return a;
+}
 
 void printInt(int64_t n) {
   printf("%ld\n", n);

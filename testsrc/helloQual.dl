@@ -1,10 +1,11 @@
-module HelloQual =
+module helloQual begin
 
-import Stdio;
+import stdio;
 
-export proc main(): Int =
-   Stdio.printInt(43);
+export proc main() => Int
+begin
+   stdio::printInt(43);
    return 0;
 end main
 
-end HelloQual
+end helloQual
