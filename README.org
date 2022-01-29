@@ -19,7 +19,7 @@ include:
   that with mutation tracking, it will be straightforward for the
   compiler to correctly use values or references as appropriate for
   efficiency.
-- Struct and variant types, generative type aliases
+- Struct and variant types, later: generative type aliases
 - All concrete types are datatypes; there are no classes (containers
   for a type and methods), though there is method call syntax. Method
   call syntax also distinguishes mutating and non-mutating methods.
@@ -39,9 +39,9 @@ include:
   syntax. Semicolons as statement terminators. "As readable as
   possible, as verbose as necessary." Making code easy to type and even
   pronounce are also goals.
-- Eventually: generics. I originally thought of doing interface
-  constraints, but now am thinking of having no interfaces at all and
-  letting closure passing be used for generic operators.
+- Planned: generics with interface constraints (interfaces to be called
+  "abstypes")
+- Planned: coroutines (probably stackless)
 
 We'll see how far I get. The initial backend is LLVM, currently
 targeting only x86_64.
