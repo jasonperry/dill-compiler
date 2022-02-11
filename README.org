@@ -1,28 +1,25 @@
 I'm working on a statically typed programming language that captures how
-I want to write imperative code, with nice safety features and good
-not-too-abstract abstractions. I'm also doing this to learn about
-compiler design and test out some ideas in that area. Goals and features
-include:
-- "Keep mutation local"; being an imperative language, local variables
-  are reassignable. But datatypes are immutable by default, and
-  procedure arguments are passed immutably by default and not
-  reassignable. Passing a mutable reference must be indicated at both
-  the function definition and call site. Possibly this will allow for
-  more useful types of static analysis, in addition to making the
-  code's behavior clearer from the source.
-- The explicit mutation tracking should mean that we can avoid
-  distinguishing values from references in the source, without
-  sacrificing efficiency. It's clear that languages should not have
-  hidden differences in behavior that come from using value
-  vs. reference types; also, this language is meant to be higher-level
-  than languages requiring manual notation of references. The hope is
-  that with mutation tracking, it will be straightforward for the
-  compiler to correctly use values or references as appropriate for
-  efficiency.
-- Struct and variant types, later: generative type aliases
-- All concrete types are datatypes; there are no classes (containers
-  for a type and methods), though there is method call syntax. Method
-  call syntax also distinguishes mutating and non-mutating methods.
+I want to write imperative code, with safety, a /relatively/ advanced
+type system, and a good orthogonal set of abstractions, with as close to
+zero runtime overhead as possible. The biggest idea is about how it
+handles mutation. Goals and features include:
+- "Imperative locally, functional-first globally"; being an imperative
+  language, local variables are reassignable. But datatypes are
+  immutable by default, and procedure arguments are passed immutably by
+  default and not reassignable.
+- Non-local mutation is made explicit; passing a mutable reference must
+  be indicated at both the function definition and call site. Possibly
+  this will allow for more useful types of static analysis, in addition
+  to making the code's behavior clearer from the source.
+- No distinction of references and values in the code; the
+  explicit mutation is a kind of surrogate for that that's closer to the
+  problem domain. There should be no implicit differences in behavior
+  due to using value vs. reference objects. The mutation tracking should
+  help achieve this with minimal sacrifices to efficiency.
+- Struct and variant types
+- All concrete types are datatypes; there are no classes (containers for
+  a type and methods), though method call syntax is planned. Method call
+  syntax also distinguishes mutating and non-mutating methods.
 - Null-safety with explicit nullable (option) types; syntax
   and value promotion convenience features
 - Modules as the primary construct for code grouping and data
@@ -34,13 +31,17 @@ include:
   are not part of the language definition proper; what a module exposes
   is completely specified by its source.
 - Keyword-based block syntax instead of curly braces. Keywords should
-  "do work" of clarifying structure, e.g. "endif" and not just
-  "end". Still, we try to be more concise than Pascal/Ada
+  "do work" of clarifying structure, e.g. ~endif~ and not just
+  ~end~. Still, we try to be more concise than Pascal/Ada
   syntax. Semicolons as statement terminators. "As readable as
   possible, as verbose as necessary." Making code easy to type and even
   pronounce are also goals.
+- Planned: passing procedure references. We'll see if it makes sense to
+  go with full first-class/anonymous functions. If so, we'll introduce a
+  pure function syntax and only allow those to be
+  first-class. Procedures will never be nested.
 - Planned: generics with interface constraints (interfaces to be called
-  "abstypes")
+  "abstypes"?)
 - Planned: coroutines (probably stackless)
 
 We'll see how far I get. The initial backend is LLVM, currently
