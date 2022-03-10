@@ -5,7 +5,7 @@ open stdio;
 
 proc main ()
 begin
-  var cpx: Complex = {i=2.0, j=1.111};
-  printFloat(cpx.i);
-  printFloat(cpx.j);
+   var cpx: Complex = {i=2.0, j=1.111};
+   printFloat(cpx.i);
+   printFloat(cpx.j);
 end main

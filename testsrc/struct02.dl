@@ -7,8 +7,11 @@ type Complex is struct
   i: Float,
   j: Float;
 
+type Cplx is struct
+   f: Int,
+   j: Int;
 
-export proc main()
+proc main()
 begin
 
   var cpx: Complex; (*  = {i=2.0, j=1.111};*)

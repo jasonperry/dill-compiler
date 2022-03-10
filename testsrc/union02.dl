@@ -10,40 +10,42 @@ type Num is variant
 
 export proc main() => Int
 begin
-  var u1 = Num|i(4);
-  (* var fm: Float? = 5.5; *)
-  (* var u2 = Num|i(14); *)
-  (* var u2 = Num|fo(fm); *)
-  var u4 = Num|fo(null); (* bugfix needed *)
+   var u1 = Num|i(4);
+   (* var fm: Float? = 5.5; *)
+   (* var u2 = Num|i(14); *)
+   (* var u2 = Num|fo(fm); *)
+   var u4 = Num|fo(null); (* bugfix needed *)
+   
+   (* fixed: it wasn't catching the type error in the case. *)
+   (* var u3: Num? = null; *)
 
-  (* fixed: it wasn't catching the type error in the case. *)
-  (* var u3: Num? = null; *)
+   (* fixed so this promotes the value properly. *)
+   var u2: Num = Num|fo(5.5); (* val(5.5) *)
+   u2 = Num|fo(null);
 
-  (* fixed so this promotes the value properly. *)
-  var u2: Num = Num|fo(5.5); (* val(5.5) *) 
-
-  case u2
-    of Num|i(i) then
+   case u2
+   of Num|i(i) then
       printInt(i);
-    of Num|fo(nf) then
+   of Num|fo(nf) then
       (* hmm, when I add a statement between, it works... 
-       * because the if statement isn't the first anymore *)
+      * because the if statement isn't the first anymore *)
       (* printString("float nullable case, testing...\n"); *)
       if var f ?= nf then
-        printFloat(f); (* zero bug here again *)
+         printFloat(f); (* zero bug here again *)
       else
-        printString("It's null");
+         printString("It's null");
       endif
-      (*case nf
-        of null then 
-          printString("nothing in there.");
-	of val(f) then
-	  printFloat(f);
-      endcase *)
+      (* second test of just the null *)
+      case nf
+      of null then 
+         printString("nothing in there.");
+      of val(f) then
+         printString("val test passed:");
+	      printFloat(f);
+      endcase
+   endcase
 
-  endcase
-
-  return 0;
+   return 0;
 end main
 
 end union02

@@ -2,12 +2,8 @@
 
 import stdio;
 
-var x = 43;
-
 proc main()
 begin
-   var y = 10;
-   stdio::printInt(x+y);
    stdio::printString("Hello World.\n");
    (* return 0; *)
 end main

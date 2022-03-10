@@ -13,9 +13,9 @@ begin
       else
          i = 3*i + 1;
          if i < 0 then
-	    printString("Overflow");
-	    return -1;
-	 endif
+	         printString("Overflow");
+	         return -1;
+	      endif
       endif
       count = count + 1;
       (* printInt(i); *)

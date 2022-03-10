@@ -1,12 +1,17 @@
+
+open stdio;
+
+proc main()
 begin
 
 var y = 17;
-printInt(y % 16);
-printInt(y % 17);
-printInt(y % 18);
-printInt(y % 3);
-printInt(y % -3);
+    printInt(y % 16);
+    printInt(y % 17);
+    printInt(y % 18);
+    printInt(y % 3);
+    printInt(-y % 3);
+    printInt(y % -3);
 
-printInt(-1 % 7);
+    printInt(-1 % 7);
 
-end
+end main
