@@ -7,7 +7,7 @@ begin
    var b1: Byte = 'a';
    var b2 = '\n';
    var ba: Byte[] = [b1, b2, 'f'];
-
-   (* printBytes(ba); *)
+   var ba2: Byte[] = ['y', 'a', 'y', b2];
+   printBytes(ba);
+   printBytes(ba2);
 end main
-   

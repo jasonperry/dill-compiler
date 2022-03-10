@@ -1,5 +1,7 @@
 // low-level standard library functions for Dill
 
+// TODO: a debug directive to build with debug info.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -8,6 +10,11 @@
 struct int_array {
   int64_t length;
   int64_t* data;
+};
+
+struct byte_array {
+  int64_t length;
+  char* data;
 };
 
 struct int_array initIntArray(int64_t length, int64_t value) {
@@ -36,6 +43,10 @@ void printBool(int b) {
 }
 */
 
+void printBytes(struct byte_array ba) {
+  fwrite(ba.data, 1, ba.length, stdout);
+}
+
 void printString(char* s) {
   puts(s);
   return;
@@ -46,10 +57,10 @@ typedef struct {
   bool tag;
   char* s;
 } nullstr;
-  
+
 
 /** Not working yet, maybe after change tag type to i8. */
-nullstr stdio_getLine() {
+nullstr getLineStdin() {
   char* s;
   size_t n = 0;
   nullstr result;

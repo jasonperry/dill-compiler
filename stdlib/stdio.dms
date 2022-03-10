@@ -3,7 +3,8 @@ modspec stdio begin
 proc initIntArray(length: Int, value: Int) => Int[];
 proc printInt(n: Int) => Void;
 proc printFloat(n: Float) => Void;
+proc printBytes(ba: Byte[]) => Void;
 proc printString(s: String) => Void;
-proc getLine(n: Int) => String?;
+proc getLineStdin(n: Int) => String?;
 
 end stdio
