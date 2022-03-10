@@ -13,6 +13,7 @@ let context = global_context()
 let float_type = double_type context
 let int_type = i64_type context
 let bool_type = i1_type context
+let byte_type = i8_type context
 let void_type = void_type context
 let nulltag_type = i8_type context
 let varianttag_type = i32_type context
@@ -65,9 +66,10 @@ let rec gen_lltype context
   (* need special case for primitive types. Should handle this with some
    * data structure, so it's consistent among modules *)
   | ("", "Void") -> void_type, StrMap.empty
-  | ("", "Bool") -> bool_type, StrMap.empty
   | ("", "Int") -> int_type, StrMap.empty
   | ("", "Float") -> float_type, StrMap.empty
+  | ("", "Byte") -> byte_type, StrMap.empty                                   
+  | ("", "Bool") -> bool_type, StrMap.empty
   | ("", "String") -> pointer_type (i8_type context), StrMap.empty
   | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
   | _ ->
@@ -383,6 +385,10 @@ let rec gen_constexpr_value lltypes (ex: typetag expr) =
     | ExpConst (FloatVal x) -> const_float float_type x
     | ExpUnop (OpNeg, e) -> const_fneg (gen_constexpr_value lltypes e)
     | _ -> failwith "Unimplemented Float const expression"
+  else if ex.decor = byte_ttag then
+    match ex.e with
+    | ExpConst (ByteVal c) -> const_int byte_type (int_of_char c)
+    | _ -> failwith "Unsupported Byte const expression"
   else if ex.decor = bool_ttag then
     match ex.e with
     | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
@@ -456,10 +462,11 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
 and gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
   | ExpConst NullVal -> const_int nulltag_type 0 (* maybe used now *)
-  | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
   | ExpConst (IntVal i) -> const_of_int64 int_type i true (* signed *)
   | ExpConst (FloatVal f) -> const_float float_type f
-  | ExpConst (StringVal s) ->
+  | ExpConst (ByteVal c) -> const_int byte_type (int_of_char c)
+  | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0) 
+ | ExpConst (StringVal s) ->
      (* It will build the instruction /and/ return the ptr value *)
      build_global_stringptr s "sconst" builder
 

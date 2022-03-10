@@ -1,0 +1,13 @@
+(* Byte test *)
+
+open stdio;
+
+proc main()
+begin
+   var b1: Byte = 'a';
+   var b2 = '\n';
+   var ba: Byte[] = [b1, b2, 'f'];
+
+   (* printBytes(ba); *)
+end main
+   

@@ -152,6 +152,7 @@ and byte acc = parse
   | "\\n" { byte ('\n'::acc) lexbuf } (* doesn't matter if it reverses. *)
   | "\\t" { byte ('\t'::acc) lexbuf }
   | "\\r" { byte ('\r'::acc) lexbuf }
+  (* TODO: hex \x## *) (* oh wait, it could be multiple types *)
   | "\\\\" { byte ('\\'::acc) lexbuf }
   | [^ '"' '\\'] { byte ((Lexing.lexeme_char lexbuf 0)::acc) lexbuf }
   | '\n' { raise (Error "Byte constant not terminated at newline") }

@@ -90,13 +90,17 @@ let int_class = { classname="Int"; in_module = ""; muttype=false; params=[];
                   fields=[]; variants=[] } (* later: "Arith" *)
 let int_ttag = gen_ttag int_class []
 
-let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
-                   fields=[]; variants=[] }
-let bool_ttag = gen_ttag bool_class []
-
 let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
                     fields=[]; variants=[] }
 let float_ttag = gen_ttag float_class []
+
+let byte_class = { classname="Byte"; in_module=""; muttype=false; params=[];
+                   fields=[]; variants=[] }
+let byte_ttag = gen_ttag byte_class []
+
+let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
+                   fields=[]; variants=[] }
+let bool_ttag = gen_ttag bool_class []
 
 let string_class = { classname="String"; in_module=""; muttype=false;
                      params=[]; fields=[]; variants=[] }

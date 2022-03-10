@@ -18,6 +18,7 @@ let base_tenv =
   |> TypeMap.add ("", void_ttag.typename) void_class
   |> TypeMap.add ("", int_ttag.typename) int_class
   |> TypeMap.add ("", float_ttag.typename) float_class
+  |> TypeMap.add ("", byte_ttag.typename) byte_class
   |> TypeMap.add ("", bool_ttag.typename) bool_class
   |> TypeMap.add ("", null_ttag.typename) null_class
   |> TypeMap.add ("", string_ttag.typename) string_class
@@ -142,7 +143,7 @@ module Symtable (* : SYMTABLE *) = struct
       | None -> None
     )
 
-  (* Use this in codegen. *)
+  (** Exception-throwing symtable lookup, for use in codegen. *)
   let findvar name nd =
     match findvar_opt name nd with
     | Some ent -> ent

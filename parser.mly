@@ -1,6 +1,7 @@
 %token <Int64.t> ICONST
 %token <float> FCONST
 %token <string> STRCONST
+%token <char> BYTECONST
 %token <string> IDENT_LC
 %token <string> IDENT_UC
 %token LPAREN RPAREN LBRACE RBRACE LSQRB RSQRB
@@ -312,6 +313,8 @@ constExp:
     { ExpConst (IntVal i) }
   | f=FCONST
     { ExpConst (FloatVal f) }
+  | c=BYTECONST
+    { ExpConst (ByteVal c) }
   | TRUE
     { ExpConst (BoolVal true) }
   | FALSE
