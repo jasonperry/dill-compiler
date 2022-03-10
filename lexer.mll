@@ -33,8 +33,10 @@ rule token = parse  (* funny that it's called parse *)
     { new_line lexbuf; token lexbuf }
   | "(*"
     { comment 0 lexbuf }
+  | '\''
+    { byte [] lexbuf }
   | "\""
-    { string (Buffer.create 80) lexbuf }  
+    { string (Buffer.create 80) lexbuf }
   | iconst as i
    (* OCaml seems to use 63-bit ints now. *)
     { ICONST (Int64.of_string i) }
@@ -123,15 +125,37 @@ and comment depth = parse
   | _ { comment depth lexbuf }
   
 and string acc = parse
-               | '"' { STRCONST (Buffer.contents acc) }
+  | '"' { STRCONST (Buffer.contents acc) }
   | '\\' '\"' { Buffer.add_char acc '\"'; string acc lexbuf }
   | "\\n" { Buffer.add_char acc '\n'; string acc lexbuf }
+  | "\\r" { Buffer.add_char acc '\r'; string acc lexbuf }
   | "\\t" { Buffer.add_char acc '\t'; string acc lexbuf }
   (* TODO: \x, maybe \f and \b also (whatever they mean) *)
   | "\\\\" { Buffer.add_char acc '\\'; string acc lexbuf }
+  (* The ^ means "not", so this is the one that matches a regular char letter *)
   | [^ '"' '\\']+ { Buffer.add_string acc (Lexing.lexeme lexbuf);
                     string acc lexbuf }
   (* it seems to not be catching this *)
   | '\n' { raise (Error "String not terminated at newline") }
   | eof { raise (Error "Unterminated string constant at end of file") }
   | _ { raise (Error ("Illegal string character: " ^ Lexing.lexeme lexbuf)) }
+
+and byte acc = parse
+  | '\'' {
+      if List.length acc == 0 then 
+        raise (Error "Byte constant cannot be empty") 
+      else if List.length acc > 1 then
+        raise (Error ("Byte constant too long: " ^ Lexing.lexeme lexbuf)) 
+      else
+        BYTECONST (List.hd acc)
+    }
+  | "\\n" { byte ('\n'::acc) lexbuf } (* doesn't matter if it reverses. *)
+  | "\\t" { byte ('\t'::acc) lexbuf }
+  | "\\r" { byte ('\r'::acc) lexbuf }
+  | "\\\\" { byte ('\\'::acc) lexbuf }
+  | [^ '"' '\\'] { byte ((Lexing.lexeme_char lexbuf 0)::acc) lexbuf }
+  | '\n' { raise (Error "Byte constant not terminated at newline") }
+  | eof { raise (Error "Unterminated byte constant at end of file") }
+  | _ { raise (Error ("Illegal byte constant: " ^ Lexing.lexeme lexbuf)) }
+
+                 
