@@ -6,8 +6,12 @@ proc main()
 begin
    var b1: Byte = 'a';
    var b2 = '\n';
+   (* var b3: Byte[] = "whoot"; (* new feature? *) *)
    var ba: Byte[] = [b1, b2, 'f'];
    var ba2: Byte[] = ['y', 'a', 'y', b2];
+   printBytes([b1]); (* added procedure argument hints to make this work *)
+   printString("\n---");
    printBytes(ba);
+   printString("\n---");
    printBytes(ba2);
 end main

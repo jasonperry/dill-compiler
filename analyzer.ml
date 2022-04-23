@@ -292,13 +292,20 @@ and match_params paramsyms (args: (bool * typetag expr) list) =
 
 (** Procedure call check, used for both exprs and stmts. *)
 and check_call syms tenv (fname, args) =
-  (* recursively check argument exprs and store types in list. *)
-  let args_res = List.map (check_expr syms tenv) (List.map snd args) in
-  (* Concatenate errors from args check and bail out if any *)
-  (* check_expr doesn't return a list, so stitch into one. *)
-  (* FIX: probably check_expr should return a list also, for consistency *)
-  let err_strs =
-    List.fold_left (
+  (* TODO: check fn name and argument types first, so can send the hints. *)
+  match Symtable.findproc_opt fname syms with
+  | None -> Error ("Unknown procedure name: " ^ fname)
+  | Some (proc, _) -> (
+    let argTypes = List.map (fun ent -> Some ent.symtype) proc.fparams in
+    (* recursively check argument exprs and store types in list. *)
+    let args_res = List.map2 
+        (fun ex argty -> check_expr syms tenv ex ~thint:argty) 
+        (List.map snd args) argTypes in
+    (* Concatenate errors from args check and bail out if any *)
+    (* check_expr doesn't return a list, so stitch into one. *)
+    (* FIX: probably check_expr should return a list also, for consistency *)
+    let err_strs =
+      List.fold_left (
         fun es res -> match res with
                       | Ok _ -> es
                       | Error {loc=_; value} -> es ^ "\n" ^ value
@@ -309,9 +316,6 @@ and check_call syms tenv (fname, args) =
     (* could construct these further down... *)
     let args_typed = List.combine (List.map fst args) (concat_ok args_res) in
     (* find the procedure entry (checking arg exprs first is eval order!) *)
-    match Symtable.findproc_opt fname syms with
-    | None -> Error ("Unknown procedure name: " ^ fname)
-    | Some (proc, _) -> (
       (* stitch the mutability tags back in for checking. *)
       match match_params proc.fparams args_typed with 
       | Error estr -> 

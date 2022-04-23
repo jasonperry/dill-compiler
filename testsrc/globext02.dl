@@ -1,14 +1,16 @@
 (* access globals from another module *)
 module globext02 begin
 
-open globlib01;
+import globlib01;
 open stdio;
 
 export proc main()
 begin
-  printInt(x);
-  x = x - 4;
-  printInt(x);
+   printInt(globlib01::x);
+   var zz: Int = globlib01::getAnInit();
+   printInt(zz);
+   globlib01::x = globlib01::x - 4; 
+   printInt(globlib01::x);
 end main
 
 end globext02

@@ -1,0 +1,10 @@
+(* Byte constant error *)
+
+open stdio;
+
+proc main()
+begin
+   var b1: Byte = 'aa';
+   var b2: Byte = '\nn';
+   printBytes([b1]);
+end main
