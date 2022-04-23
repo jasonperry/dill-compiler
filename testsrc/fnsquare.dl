@@ -1,8 +1,0 @@
-proc square(x: Int) : Int =
-  return x * x;
-end square
-
-begin
-  var x = square(9);
-  printInt(x);
-end

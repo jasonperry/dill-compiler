@@ -1,0 +1,16 @@
+module fntriple begin
+
+open stdio;
+   
+proc triple(x: Int) => Int
+begin
+  var y = 3;
+  return x * y;
+end triple
+
+export proc main()
+begin
+  printInt(triple(14));
+end main
+
+end fntriple

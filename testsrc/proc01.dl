@@ -1,0 +1,14 @@
+(* procedure declaration and call. *)
+
+open stdio;
+
+proc square(x: Int) => Int
+begin
+  return x * x;
+end square
+
+proc main()
+begin
+  var x = square(9);
+  printInt(x);
+end main

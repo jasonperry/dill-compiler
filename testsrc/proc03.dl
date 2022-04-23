@@ -1,0 +1,12 @@
+(* call void function with side effects *)
+open stdio;
+
+proc squarePrint(x: Int) => Void
+begin
+  printInt(x * x);
+end squarePrint
+
+proc main()
+begin
+  squarePrint(7);
+end main

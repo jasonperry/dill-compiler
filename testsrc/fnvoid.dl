@@ -1,7 +1,0 @@
-proc squarePrint(x: Int) : Void =
-  printInt(x * x);
-end squarePrint
-
-begin
-  squarePrint(7);
-end

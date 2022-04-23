@@ -1,0 +1,15 @@
+(* type mismatch *)
+
+open stdio;
+
+proc square(x: Int) => Int
+begin
+  return x * x;
+end square
+
+proc main()
+begin
+   var x: Float = 3.2;
+   var y = square(x);  (* argument type mismatch *)
+   printInt(y);
+end main
