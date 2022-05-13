@@ -27,22 +27,26 @@ handles mutation. Goals and features include:
   module can access private fields of datatypes in that module. All
   imports must be explicitly specified.
 - Separate compilation by means of auto-generated module
-  signatures. This is strictly a compiler feature, that is, signatures
-  are not part of the language definition proper; what a module exposes
-  is completely specified by its source.
+  specifications. This is strictly a compiler feature, that is,
+  module specs are not part of the language definition proper; what a
+  module exposes is completely specified by its source.
 - Keyword-based block syntax instead of curly braces. Keywords should
   "do work" of clarifying structure, e.g. ~endif~ and not just
   ~end~. Still, we try to be more concise than Pascal/Ada
   syntax. Semicolons as statement terminators. "As readable as
   possible, as verbose as necessary." Making code easy to type and even
-  pronounce are also goals.
+  read aloud are also goals.
+- Planned: generics, with constraints by means of module signatures (the
+  modular equivalent of interfaces). Module imports explicitly specify
+  which signature implementations you're using.
+- Possibly: coroutines, probably stackless. 
+
+We'll see how far I get. The backend is LLVM, currently targeting only
+x86_64.
+
+#+BEGIN_COMMENT
 - Planned: passing procedure references. We'll see if it makes sense to
   go with full first-class/anonymous functions. If so, we'll introduce a
   pure function syntax and only allow those to be
   first-class. Procedures will never be nested.
-- Planned: generics with interface constraints (interfaces to be called
-  "abstypes"?)
-- Planned: coroutines (probably stackless)
-
-We'll see how far I get. The initial backend is LLVM, currently
-targeting only x86_64.
+#+END_COMMENT
