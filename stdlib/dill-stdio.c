@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <gc.h>
 
 struct int_array {
   int64_t length;
@@ -20,7 +21,7 @@ struct byte_array {
 struct int_array initIntArray(int64_t length, int64_t value) {
   struct int_array a;
   a.length = length;
-  a.data = malloc(length * sizeof(int64_t));
+  a.data = GC_malloc(length * sizeof(int64_t));
   for (int i=0; i < length; i++)
     a.data[i] = value;
   return a;

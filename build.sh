@@ -21,7 +21,7 @@ for sf in $@; do
     exename=$name.exe
 done
 
-if clang -no-pie -o $exename $objfiles $incdir/stdio.ll
+if clang -no-pie -lgc -o $exename $objfiles $incdir/stdio.ll
 then
     echo "Successfully built $exename"
 fi

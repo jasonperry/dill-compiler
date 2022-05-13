@@ -29,7 +29,7 @@ define dso_local { i64, i64* } @initIntArray(i64 %0, i64 %1) #0 {
   store i64 %7, i64* %8, align 8
   %9 = load i64, i64* %4, align 8
   %10 = mul i64 %9, 8
-  %11 = call noalias align 16 i8* @malloc(i64 %10) #3
+  %11 = call noalias i8* @GC_malloc(i64 %10) #3
   %12 = bitcast i8* %11 to i64*
   %13 = getelementptr inbounds %struct.int_array, %struct.int_array* %3, i32 0, i32 1
   store i64* %12, i64** %13, align 8
@@ -65,8 +65,8 @@ define dso_local { i64, i64* } @initIntArray(i64 %0, i64 %1) #0 {
   ret { i64, i64* } %31
 }
 
-; Function Attrs: nounwind
-declare noalias align 16 i8* @malloc(i64) #1
+; Function Attrs: allocsize(0)
+declare noalias i8* @GC_malloc(i64) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local void @printInt(i64 %0) #0 {
@@ -154,9 +154,9 @@ define dso_local { i8, i8* } @getLineStdin() #0 {
 declare i64 @getline(i8**, i64*, %struct._IO_FILE*) #2
 
 attributes #0 = { noinline nounwind optnone sspstrong uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #1 = { nounwind "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #1 = { allocsize(0) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #2 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #3 = { nounwind }
+attributes #3 = { allocsize(0) }
 
 !llvm.module.flags = !{!0, !1, !2, !3, !4}
 !llvm.ident = !{!5}
