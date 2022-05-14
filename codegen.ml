@@ -203,6 +203,15 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
     build_load alloca "promotedval" builder
 
 
+(** Generate a garbage collected array alloca *)
+let build_gc_array_malloc eltType llsize name the_module builder =
+  match lookup_function "GC_malloc" the_module with
+  | None -> failwith "BUG: GC_malloc llvm function not found"
+  | Some llmalloc -> 
+    build_bitcast (build_call llmalloc [|llsize|] "mallocbytes" builder)
+      (pointer_type eltType) name builder
+
+
 (** Generate an equality comparison. This could get complex. *)
 let rec gen_eqcomp val1 val2 valty lltypes builder =
   if is_struct_type valty then
@@ -551,9 +560,10 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
      debug_print ("eltType: " ^ typetag_to_string ((List.hd elist).decor));
      debug_print ("eltType: " ^ string_of_lltype eltType);
      (* alloca for the raw array data. why is it including the  *)
-     let datalloca = (* build_array_alloca *) build_array_malloc eltType
-                    (const_int int_type (List.length elist)) "arrdata"
-                    builder in
+     let datalloca = (* build_array_alloca *) (* build_array_malloc *)
+       build_gc_array_malloc eltType
+         (const_int int_type (List.length elist)) "arrdata"
+         the_module builder in
      List.iteri (fun i e ->
          let v = gen_expr the_module builder syms lltypes e in
          let ep = build_gep datalloca [|const_int int_type i|] "i" builder in
@@ -1157,8 +1167,8 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   (* Llvm.set_target_triple ttriple the_module; *)
   Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) the_module;
   let builder = builder context in
-  (* Generate dict of llvm types from the tenv (imports are added to it by the 
-     analyzer.) *)
+  (* 1. Generate dict of llvm types from the tenv (imports are added
+     to it by the analyzer.) *)
   let lltypes =
     TypeMap.fold (fun _ cdata lltenv ->
         (* fully-qualified typename now *)
@@ -1170,7 +1180,7 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
             ^ " to lltenv. lltype: \n  " ^ string_of_lltype lltype);
         Lltenv.add newkey (lltype, fieldmap) lltenv
       ) tenv Lltenv.empty in
-  (* Generate decls for imported global variables in the symbol table. *)
+  (* 2. Generate decls from the symtable for imported global variables. *)
   StrMap.iter (fun localname gsym ->
       let gvalue = declare_global
                      (ttag_to_llvmtype lltypes gsym.symtype)
@@ -1180,16 +1190,29 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
       (* Name maybe not correct? Need the local name of it. *)
       Symtable.set_addr topsyms localname gvalue
     ) topsyms.syms;
-  (* Generate decls for imports (already in the top symbol table node.) *)
+  (* 2.5 Generate low-level function declarations (just GC alloc for now) *)
+  declare_function "GC_malloc"
+    (function_type (pointer_type byte_type) [|int_type|]) the_module
+  |> ignore ;
+  (* Maybe I don't need this after all! I know what it is. *)
+  (* Symtable.addproc topsyms "GC_malloc" {  
+    procname="GC_malloc";
+    rettype={byte_ttag with array=true};
+    fparams=[{
+        symname="nbytes"; symtype=int_ttag; var=false; mut=false; addr=None}]
+     }; *)
+  (* 3. Generate decls for imported functions (already in root node.) *)
   gen_fdecls the_module lltypes topsyms.fsyms;
-  (* The next symtable node underneath has this module's proc declarations *)
   (* if List.length (topsyms.children) <> 1 then
-    failwith "BUG: didn't find unique module-level symtable"; *)
+     failwith "BUG: didn't find unique module-level symtable"; *)
+  (* 4. Generate decls for this module's global variables. *)
+  (* The next symtable node underneath holds this module's proc declarations *)
   let modsyms = List.hd (topsyms.children) in
   List.iter (gen_global_decl the_module lltypes) modtree.globals;
-  (* Generate proc declarations first, so they can mutually refer *)
+  (* 5. Generate this module's procedure declarations (all at once, so
+     they can mutually refer) *)
   gen_fdecls the_module lltypes modsyms.fsyms;
-  (* Generate each of the procedures. *)
+  (* 6. Generate each of the procedures. *)
   List.iter (gen_proc the_module builder lltypes) modtree.procs;
-  (* Llvm_analysis.assert_valid_module the_module; *)
+  Llvm_analysis.assert_valid_module the_module;
   the_module
