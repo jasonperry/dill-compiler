@@ -207,9 +207,9 @@ let promote_value the_val (* valtype *) outertype builder lltypes =
 let build_gc_array_malloc eltType llsize name the_module builder =
   match lookup_function "GC_malloc" the_module with
   | None -> failwith "BUG: GC_malloc llvm function not found"
-  | Some llmalloc -> 
-    build_bitcast (build_call llmalloc [|llsize|] "mallocbytes" builder)
-      (pointer_type eltType) name builder
+  | Some llmalloc ->
+    let dataptr = build_call llmalloc [|llsize|] "mallocbytes" builder in
+    build_bitcast dataptr (pointer_type eltType) name builder
 
 
 (** Generate an equality comparison. This could get complex. *)
