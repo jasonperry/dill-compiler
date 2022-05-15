@@ -32,7 +32,9 @@ rule token = parse  (* funny that it's called parse *)
   | '\r'? '\n'
     { new_line lexbuf; token lexbuf }
   | "(*"
-    { comment 0 lexbuf }
+      { comment 0 lexbuf }
+  | "**"
+    { linecomment lexbuf }
   | '\''
     { byte [] lexbuf }
   | "\""
@@ -121,9 +123,15 @@ rule token = parse  (* funny that it's called parse *)
 and comment depth = parse
   | "(*" { comment (depth+1) lexbuf }
   | "*)" { if depth = 0 then token lexbuf else comment (depth-1) lexbuf }
+  (* Oh, I still have to count newlines! *)
+  | '\n' { new_line lexbuf; comment depth lexbuf }
   | eof { raise (Error "Unterminated comment at end of file") }
   | _ { comment depth lexbuf }
-  
+
+and linecomment = parse
+  | '\n' { new_line lexbuf; token lexbuf }
+  | _ { linecomment lexbuf }
+
 and string acc = parse
   | '"' { STRCONST (Buffer.contents acc) }
   | '\\' '\"' { Buffer.add_char acc '\"'; string acc lexbuf }
