@@ -1,0 +1,12 @@
+(* array bounds-checking error trigger #1
+* with multiline comment
+* 3 lines *)
+
+import stdio;
+
+proc main()
+begin
+   var a: Int[] = [19,18,17,16];
+   stdio::printInt(a[3]);
+   stdio::printInt(a[4]); ** should cause error
+end main
