@@ -12,6 +12,7 @@ exception CodegenError of string
 let context = global_context() 
 let float_type = double_type context
 let int_type = i64_type context
+let int32_type = i32_type context
 let bool_type = i1_type context
 let byte_type = i8_type context
 let void_type = void_type context
@@ -420,6 +421,37 @@ let rec gen_constexpr_value lltypes (ex: typetag expr) =
     | _ -> failwith "Unimplemented constexpr type"
     
 
+(** Emit array bounds-checking instructions *)
+let gen_bounds_check ixval arraysize the_module builder =
+  (* Do the compares to zero and the array size *)
+  let zerocheck = build_icmp Icmp.Slt
+      ixval (const_int int_type 0) "zerobound" builder in
+  let sizecheck = build_icmp Icmp.Sge
+      ixval arraysize "sizebound" builder in
+  let checkres = build_or zerocheck sizecheck "boundcmp" builder in
+  (* add all jump targets at once (seems cleaner that way) *)
+  let cond_spot = insertion_block builder in
+  let this_function = block_parent cond_spot in
+  let failblock = append_block context "boundsfail" this_function in
+  let okblock = append_block context "boundsok" this_function in
+  let contblock = append_block context "boundscont" this_function in
+  (* move back and insert the conditional jump *)
+  position_at_end cond_spot builder;
+  build_cond_br checkres failblock okblock builder |> ignore;
+  (* build the fail block *)
+  position_at_end failblock builder;
+  match lookup_function "exit" the_module with
+  | None -> failwith "BUG: could not find exit function"
+  | Some exitfunc -> (
+      build_call exitfunc [|const_int int32_type 111|] "" builder
+      |> ignore;
+      build_br contblock builder |> ignore;
+      (* build the OK block with just a jump to the continuation *)
+      position_at_end okblock builder;
+      build_br contblock builder |> ignore;
+      position_at_end contblock builder
+    )
+
 (** Find the target address of a varexp from symtable entry and fields *)
 let rec get_varexp_alloca the_module builder varexp syms lltypes =
   let ((varname, ixopt), fields) = varexp in
@@ -436,12 +468,17 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
          | None -> (alloca, parentty)
          | Some ixexpr ->
             let ixval = gen_expr the_module builder syms lltypes ixexpr in
-            debug_print (string_of_llvalue ixval);
-            (* alloca is the address of the struct. *)
+            (* get the value at index 1. alloca is the address of the struct. *)
             let datafield = build_struct_gep alloca 1 "datafield" builder in
             debug_print (string_of_llvalue datafield);
             (* have to load to get the actual pointer to the llvm array *)
-            let dataptr = build_load datafield "dataptr" builder in 
+            let dataptr = build_load datafield "dataptr" builder in
+            (* Load the array size to do the bounds check. *)
+            let arraysize = build_load
+                (build_struct_gep alloca 0 "sizeptr" builder)
+                "arraysize" builder
+            in
+            gen_bounds_check ixval arraysize the_module builder;
             (* gep to the 0th element first to "follow the pointer" *)
             (build_gep dataptr [|(const_int int_type 0); ixval|]  
                "elementtptr" builder,
@@ -1194,13 +1231,8 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   declare_function "GC_malloc"
     (function_type (pointer_type byte_type) [|int_type|]) the_module
   |> ignore ;
-  (* Maybe I don't need this after all! I know what it is. *)
-  (* Symtable.addproc topsyms "GC_malloc" {  
-    procname="GC_malloc";
-    rettype={byte_ttag with array=true};
-    fparams=[{
-        symname="nbytes"; symtype=int_ttag; var=false; mut=false; addr=None}]
-     }; *)
+  declare_function "exit"
+    (function_type void_type [|int32_type|]) the_module |> ignore;
   (* 3. Generate decls for imported functions (already in root node.) *)
   gen_fdecls the_module lltypes topsyms.fsyms;
   (* if List.length (topsyms.children) <> 1 then

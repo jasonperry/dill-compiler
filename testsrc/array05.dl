@@ -1,4 +1,4 @@
-(* array init *)
+(* array init stdlib function *)
 
 open stdio;
 
