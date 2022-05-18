@@ -22,7 +22,7 @@
 %token MODULE MODSPEC
 %token IMPORT AS OPEN 
 %token PRIVATE EXPORT
-%token TYPE STRUCT VARIANT MUT
+%token TYPE OPAQUE STRUCT VARIANT MUT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -120,14 +120,26 @@ importStmt:
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 typedef:
-  | TYPE tname=IDENT_UC IS tdi=typedefInfo SEMI
-    { {typename=tname; subinfo=tdi; decor=$loc} }
+  | op=option(OPAQUE) TYPE tname=IDENT_UC
+    tdi=option(preceded(IS, typedefInfo)) SEMI
+    { {typename=tname;
+       kindinfo=(
+	 match tdi with
+	 | None -> if Option.is_some op then
+		     Hidden
+		   else
+		     $syntaxerror
+	 | Some td -> td );
+       opaque=Option.is_some(op);
+       decor=$loc} }
 
 typedefInfo:
   | STRUCT fl=fieldList
     { Fields fl }
   | VARIANT vl=variantList
     { Variants vl }
+  | ty=typeExp
+    { Newtype ty }
 
 fieldList:
   | fl=separated_nonempty_list(COMMA, fieldDecl)

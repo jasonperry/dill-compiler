@@ -1,0 +1,12 @@
+(* test of newtype feature *)
+
+module newtype begin
+
+type MyInt is Int;
+
+export proc main()
+begin
+   var x: MyInt = 42; (* need code to make this work. *)
+end main
+
+end newtype

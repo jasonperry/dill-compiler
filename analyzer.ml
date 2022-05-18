@@ -1232,8 +1232,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
      Error [{ loc=tdef.decor;
               value="Type redeclaration: " ^ tdef.typename }]
   | None -> (
-    (* Determine whether it's a record or union type *)
-    match tdef.subinfo with
+    match tdef.kindinfo with
     | Fields fields ->
        (* check for nonexistent types, field redeclaration *)
        let rec check_fields flist acc = match flist with
@@ -1273,7 +1272,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               variants = [];
             }
        )
-    | Variants variants ->
+    | Variants variants -> (
        let rec check_variants vdecllist accres =
          match vdecllist with
          | [] -> Ok accres
@@ -1314,6 +1313,36 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               fields = [];
               variants = variants
             }
+     )
+    | Newtype tyex -> (
+        (* Wait! I need more than a classdata if this is derived from a type
+           with array or nullable markers! It has to return the full type info *)
+        match TypeMap.find_opt (tyex.modname, tyex.classname) tenv with
+        | None ->
+          Error [{value="Unknown type name " ^ typeExpr_to_string tyex;
+                  loc=tdef.decor}]
+          (* Create a whole new type with the same properties as the root type *)
+          (* Hmmm.. may even want to have a reference to the type it is, *)
+        | Some cdata -> 
+          Ok {
+            classname = tdef.typename;
+            in_module = modname; (* defined in this module now *)
+            muttype = cdata.muttype;
+            params = cdata.params;
+            fields = cdata.fields;
+            variants = cdata.variants
+          }
+      )
+    | Hidden ->
+      Ok {
+        classname = tdef.typename;
+        in_module = modname;
+        muttype = true; (* Can't assume it's not mutable,
+                           it's based on what's called *)
+        params = [];
+        fields = [];
+        variants = []
+      }
   )
 
 
@@ -1423,7 +1452,7 @@ let add_imports syms tenv specs istmts =
     in mainloop istmts tenv []
 
 
-(** Check one entire module, generating new versions of each component. *)
+(** Check one entire module, rewriting each AST component. *)
 let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
   (* Check import statements and load modspecs into symtable
      (they've been loaded from .dms files by the top level) *)
@@ -1450,23 +1479,22 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
     | Error e -> Error e
     | Ok tenv -> 
        (* spam syms into the decor of the AST typedefs to update the decor type.
-        * Not needed? maybe delete typedefs from the second AST
-        * and turn the methods into just functions? *)
-       let newtypedefs =
+        * Not needed? Delete typedefs from the second AST, it's "code-only" *)
+       let newtypedefs = [] (*
          List.map (fun tdef ->
-             match tdef.subinfo with
+             match tdef.kindinfo with
              | Fields fields ->
                 let newfields =
                   List.map (fun (fd: locinfo fieldDecl) ->
                       {fd with decor=syms})
                     fields in
-                {tdef with subinfo=(Fields newfields); decor=syms}
+                {tdef with kindinfo=(Fields newfields); decor=syms}
              | Variants variants ->
                 let newvariants =
                   List.map (fun (vd: locinfo variantDecl) ->
                       {vd with decor=syms}) variants in
-                {tdef with subinfo=Variants newvariants; decor=syms}
-           ) dmod.typedefs in
+                {tdef with kindinfo=Variants newvariants; decor=syms}
+                        ) dmod.typedefs *) in 
        (* Check global declarations *)
        let globalsrlist = List.map (check_globdecl syms tenv dmod.name)
                             dmod.globals in

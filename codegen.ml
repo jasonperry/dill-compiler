@@ -154,7 +154,7 @@ let rec gen_lltype context
          false;
        (structtype, fieldmap)
      ) else
-       failwith ("BUG: unknown class type " ^ cdata.classname ^ "in codegen")
+       failwith ("BUG: unknown class type " ^ cdata.classname ^ " in codegen")
 
 
 (** Use a type tag to generate the LLVM type from the base type. *)

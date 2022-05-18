@@ -16,10 +16,9 @@ and fieldInfo = {
 
 (** The specification for a class of types, built from a type declaration *)
 and classData = {
-    classname: string; (* do I even need it? It's the dict key *)
-    in_module: string; (* to make it self-contained for generating ttags. *)
-      (* also for extensions, types need to "know" the original
-       * module where they were defined. *)
+    classname: string;
+    in_module: string; (* for extensions, types need to "know" the original
+                        * module where they were defined. *)
     muttype: bool;  (* true if any field or variant is mutable *)
     params: typevar list; (* generic params *)
     (* Impls are no longer part of the type definition, so we'll get rid 

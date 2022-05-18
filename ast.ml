@@ -151,15 +151,18 @@ type 'sd variantDecl = {
   }
 
 (** Type decl info that's different for structs/unions/enums. *)
-type 'sd subtypeInfo =
+type 'sd kindInfo =
   | Fields of 'sd fieldDecl list
   | Variants of 'sd variantDecl list
+  | Newtype of typeExpr
+  | Hidden (* for externally-defined opaque types *)
 
 (** struct for definition of any type. *)
 type 'sd typedef = {
     (* module name is added at higher context. *)
     typename: string;
-    subinfo: 'sd subtypeInfo;
+    kindinfo: 'sd kindInfo;
+    opaque: bool;
     decor: 'sd
   }
 
@@ -209,13 +212,13 @@ and fieldDecl_to_string fd =
   ^ typeExpr_to_string fd.fieldtype
 
 and typedef_to_string tdef = 
-  "type " ^ tdef.typename ^ " is "
-  ^ (match tdef.subinfo with
+  "type " ^ tdef.typename
+  ^ (match tdef.kindinfo with
      | Fields fields ->
-        "struct\n  "
+        "is struct\n  "
         ^ String.concat ",\n  " (List.map fieldDecl_to_string fields)
      | Variants variants ->
-        "variant\n  | "
+        "is variant\n  | "
         ^ String.concat "\n  | "
             (List.map (fun vdec ->
                  vdec.variantName
@@ -223,7 +226,9 @@ and typedef_to_string tdef =
                     | Some vt -> ": " ^ typeExpr_to_string vt
                     | None -> "")                          
                )         
-               variants)
+                 variants)
+     | Newtype tyex -> "is " ^ typeExpr_to_string tyex
+     | Hidden -> ""
     )
   ^ ";\n"
 
