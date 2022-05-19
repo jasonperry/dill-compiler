@@ -1,0 +1,20 @@
+(* testing deep immutability *)
+module deepImmut begin
+
+open stdio;
+
+type Thing is struct
+   id: Int,
+   data: Byte[];
+
+export proc main()
+begin
+   var myArr: Byte[] = ['a', 'b', 'c', 'd'];
+   var myStruct: Thing = {id=999, data=myArr};
+   **var myStruct: Thing = {id=999, data=['f','g','h']};
+   myArr[2] = 'f';  ** mutable reference to the array still held.
+   printBytes(myStruct.data);  ** is it changed?
+   printString("");
+end main
+
+end deepImmut

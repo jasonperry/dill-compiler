@@ -106,8 +106,9 @@ let rec gen_lltype context
                  struct_type context [| nulltag_type; basetype |]
                else basetype in
              let fieldlltype =
-               (* placeholder; should be my two-entry array record, right? *)
-               if fty.array then array_type ty1 0
+               if fty.array then
+                 struct_type context
+                   [| int_type; pointer_type (array_type ty1 0) |]
                else ty1 in
              (fieldname, fieldlltype, i, fty))
          ) fielddata in
