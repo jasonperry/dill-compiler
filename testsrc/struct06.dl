@@ -1,0 +1,24 @@
+(* returning a struct initialized with an rvalue *)
+module struct01 begin
+
+open stdio;
+
+type Complex is struct
+  mut i: Float,
+  mut j: Float;
+
+proc getComplex() => Complex
+begin
+   var res: Complex = {i=2.0, j=1.111};
+   return res; (* does it return by value? *)
+end getComplex
+
+export proc main()
+begin
+
+  var cpx = getComplex();
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+end main
+
+end struct01

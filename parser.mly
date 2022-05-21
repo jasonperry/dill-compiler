@@ -119,6 +119,9 @@ importStmt:
 
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
+typedecl:
+  | TYPE tname=IDENT_UC SEMI { tname }
+
 typedef:
   | op=option(OPAQUE) TYPE tname=IDENT_UC
     tdi=option(preceded(IS, typedefInfo)) SEMI

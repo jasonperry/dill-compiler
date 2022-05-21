@@ -747,14 +747,17 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* print_string ("looking up " ^ varname ^ " for decl codegen\n"); *)
     let (entry, _) = Symtable.findvar varname syms in
     let allocatype = ttag_to_llvmtype lltypes entry.symtype in
-    debug_print("allocatype for decl: " ^ string_of_lltype allocatype);
-    (* Need to save the result? Don't think so, I'll grab it for stores. *)
-    (* position_builder (instr_begin (insertion_block builder)) builder; *)
-    let blockstart =
-      (* TODO: If in a function, will need to build it in entry block,
-       * so we don't reallocate in loops *)
-      builder_at context (instr_begin (insertion_block builder)) in
-    let alloca = build_alloca allocatype varname blockstart in 
+    debug_print("allocatype for decl of " ^ varname ^ ": "
+                ^ string_of_lltype allocatype);
+    (* Make a separate builder to insert the alloca at top of the function *)
+    (* would like to put it at the end, before the terminator, but didn't
+       figure that out yet *)
+    let declpos = builder_at context
+        (instr_begin (entry_block (block_parent (insertion_block builder)))) in
+    (* at end didn't work, it was after the terminator *)
+    (* let declpos = builder_at_end context
+        (entry_block (block_parent (insertion_block builder))) in *)
+    let alloca = build_alloca allocatype varname declpos in 
     Symtable.set_addr syms varname alloca;
     match eopt with
     | None -> ()

@@ -1,0 +1,16 @@
+(* returning an array rvalue *)
+
+open stdio;
+
+proc arrayRet() => Float[]
+begin
+  return [2.3, 3.4, 4.5, 5.6];
+end arrayRet
+
+proc main()
+begin
+  var ra = arrayRet();
+  printFloat(ra[0]); 
+  printFloat(ra[3]);
+  return;
+end main

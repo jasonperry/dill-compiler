@@ -1,0 +1,30 @@
+(* testing allocation in a loop *)
+module while01 begin
+
+import stdio;
+
+var i = 1500000000;
+** var j: Int = 0;
+
+export proc main() => Int
+begin
+   ** to be shadowed
+   var j = 19;
+   while (i >= 0) loop
+      ** j realloc'ed every time if we don't lift it.
+      var j = 2*i+1;
+      if i % 100000000 == 0 then
+         stdio::printInt(j);
+      endif
+      i = i - 1;
+   endwhile
+
+   stdio::printInt(i);
+
+   stdio::printInt(j);
+
+  return 0;
+
+end main
+
+end while01
