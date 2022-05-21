@@ -1,6 +1,7 @@
 (** Top-level module of the Dill compiler. *)
 open Common
 open Ast
+open Llvm_scalar_opts
 (* open Pervasives *)
 
 
@@ -11,6 +12,7 @@ type dillc_config = {
     parse_only : bool;
     typecheck_only : bool;
     emit_llvm : bool;
+    optimize : bool;
     link : bool;
     print_ast : bool;
     print_symtable : bool;
@@ -22,6 +24,7 @@ let default_config = {
     parse_only = false;
     typecheck_only = false;
     emit_llvm = false;
+    optimize = true;
     link = false; (* later to be true by default *)
     print_ast = false;
     print_symtable = false;
@@ -159,9 +162,18 @@ let write_header srcdir header =
 
 
 (** Write a module to disk as native code. *)
-let write_module_native filename modcode machine =
-  (* let passmgr = Llvm.PassManager.create () in (* for optimize only? *) *)
+let write_module_native filename modcode config machine =
   let open Llvm_target in
+  if config.optimize then (
+    let passmgr = Llvm.PassManager.create () in
+    add_memory_to_register_promotion passmgr;
+    add_instruction_combination passmgr; (* slowed it down! *)
+    if Llvm.PassManager.run_module modcode passmgr then
+      debug_print "Optimization passes modified module code"
+    else
+      debug_print "Optimization passes did NOT modify module code"
+    (* TargetMachine.add_analysis_passes passmgr machine; *)
+  );
   let outfilename =
     Filename.chop_extension (Filename.basename filename) ^ ".o" in
   TargetMachine.emit_to_file
@@ -212,7 +224,9 @@ let parse_cmdline args =
       | "--typecheck-only" ->
          ploop (i+1) srcfiles { config with typecheck_only = true }
       | "--emit-llvm" ->
-         ploop (i+1) srcfiles { config with emit_llvm = true }
+        ploop (i+1) srcfiles { config with emit_llvm = true }
+      | "-O0" ->
+        ploop (i+1) srcfiles { config with optimize = false }
       | "-I" ->
          ploop (i+2) srcfiles {
              config with include_paths = args.(i+1) :: config.include_paths
@@ -262,7 +276,7 @@ let () =
           if cconfig.emit_llvm then 
             write_module_llvm srcfilename modcode
           else 
-            write_module_native srcfilename modcode machine
+            write_module_native srcfilename modcode cconfig machine
         )
       ); ispecs
     )

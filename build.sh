@@ -9,8 +9,13 @@ if [ $# -lt 1 ]; then
     exit
 fi
 
+set -x
+optflag=""
+
 for sf in $@; do
-    if dillc.exe --debug -I $incdir "$sf"; then
+    if [ "$sf" == "-O0" ]; then
+	optflag="-O0"
+    elif dillc.exe --debug $optflag -I $incdir "$sf"; then
 	name=$(basename "$sf" .dl)
 	# mv -f "$name.o" $outdir/
 	objfiles="$objfiles $name.o"
