@@ -167,7 +167,9 @@ let write_module_native filename modcode config machine =
   if config.optimize then (
     let passmgr = Llvm.PassManager.create () in
     add_memory_to_register_promotion passmgr;
-    add_instruction_combination passmgr; (* slowed it down! *)
+    add_correlated_value_propagation passmgr;
+    add_cfg_simplification passmgr;
+    (* add_instruction_combination passmgr; (* slowed it down! *) *)
     if Llvm.PassManager.run_module modcode passmgr then
       debug_print "Optimization passes modified module code"
     else

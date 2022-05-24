@@ -215,10 +215,10 @@ and typedef_to_string tdef =
   "type " ^ tdef.typename
   ^ (match tdef.kindinfo with
      | Fields fields ->
-        "is struct\n  "
+        " is struct\n  "
         ^ String.concat ",\n  " (List.map fieldDecl_to_string fields)
      | Variants variants ->
-        "is variant\n  | "
+        " is variant\n  | "
         ^ String.concat "\n  | "
             (List.map (fun vdec ->
                  vdec.variantName
@@ -227,7 +227,7 @@ and typedef_to_string tdef =
                     | None -> "")                          
                )         
                  variants)
-     | Newtype tyex -> "is " ^ typeExpr_to_string tyex
+     | Newtype tyex -> " is " ^ typeExpr_to_string tyex
      | Hidden -> ""
     )
   ^ ";\n"

@@ -1,6 +1,6 @@
 modspec stdio begin
 
-** opaque type File; ** can only reference as a pointer, external code must manage it
+type File; ** can only reference as a pointer, external code must manage it
 
 proc initIntArray(length: Int, value: Int) => Int[];
 proc printInt(n: Int) => Void;

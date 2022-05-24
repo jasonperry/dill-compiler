@@ -92,13 +92,14 @@ moduleName: mn=IDENT_LC { mn }
 modspec:
   | MODSPEC mn=moduleName BEGIN
     iss=list(includeStmt)
+    tyds=list(typedecl)  (* TODO: allow interleaving of tyds and tys *)
     tys=list(typedef)
     gls=list(declOnlyStmt) pd=list(procDecl)
     END mn2=moduleName
     { if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
-	  typedefs=tys;
+	  typedefs=tyds @ tys;
 	  globals= List.map (
 		       fun (v, t) -> {varname=v; 
 				      typeexp=t; decor=$loc}
@@ -120,7 +121,12 @@ importStmt:
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 typedecl:
-  | TYPE tname=IDENT_UC SEMI { tname }
+  | TYPE tname=IDENT_UC SEMI
+    { {typename=tname;
+       kindinfo=Hidden;
+       opaque=true;
+       decor=$loc}
+    }
 
 typedef:
   | op=option(OPAQUE) TYPE tname=IDENT_UC

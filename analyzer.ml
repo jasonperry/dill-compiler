@@ -1479,8 +1479,8 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
     | Error e -> Error e
     | Ok tenv -> 
        (* spam syms into the decor of the AST typedefs to update the decor type.
-        * Not needed? Delete typedefs from the second AST, it's "code-only" *)
-       let newtypedefs = [] (*
+          Could there be a better way? *)
+       let newtypedefs = 
          List.map (fun tdef ->
              match tdef.kindinfo with
              | Fields fields ->
@@ -1494,7 +1494,11 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
                   List.map (fun (vd: locinfo variantDecl) ->
                       {vd with decor=syms}) variants in
                 {tdef with kindinfo=Variants newvariants; decor=syms}
-                        ) dmod.typedefs *) in 
+             | Newtype texpr ->
+               {tdef with kindinfo=Newtype texpr; decor=syms}
+             | Hidden ->
+               {tdef with kindinfo=Hidden; decor=syms}
+                        ) dmod.typedefs in 
        (* Check global declarations *)
        let globalsrlist = List.map (check_globdecl syms tenv dmod.name)
                             dmod.globals in
@@ -1528,7 +1532,7 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
                  tenv)
   )
 
-(** Auto-generate the interface object for a module, to be serialized. *)
+(** Generate the interface object for a checked module, to be serialized. *)
 let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
   {
     name = the_mod.name;
@@ -1539,7 +1543,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
                              | Open mn -> Using (mn, None));
                     loc=istmt.loc
                   }) the_mod.imports;
-    (* I want to make all names fully qualified in the spec file. *)
+    (* Make all names fully qualified in the spec file. *)
     (* Idea: keep a map of module name->symtable and "open" symbol->module *)
     (* but anyway, do types need to remember which module they're defined in?
      * then I can easily produce the unqualified name of any type. 
@@ -1550,7 +1554,8 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
           { decor = gdecl.decor;
             varname = gdecl.varname;
             typeexp = 
-              (* regenerate a typeExpr from symtable type *)
+              (* regenerate a typeExpr from symtable type (because the
+                 AST may not have the type expression? *)
               let vttag =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
               { modname = vttag.modulename;
