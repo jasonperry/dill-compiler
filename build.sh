@@ -10,13 +10,14 @@ if [ $# -lt 1 ]; then
 fi
 
 set -x
-optflag=""
+flags=""
 
-for sf in $@; do
-    if [ "$sf" == "-O0" ]; then
-	optflag="-O0"
-    elif dillc.exe --debug $optflag -I $incdir "$sf"; then
-	name=$(basename "$sf" .dl)
+for arg in $@; do
+    if [[ "$arg" = -* ]]; then
+	flags="$flags $arg"
+	echo "Flags set to: $flags"
+    elif dillc.exe --debug $flags -I $incdir "$arg"; then
+	name=$(basename "$arg" .dl)
 	# mv -f "$name.o" $outdir/
 	objfiles="$objfiles $name.o"
     else
