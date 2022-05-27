@@ -1544,11 +1544,12 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
                     loc=istmt.loc
                   }) the_mod.imports;
     (* Make all names fully qualified in the spec file. *)
-    (* Idea: keep a map of module name->symtable and "open" symbol->module *)
-    (* but anyway, do types need to remember which module they're defined in?
-     * then I can easily produce the unqualified name of any type. 
-     * Same for symtable entries for procs. *)
-    typedefs = the_mod.typedefs;
+    (* change opaque to hidden typedefs. *)
+    typedefs = List.map (fun tdef ->
+        if tdef.opaque then
+          { tdef with kindinfo = Hidden }
+        else tdef        
+      ) the_mod.typedefs;
     globals =
       List.map (fun gdecl ->
           { decor = gdecl.decor;

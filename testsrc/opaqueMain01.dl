@@ -1,0 +1,11 @@
+(* driver for using opaque type *)
+
+open opaque01;
+open stdio;
+
+proc main()
+begin
+   var s = setSecret(4, 3.5, 'P');
+   printBytes([secretByte(s)]);
+   printString("\n");
+end main

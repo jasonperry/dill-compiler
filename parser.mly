@@ -80,29 +80,26 @@ moduleBody:
         typedefs=tys;
         globals=List.map (
             fun (v, topt, eopt) ->
-	      {varname=v;
-	       typeexp=topt; init=eopt; decor=$loc}
+	      {varname=v; typeexp=topt; init=eopt; decor=$loc}
           ) gls;
         procs=pr;
       }
     }
 
-moduleName: mn=IDENT_LC { mn }
+moduleName: mn=IDENT_LC { mn } (* will this ever need to be anything more? *)
 
 modspec:
   | MODSPEC mn=moduleName BEGIN
-    iss=list(includeStmt)
-    tyds=list(typedecl)  (* TODO: allow interleaving of tyds and tys *)
-    tys=list(typedef)
+    iss=list(includeStmt)  (* TODO: no "open" in modspec *)
+    tyds=list(typedecl)
     gls=list(declOnlyStmt) pd=list(procDecl)
     END mn2=moduleName
     { if mn = mn2 then {
 	  name=mn;
 	  imports=iss;
-	  typedefs=tyds @ tys;
+	  typedefs=tyds;
 	  globals= List.map (
-		       fun (v, t) -> {varname=v; 
-				      typeexp=t; decor=$loc}
+		       fun (v, t) -> {varname=v; typeexp=t; decor=$loc}
 		     ) gls;
 	  procdecls=pd;
 	}
@@ -121,24 +118,27 @@ importStmt:
 openStmt: OPEN mn=moduleName SEMI { Open mn }
 
 typedecl:
-  | TYPE tname=IDENT_UC SEMI
-    { {typename=tname;
+  | TYPE tname=IDENT_UC td=typedeclBody
+    { {td with typename=tname} }
+
+typedeclBody:
+  | SEMI
+    { {typename="";
        kindinfo=Hidden;
        opaque=true;
        decor=$loc}
     }
+  | IS tdi=typedefInfo SEMI
+    { {typename="";
+       kindinfo=tdi;
+       opaque=false;
+       decor=$loc}
+    }
 
 typedef:
-  | op=option(OPAQUE) TYPE tname=IDENT_UC
-    tdi=option(preceded(IS, typedefInfo)) SEMI
+  | op=option(OPAQUE) TYPE tname=IDENT_UC IS tdi=typedefInfo SEMI
     { {typename=tname;
-       kindinfo=(
-	 match tdi with
-	 | None -> if Option.is_some op then
-		     Hidden
-		   else
-		     $syntaxerror
-	 | Some td -> td );
+       kindinfo=tdi;
        opaque=Option.is_some(op);
        decor=$loc} }
 
