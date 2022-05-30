@@ -1134,7 +1134,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
                  (* (finfo: fieldInfo) *) 
                match fldtype.tclass.kindData with
                | Struct flist -> (
-                   flist |> List.map (fun (finfo: fieldInfo) -> 
+                   flist |> List.concat_map (fun (finfo: fieldInfo) -> 
                        let fnamestr = nameacc ^ "." ^ finfo.fieldname in
                        {
                          symname=fnamestr;
@@ -1146,19 +1146,12 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
                          mut=finfo.mut && paramroot.mut; 
                          addr=None
                        } :: (gen_field_entries paramroot finfo.fieldtype fnamestr)
-                         (* (get_fields finfo.fieldtype.tclass) *)
-                     )
-                   |> List.concat)
+                     ))
                | _ -> []
              in List.concat_map
-               (fun pentry -> gen_field_entries pentry (pentry.symtype) (pentry.symname))
+               (fun pentry ->
+                  gen_field_entries pentry pentry.symtype pentry.symname)
                paramentries
-               (* paramentries
-                |> List.concat_map
-                     (fun pentry ->
-                       List.concat_map
-                         (gen_field_entries pentry pentry.symname)
-                         (get_fields pentry.symtype.tclass)) *)
            in
            (* Typecheck return type *)
            match check_typeExpr tenv pdecl.rettype with
@@ -1273,6 +1266,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
           Ok {
               classname = tdef.typename;
               in_module = modname;
+              opaque = tdef.opaque;
               muttype = List.exists (fun (finfo: fieldInfo) ->
                             (* Yes, there are two ways a field can be changed! *)
                             finfo.mut || finfo.fieldtype.tclass.muttype)
@@ -1316,6 +1310,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
           Ok {
               classname = tdef.typename;
               in_module = modname;
+              opaque = tdef.opaque;
               muttype = List.exists
                           (fun st -> Option.is_some (snd st)
                                      && (Option.get (snd st)).tclass.muttype
@@ -1336,6 +1331,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
             classname = tdef.typename;
             in_module = modname; (* defined in this module now *)
             muttype = cdata.muttype;
+            opaque = cdata.opaque;
             params = cdata.params;
             (* construct a tag for the underlying type *)
             kindData = Newtype {
@@ -1352,10 +1348,11 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
       Ok {
         classname = tdef.typename;
         in_module = modname;
+        opaque = true;
         muttype = true; (* Can't assume it's not mutable,
                            it's based on what's called *)
         params = [];
-        kindData = Opaque
+        kindData = Hidden
       }
   )
 
