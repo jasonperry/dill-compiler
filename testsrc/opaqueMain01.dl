@@ -5,7 +5,7 @@ open stdio;
 
 proc main()
 begin
-   var s = setSecret(4, 3.5, 'P');
+   var s: Secrets = setSecret(4, 3.5, 'P');
    printBytes([secretByte(s)]);
    printString("\n");
 end main

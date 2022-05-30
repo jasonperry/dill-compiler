@@ -159,6 +159,9 @@ let rec gen_lltype context
                array_type (i8_type context) (Int64.to_int maxsize + 4) |])
          false;
        (structtype, fieldmap)
+     | Hidden ->
+       (* Unknown implementation, must be treated as void pointer *)
+       (pointer_type void_type, StrMap.empty)
      | _ -> (* TODO: opaque type and newtype *)
        (* Now it's an opaque type, but I really don't want to assume.
           need to put an opaque marker in classData?
@@ -798,20 +801,29 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtReturn eopt -> (
     (match eopt with
      | None -> ignore (build_ret_void builder)
-     | Some rexp -> 
+     | Some rexp ->
+       (* Could I find the llvm function itself and use just lltype info? *)
+       let rettype =
+         (Option.get stmt.decor.in_proc).rettype in
         let expval =
-          let rettype =
-            (Option.get stmt.decor.in_proc).rettype in
           let ev = gen_expr the_module builder syms lltypes rexp in
           if rexp.decor = rettype then ev
-                                         (* need to wrap the value if it's a subtype. *)
+          (* need to wrap the value if it's a (nullable) subtype. *)
           else (
             debug_print ("Promoting return value "
                          ^ Llvm.string_of_llvalue ev);
             promote_value ev rettype builder lltypes )
         in
-        (* print_endline("got up to build_ret"); *)
-        ignore (build_ret expval builder)
+        let retval =
+          if rettype.tclass.opaque then
+            (debug_print ("-- Generating opaque return value for " ^ exp_to_string rexp);
+             let retvalAddr = build_alloca (type_of expval) "retvalAddr" builder in
+             ignore (build_store expval retvalAddr builder);
+             build_bitcast retvalAddr (pointer_type void_type) "retvalAddr_void" builder)
+            (* what if value is already a pointer? will I double-point it? *)
+          else expval in
+        debug_print (string_of_llvalue retval);
+        ignore (build_ret retval builder)
     );
     (* Add a basic block after in case a break is added afterwards. *)
     let this_function =
@@ -1132,14 +1144,23 @@ let gen_global_decl the_module lltypes (gdecl: ('ed, 'sd) globalstmt) =
 (* Used for both locals and imported functions. *)
 let gen_fdecls the_module lltypes fsyms =
   StrMap.iter (fun _ procentry ->  (* don't need map keys *)
-      let rettype = ttag_to_llvmtype lltypes procentry.rettype in
+      let rettype =
+        let rawRetType = ttag_to_llvmtype lltypes procentry.rettype in
+        if procentry.rettype.tclass.opaque then (
+          debug_print ("-- Generating opaque return type for "
+                       ^ string_of_lltype rawRetType);
+          pointer_type void_type
+        )
+        else rawRetType in
       let paramtypes =
         List.map (fun entry ->
             let ptype = ttag_to_llvmtype lltypes entry.symtype in
+            if entry.symtype.tclass.opaque then
+              pointer_type void_type (* ptype *)
             (* if is_primitive_type entry.symtype then ptype
             else pointer_type ptype *) (* simplifying try *)
             (* make it the pointer type if it's passed mutable *)
-            if entry.mut then
+            else if entry.mut then
               if entry.symtype.nullable then
                 (* If nullable we want a nullable pointer to the inner type. *)
                 struct_type context [|
@@ -1151,11 +1172,12 @@ let gen_fdecls the_module lltypes fsyms =
             else ptype
           ) procentry.fparams
         |> Array.of_list in
-      (* print_string ("Declaring function " ^ procentry.procname ^ "\n"); *)
+      let llfunctype = function_type rettype paramtypes in
+      debug_print ("-- Declaring function " ^ procentry.procname
+                   ^ ", of type " ^ string_of_lltype llfunctype);
       (* This is the qualified version (or not, if exported) *)
       (* let llfunc = ( *)
-      declare_function procentry.procname
-        (function_type rettype paramtypes) the_module
+      declare_function procentry.procname llfunctype the_module
       |> ignore
       (* print_endline (string_of_llvalue llfunc) *)
     (* We could set names for arguments here. *)
@@ -1182,7 +1204,18 @@ let gen_proc the_module builder lltypes proc =
          let is_pointer_arg = is_pointer_value (param llfunc i) in
          let alloca =
            (* trying to lower this to just "is pointer" *)
-           if is_pointer_arg then param llfunc i
+           if is_pointer_arg then
+             let paramentry = List.nth (fentry.fparams) i
+             (* cast to the specific object pointer type if it's opaque but known type *)
+             (* possibly cannot be done with just llvm info *)
+             in if paramentry.symtype.tclass.opaque
+                && paramentry.symtype.tclass.kindData <> Hidden then ( 
+               debug_print ("-- Casting opaque argument " ^ varname ^ " to concrete type");
+               build_bitcast (param llfunc i)
+                 (pointer_type (ttag_to_llvmtype lltypes paramentry.symtype))
+                 varname entrybuilder
+             )
+             else param llfunc i
            else (build_alloca (type_of (param llfunc i)) varname entrybuilder)
          in
          if not is_pointer_arg then 
@@ -1202,11 +1235,16 @@ let gen_proc the_module builder lltypes proc =
        else (
          (* dummy return, for unreachable code such as after ifs where all
           * branches return *)
-         ignore (build_ret
-                   (* at the LLVM level doesn't work here either. Why? *)
-                   (* (const_null (return_type (type_of llfunc))) *)
-                   (const_null (ttag_to_llvmtype lltypes fentry.rettype))
-                   builder);
+         let dummyRetval =
+           (* at the LLVM level doesn't work here either. Why?
+              Seems like return_type includes too much information *)
+           (* (const_null (return_type (type_of llfunc))) *)
+           if fentry.rettype.tclass.opaque then
+             (* WAT! It works if I call it twice? *)
+             const_null (return_type (return_type (type_of llfunc)))
+             (* const_null (pointer_type void_type) *)
+           else const_null  (ttag_to_llvmtype lltypes fentry.rettype) in
+         ignore (build_ret dummyRetval builder);
            (* ignore (build_ret (default_value fentry.rettype) builder); *)
          Llvm_analysis.assert_valid_function llfunc
        )

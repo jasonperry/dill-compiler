@@ -16,11 +16,12 @@ begin
    var s: Secrets = {x=x, y=y, z=z};
    return s;
 end setSecret
-   
+
 proc secretByte(s: Secrets) => Byte
 begin
+   
    return s.z;
 end secretByte
-   
+ 
 end opaque01
 
