@@ -356,53 +356,53 @@ and check_call syms tenv (fname, args) =
 and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
   match rexp.e with
   | ExpRecord flist ->
-     let cdata = ttag.tclass in 
+    let fields = get_fields ttag.tclass in
      (* make a map from the fields to their types. *)
-     (* Need to do this here to remove them. *)
+     (* Need to do it here each time so we can remove them as they're matched. *)
      (* Definitely leave it as a list in the ClassInfo, for ordering. *)
-     let fdict = List.fold_left (fun s (fi: fieldInfo) ->
-                     StrMap.add fi.fieldname fi.fieldtype s)
-                   StrMap.empty
-                   cdata.fields in
+    let fdict = List.fold_left (fun s (fi: fieldInfo) ->
+        StrMap.add fi.fieldname fi.fieldtype s)
+        StrMap.empty
+        fields in
      (* check field types, recursively removing from the map. *)
-     let rec check_fields
+    let rec check_fields
                (flist: (string * locinfo expr) list)
                (accdict: typetag StrMap.t)
                (accfields: (string * typetag expr) list) =
-       match flist with
-       | [] ->
-          if StrMap.is_empty accdict
-          then Ok {e=ExpRecord accfields; decor=ttag}
-          else Error {
-                   loc=rexp.decor;
-                   value=("Record field " ^ fst (StrMap.choose accdict)
-                          ^ " must be defined in expression")}
-       | (fname, fexp)::rest -> (
-         match StrMap.find_opt fname accdict with
-         | None ->
+      match flist with
+      | [] ->
+        if StrMap.is_empty accdict
+        then Ok {e=ExpRecord accfields; decor=ttag}
+        else Error {
+            loc=rexp.decor;
+            value=("Record field " ^ fst (StrMap.choose accdict)
+                   ^ " must be defined in expression")}
+      | (fname, fexp)::rest -> (
+          match StrMap.find_opt fname accdict with
+          | None ->
             Error {
                 loc=fexp.decor;
                 value=("Unknown record field name or double init: " ^ fname)
               }
-         | Some ftype -> 
+          | Some ftype -> 
              (* recurse if it's a recExpr...could I get away with not? *)
-             let res = match fexp.e with
-               | ExpRecord _ -> check_recExpr syms tenv ftype fexp
-               | _ -> check_expr syms tenv ~thint:(Some ftype) fexp in
-             match res with 
-             | Error err -> Error err
-             | Ok eres ->
-                if eres.decor = ftype
-                then check_fields rest
-                       (StrMap.remove fname accdict) ((fname,eres)::accfields)
-                else Error {
-                         loc=fexp.decor;
-                         value=("Field type mismatch: got "
-                                ^ typetag_to_string eres.decor ^ ", needed "
-                                ^ typetag_to_string ftype)}
-       ) (* end check_fields *)
-     in
-     check_fields flist fdict []
+            let res = match fexp.e with
+              | ExpRecord _ -> check_recExpr syms tenv ftype fexp
+              | _ -> check_expr syms tenv ~thint:(Some ftype) fexp in
+            match res with 
+            | Error err -> Error err
+            | Ok eres ->
+              if eres.decor = ftype
+              then check_fields rest
+                  (StrMap.remove fname accdict) ((fname,eres)::accfields)
+              else Error {
+                  loc=fexp.decor;
+                  value=("Field type mismatch: got "
+                         ^ typetag_to_string eres.decor ^ ", needed "
+                         ^ typetag_to_string ftype)}
+        ) (* end check_fields *)
+    in
+    check_fields flist fdict []
   | _ -> failwith "BUG: check_recExpr called with non-record expr"
 
 
@@ -417,55 +417,56 @@ and check_variant syms tenv ex ~declvar =
             value=("Unknown type " ^ mname ^ "::" ^ tname
                       ^ " in variant expression")}
      | Some cdata -> (
-       (* 2. vname is a variant of it *)
-       match List.find_opt (fun (vstr, _) -> vstr = vname) cdata.variants with
-       | None ->
-          Error {loc=ex.decor;
-                 value=("Unknown variant " ^ vname ^ " of type "
-                        ^ mname ^ "::" ^ tname)}
-       | Some (_, tyopt) -> (
-         match tyopt with
-         | None -> 
-            (* 3. check if the variant takes a value or not *)
-            if Option.is_some eopt then
-              Error {loc=(Option.get eopt).decor;
-                     value="Variant " ^ tname ^ "|" ^ vname
-                           ^ " does not hold a value"}
-            else
-             (* NOTE: replacing with the type's actual module name here. *)
-              Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
-                  decor=gen_ttag cdata []}
+         let variants = get_variants cdata in
+         (* 2. vname is a variant of it *)
+         match List.find_opt (fun (vstr, _) -> vstr = vname) variants with
+         | None ->
+           Error {loc=ex.decor;
+                  value=("Unknown variant " ^ vname ^ " of type "
+                         ^ mname ^ "::" ^ tname)}
+         | Some (_, tyopt) -> (
+             match tyopt with
+             | None -> 
+               (* 3. check if the variant takes a value or not *)
+               if Option.is_some eopt then
+                 Error {loc=(Option.get eopt).decor;
+                        value="Variant " ^ tname ^ "|" ^ vname
+                              ^ " does not hold a value"}
+               else
+                 (* NOTE: replacing with the type's actual module name here. *)
+                 Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
+                     decor=gen_ttag cdata []}
          | Some vtype -> (
-           match eopt with
-           | None -> 
-              Error {loc=ex.decor;
-                     value="Variant " ^ tname ^ "|" ^ vname
-                           ^ " requires a value"}
-           | Some e2 -> (
+             match eopt with
+             | None -> 
+               Error {loc=ex.decor;
+                      value="Variant " ^ tname ^ "|" ^ vname
+                            ^ " requires a value"}
+             | Some e2 -> (
              (* 4. typecheck the value (if it's not a declaration in a case) *)
-             if not declvar then 
-               match check_expr syms tenv e2 with 
-               | Error err -> Error err
-               (* 5. Check that the value type and variant type match *)
-               | Ok echecked ->
-                  if subtype_match echecked.decor vtype then
-                    Ok {
-                        e=ExpVariant ((cdata.in_module, tname), vname,
+                 if not declvar then 
+                   match check_expr syms tenv e2 with 
+                   | Error err -> Error err
+                   (* 5. Check that the value type and variant type match *)
+                   | Ok echecked ->
+                     if subtype_match echecked.decor vtype then
+                       Ok {
+                         e=ExpVariant ((cdata.in_module, tname), vname,
                                       Some echecked);
-                        decor=gen_ttag cdata []
-                      }
-                  else
-                    Error {
+                         decor=gen_ttag cdata []
+                       }
+                     else
+                       Error {
                         loc=e2.decor;
                         value="Value type " ^ typetag_to_string echecked.decor
                               ^ " Does not match variant type "
                               ^ typetag_to_string vtype
                       }
-             else
-               Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
-                   decor=gen_ttag cdata []}
-             
-  )))))
+                 else
+                   Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
+                       decor=gen_ttag cdata []}
+                     
+               )))))
   | _ -> failwith "check_variant called without variant expr"
 
 (** lvalue checking code for assignment contexts. Also removes from
@@ -852,7 +853,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                  (* get type of this specific case's value, if it has one *)
                  let (_, vnttyopt) =
                    List.find (fun (vn, _) -> vntname = vn)
-                     casetype.tclass.variants in
+                     (get_variants casetype.tclass) in
                  if List.exists ((=) vntname) caseacc then 
                    errout ("Duplicate variant case " ^ tyname ^ "|" ^ vntname)
                  else
@@ -956,7 +957,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                   above for nullables *)
               let nvariants =
                 if mtype.nullable then 2
-                else List.length mtype.tclass.variants in
+                else List.length (get_variants mtype.tclass) in
               (* check for exhaustiveness here, for now just by comparing lengths*)
               if List.length caseacc < nvariants
                  && Option.is_none elseopt then
@@ -1129,24 +1130,35 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
            in
            (* Build symbol table entries for all fields of all params, if any *)
            let fieldentries =
-             let rec gen_field_entries paramroot parentstr (finfo: fieldInfo) = 
-               let fnamestr = parentstr ^ "." ^ finfo.fieldname in
-               {
-                 symname=fnamestr;
-                 symtype=finfo.fieldtype;
-                 var=finfo.mut && paramroot.mut;
-                 mut=finfo.mut && paramroot.mut; (* no diff for fields? *)
-                 addr=None
-               }
-               :: List.concat_map
-                    (gen_field_entries paramroot fnamestr)
-                    finfo.fieldtype.tclass.fields
-             in paramentries
+             let rec gen_field_entries paramroot fldtype nameacc =
+                 (* (finfo: fieldInfo) *) 
+               match fldtype.tclass.kindData with
+               | Struct flist -> (
+                   flist |> List.map (fun (finfo: fieldInfo) -> 
+                       let fnamestr = nameacc ^ "." ^ finfo.fieldname in
+                       {
+                         symname=fnamestr;
+                         symtype=finfo.fieldtype;
+                         (* immutability propagates down, but I think this
+                            is wrong b/c I should use the parent result *)
+                         var=finfo.mut && paramroot.mut;
+                         (* when are var and mut different? *)
+                         mut=finfo.mut && paramroot.mut; 
+                         addr=None
+                       } :: (gen_field_entries paramroot finfo.fieldtype fnamestr)
+                         (* (get_fields finfo.fieldtype.tclass) *)
+                     )
+                   |> List.concat)
+               | _ -> []
+             in List.concat_map
+               (fun pentry -> gen_field_entries pentry (pentry.symtype) (pentry.symname))
+               paramentries
+               (* paramentries
                 |> List.concat_map
                      (fun pentry ->
                        List.concat_map
                          (gen_field_entries pentry pentry.symname)
-                         pentry.symtype.tclass.fields)
+                         (get_fields pentry.symtype.tclass)) *)
            in
            (* Typecheck return type *)
            match check_typeExpr tenv pdecl.rettype with
@@ -1268,8 +1280,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               params = [];
               (* for generics: generate field info with same type
                 variables as outer *)
-              fields = flist;
-              variants = [];
+              kindData = Struct flist;
             }
        )
     | Variants variants -> (
@@ -1310,13 +1321,10 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
                                      && (Option.get (snd st)).tclass.muttype
                           ) variants;
               params = [];
-              fields = [];
-              variants = variants
+              kindData = Variant variants
             }
      )
     | Newtype tyex -> (
-        (* Wait! I need more than a classdata if this is derived from a type
-           with array or nullable markers! It has to return the full type info *)
         match TypeMap.find_opt (tyex.modname, tyex.classname) tenv with
         | None ->
           Error [{value="Unknown type name " ^ typeExpr_to_string tyex;
@@ -1329,8 +1337,15 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
             in_module = modname; (* defined in this module now *)
             muttype = cdata.muttype;
             params = cdata.params;
-            fields = cdata.fields;
-            variants = cdata.variants
+            (* construct a tag for the underlying type *)
+            kindData = Newtype {
+                modulename=tyex.modname;
+                typename=tyex.classname;
+                tclass=cdata;
+                paramtypes=[];
+                array=tyex.array;
+                nullable=tyex.nullable
+              }
           }
       )
     | Hidden ->
@@ -1340,8 +1355,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
         muttype = true; (* Can't assume it's not mutable,
                            it's based on what's called *)
         params = [];
-        fields = [];
-        variants = []
+        kindData = Opaque
       }
   )
 

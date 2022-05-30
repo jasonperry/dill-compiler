@@ -14,6 +14,13 @@ and fieldInfo = {
     fieldtype: typetag
   }
 
+and kindInfo =
+  | Primitive (* Ooo! *)
+  | Struct of fieldInfo list
+  | Variant of (string * typetag option) list
+  | Newtype of typetag
+  | Opaque
+
 (** The specification for a class of types, built from a type declaration *)
 and classData = {
     classname: string;
@@ -27,8 +34,9 @@ and classData = {
     (* implements: string list;  *)
     (* When we do generics, need to link params to the field type variables. 
        (possibly just by var name) *)
-    fields: fieldInfo list; (* should be map? *)
-    variants: (string * typetag option) list (* variant name and type if any *)
+    (* fields: fieldInfo list; (* should be map? *)
+       variants: (string * typetag option) list (* variant name and type if any *) *)
+    kindData: kindInfo
   }
 
 (** Unique specification of a concrete type. It's what's checked for
@@ -44,6 +52,18 @@ and typetag = {
     (* size: int;  (* probably not here, might need a recursive flag *) *)
     nullable: bool;
   }
+
+
+(** helper to pull out the field assuming it's a struct type *)
+let get_fields cdata = match cdata.kindData with
+  | Struct flist -> flist
+  | _ -> failwith ("BUG: " ^ cdata.classname ^ " is not a struct type")
+
+(** helper to pull out the variants assuming it's a variant type *)
+let get_variants cdata = match cdata.kindData with
+  | Variant vts -> vts
+  | _ -> failwith ("BUG: " ^ cdata.classname ^ " is not a variant type")
+
 
 
 (** Generate a type for a typetag for a class (and later, specify generics *)
@@ -75,34 +95,34 @@ let rec typetag_to_string (tt: typetag) =
 
 
 (* Class definitions for built-in types, and tags for convenience. *)
-let null_class = { classname="NullType"; in_module = "";
-                   muttype=false; params=[]; fields=[];
-                   variants=[] }
+let null_class = { classname="NullType"; in_module = ""; kindData = Primitive;
+                   muttype=false; params=[]; } (* fields=[];
+                     variants=[] } *)
 let null_ttag = gen_ttag null_class []
 (* NOTE: void is not a type! Maybe it shouldn't be one in Dill, just have
  * procs that return nothing. *)
 let void_class =  { classname="Void"; in_module = ""; muttype=false;
-                    params=[]; fields=[]; variants=[] }
+                    kindData = Primitive; params=[]; } (* fields=[]; variants=[] } *)
 let void_ttag = gen_ttag void_class []
 
-let int_class = { classname="Int"; in_module = ""; muttype=false; params=[];
-                  fields=[]; variants=[] } (* later: "Arith" *)
+let int_class = { classname="Int"; in_module = ""; muttype=false;
+                  kindData=Primitive; params=[]; }
 let int_ttag = gen_ttag int_class []
 
 let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
-                    fields=[]; variants=[] }
+                    kindData=Primitive; }
 let float_ttag = gen_ttag float_class []
 
 let byte_class = { classname="Byte"; in_module=""; muttype=false; params=[];
-                   fields=[]; variants=[] }
+                   kindData=Primitive; }
 let byte_ttag = gen_ttag byte_class []
 
 let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
-                   fields=[]; variants=[] }
+                   kindData=Primitive; }
 let bool_ttag = gen_ttag bool_class []
 
 let string_class = { classname="String"; in_module=""; muttype=false;
-                     params=[]; fields=[]; variants=[] }
+                     params=[]; kindData=Primitive; }
 let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)
 
@@ -111,7 +131,10 @@ let string_ttag = gen_ttag string_class []
 
 (** Try to fetch field info from a classdata. *)
 let get_cdata_field cdata fname =
-  List.find_opt (fun (fi: fieldInfo) -> fi.fieldname = fname) cdata.fields
+  match cdata.kindData with
+  | Struct fields -> 
+    List.find_opt (fun (fi: fieldInfo) -> fi.fieldname = fname) fields
+  | _ -> failwith "BUG: attempt to get field from non-struct type"
 
 (** Try to fetch field info from a typetag *)
 let get_ttag_field ttag fname =
@@ -123,25 +146,18 @@ let get_ttag_field ttag fname =
   )
   else get_cdata_field ttag.tclass fname
 
-
-let is_primitive_type ttag =
-  (* would it be better to just look for the fixed set of primitive types? 
-     Maybe not, because that will expand (Int64, etc.) *)
-  not ttag.array && not ttag.nullable
-  && ttag.tclass.fields = [] && ttag.tclass.variants = []
+(* Probably don't need these now that I explicitly encode. *)
+let is_primitive_type ttag = ttag.tclass.kindData = Primitive
   
 (* These are useful b/c you can't just check the fields to see if
  * the "outermost" type is struct or variant *)
-let is_struct_type ttag =
-  (not ttag.array) && (not ttag.nullable) && ttag.tclass.fields <> []
+let is_struct_type ttag = match ttag.tclass.kindData with
+  | Struct _ -> true
+  | _ -> false
 
 (* Hmm, should I make a nullable count as a variant type here? *)
-let is_variant_type ttag =
-  (not ttag.array) && (not ttag.nullable) && ttag.tclass.variants <> []
-    
+let is_variant_type ttag = match ttag.tclass.kindData with
+  | Variant _ -> true
+  | _ -> false
 
-(*
-(** Should only need this for printing out, not internally. *)
-let typename (ttag: typetag) =
-  ttag.modulename ^ "::" ^ ttag.typename
- *)
+ 

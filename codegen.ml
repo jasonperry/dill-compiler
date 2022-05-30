@@ -74,13 +74,15 @@ let rec gen_lltype context
   | ("", "String") -> pointer_type (i8_type context), StrMap.empty
   | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
   | _ ->
-     (* Process struct or variant type. *)
-     (* make a list of names/types for either struct or variant fields.
-      * (access information about struct fields not needed for codegen) *)
-     let fielddata = 
-       if cdata.fields <> []
-       then List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) cdata.fields
-       else cdata.variants
+    (* Process non-primitive type *)
+    (* make a list of names/types for either struct or variant fields. *)
+    let fielddata =
+      match cdata.kindData with
+       | Struct fields ->
+       (* mutability info about struct fields not needed for codegen) *)
+        List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) fields
+      | Variant vts -> vts
+      | _ -> []
      in 
      (* Generate list of (name, lltype, offset, type) from fields *)
      let ftypeinfo =
@@ -119,8 +121,11 @@ let rec gen_lltype context
            StrMap.add fname (i, ftype) fomap
            ) StrMap.empty ftypeinfo in
      let typename = cdata.in_module ^ "::" ^ cdata.classname in
+     match cdata.kindData with 
      (* generate the llvm named struct type, record case *)
-     if cdata.fields <> [] then
+     (* Smells funny because fields not used, may want to split it out
+        into a more sensible separate function for each kind. *)
+     | Struct _ ->
        let structtype = named_struct_type context typename in
        (* "false" means to not use packed structs. *)
        struct_set_body structtype
@@ -128,7 +133,7 @@ let rec gen_lltype context
           |> Array.of_list) false;
        (structtype, fieldmap)
      (* Variant case: struct of tag + optional byte array for the union *)
-     else if (cdata.variants <> []) then (
+     | Variant _ ->
        (* Compute max size of any of the variant subtypes. *)
        let maxsize =
          List.fold_left (fun max llvarty ->
@@ -154,8 +159,11 @@ let rec gen_lltype context
                array_type (i8_type context) (Int64.to_int maxsize + 4) |])
          false;
        (structtype, fieldmap)
-     ) else
-       failwith ("BUG: unknown class type " ^ cdata.classname ^ " in codegen")
+     | _ -> (* TODO: opaque type and newtype *)
+       (* Now it's an opaque type, but I really don't want to assume.
+          need to put an opaque marker in classData?
+          Maybe go with a kind variant instead of just lists that can be empty? *)
+       failwith ("BUG: missing codegen for class type " ^ cdata.classname)
 
 
 (** Use a type tag to generate the LLVM type from the base type. *)
@@ -217,10 +225,11 @@ let build_gc_array_malloc eltType llsize name the_module builder =
 (** Generate an equality comparison. This could get complex. *)
 let rec gen_eqcomp val1 val2 valty lltypes builder =
   if is_struct_type valty then
+    let fields = get_fields valty.tclass in
     let rec checkloop i prevcmp =
       (* generate next field compare value, generate AND with previous *)
       (* later: optimize to not need to generate a const starting value *)
-      if i = List.length valty.tclass.fields then
+      if i = List.length fields then
         prevcmp
       else
         (* get the pointer. assume structs are pointers? *)
@@ -239,7 +248,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
           else
             build_extractvalue val2 i "f2val" builder in
         (* might be good to make "fields" an array *)
-        let fieldtype = (List.nth valty.tclass.fields i).fieldtype in 
+        let fieldtype = (List.nth fields i).fieldtype in 
         let cmpval = gen_eqcomp field1val field2val fieldtype lltypes builder in
         (* Could using branches so we can short-circuit be faster? *)
         let andval = build_and prevcmp cmpval "cmpand" builder in
@@ -247,6 +256,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
     in
     checkloop 0 (const_int bool_type 1)
   else if is_variant_type valty then (
+    let variants = get_variants valty.tclass in
     (* check tag, then load and cast the variable type if it exists and 
        compare that. *)
     let var1tag =
@@ -269,7 +279,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
        let parent_function = block_parent start_bb in
        (* first "then", if the tag doesn't match *)
        (* let first_then = append_block context "then" parent_function in *)
-       let ncases = List.length valty.tclass.variants in
+       let ncases = List.length variants in
        let rec genblocks i =
          if i == 0 then []
          else
@@ -301,7 +311,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
            ignore (build_cond_br condval then_bb next_bb builder);
            position_at_end then_bb builder;
            (* cast, then compare *)
-           let variant = List.nth valty.tclass.variants caseval in
+           let variant = List.nth variants caseval in
            let compval, then_end_bb = 
              match variant with 
              | (_, Some varty) ->
