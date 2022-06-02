@@ -1,0 +1,10 @@
+(* first file i/o function tests *)
+open stdio;
+
+proc main()
+begin
+   var f = openFile("hello.dl", "r");
+   var fileData = readFile(f);
+   printBytes(fileData);
+   closeFile(f);
+end main

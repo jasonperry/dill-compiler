@@ -7,14 +7,101 @@ target triple = "x86_64-pc-linux-gnu"
 %struct._IO_marker = type opaque
 %struct._IO_codecvt = type opaque
 %struct._IO_wide_data = type opaque
-%struct.int_array = type { i64, i64* }
 %struct.byte_array = type { i64, i8* }
+%struct.int_array = type { i64, i64* }
 %struct.nullstr = type { i8, i8* }
 
-@.str = private unnamed_addr constant [5 x i8] c"%ld\0A\00", align 1
-@.str.1 = private unnamed_addr constant [4 x i8] c"%f\0A\00", align 1
+@stderr = external global %struct._IO_FILE*, align 8
+@.str = private unnamed_addr constant [58 x i8] c"Runtime Error: tried to read %lu bytes, read %lu instead\0A\00", align 1
+@.str.1 = private unnamed_addr constant [5 x i8] c"%ld\0A\00", align 1
+@.str.2 = private unnamed_addr constant [4 x i8] c"%f\0A\00", align 1
 @stdout = external global %struct._IO_FILE*, align 8
 @stdin = external global %struct._IO_FILE*, align 8
+
+; Function Attrs: noinline nounwind optnone sspstrong uwtable
+define dso_local %struct._IO_FILE* @openFile(i8* %0, i8* %1) #0 {
+  %3 = alloca i8*, align 8
+  %4 = alloca i8*, align 8
+  store i8* %0, i8** %3, align 8
+  store i8* %1, i8** %4, align 8
+  %5 = load i8*, i8** %3, align 8
+  %6 = load i8*, i8** %4, align 8
+  %7 = call noalias %struct._IO_FILE* @fopen(i8* %5, i8* %6)
+  ret %struct._IO_FILE* %7
+}
+
+declare noalias %struct._IO_FILE* @fopen(i8*, i8*) #1
+
+; Function Attrs: noinline nounwind optnone sspstrong uwtable
+define dso_local void @closeFile(%struct._IO_FILE* %0) #0 {
+  %2 = alloca %struct._IO_FILE*, align 8
+  store %struct._IO_FILE* %0, %struct._IO_FILE** %2, align 8
+  %3 = load %struct._IO_FILE*, %struct._IO_FILE** %2, align 8
+  %4 = call i32 @fclose(%struct._IO_FILE* %3)
+  ret void
+}
+
+declare i32 @fclose(%struct._IO_FILE*) #1
+
+; Function Attrs: noinline nounwind optnone sspstrong uwtable
+define dso_local { i64, i8* } @readFile(%struct._IO_FILE* %0) #0 {
+  %2 = alloca %struct.byte_array, align 8
+  %3 = alloca %struct._IO_FILE*, align 8
+  %4 = alloca i64, align 8
+  %5 = alloca i64, align 8
+  store %struct._IO_FILE* %0, %struct._IO_FILE** %3, align 8
+  %6 = load %struct._IO_FILE*, %struct._IO_FILE** %3, align 8
+  %7 = call i32 @fseek(%struct._IO_FILE* %6, i64 0, i32 2)
+  %8 = load %struct._IO_FILE*, %struct._IO_FILE** %3, align 8
+  %9 = call i64 @ftell(%struct._IO_FILE* %8)
+  store i64 %9, i64* %4, align 8
+  %10 = load %struct._IO_FILE*, %struct._IO_FILE** %3, align 8
+  %11 = call i32 @fseek(%struct._IO_FILE* %10, i64 0, i32 0)
+  %12 = load i64, i64* %4, align 8
+  %13 = getelementptr inbounds %struct.byte_array, %struct.byte_array* %2, i32 0, i32 0
+  store i64 %12, i64* %13, align 8
+  %14 = load i64, i64* %4, align 8
+  %15 = call noalias i8* @GC_malloc(i64 %14) #4
+  %16 = getelementptr inbounds %struct.byte_array, %struct.byte_array* %2, i32 0, i32 1
+  store i8* %15, i8** %16, align 8
+  %17 = getelementptr inbounds %struct.byte_array, %struct.byte_array* %2, i32 0, i32 1
+  %18 = load i8*, i8** %17, align 8
+  %19 = load i64, i64* %4, align 8
+  %20 = load %struct._IO_FILE*, %struct._IO_FILE** %3, align 8
+  %21 = call i64 @fread(i8* %18, i64 1, i64 %19, %struct._IO_FILE* %20)
+  store i64 %21, i64* %5, align 8
+  %22 = load i64, i64* %5, align 8
+  %23 = load i64, i64* %4, align 8
+  %24 = icmp ne i64 %22, %23
+  br i1 %24, label %25, label %30
+
+25:                                               ; preds = %1
+  %26 = load %struct._IO_FILE*, %struct._IO_FILE** @stderr, align 8
+  %27 = load i64, i64* %4, align 8
+  %28 = load i64, i64* %5, align 8
+  %29 = call i32 (%struct._IO_FILE*, i8*, ...) @fprintf(%struct._IO_FILE* %26, i8* getelementptr inbounds ([58 x i8], [58 x i8]* @.str, i64 0, i64 0), i64 %27, i64 %28)
+  call void @exit(i32 1) #5
+  unreachable
+
+30:                                               ; preds = %1
+  %31 = bitcast %struct.byte_array* %2 to { i64, i8* }*
+  %32 = load { i64, i8* }, { i64, i8* }* %31, align 8
+  ret { i64, i8* } %32
+}
+
+declare i32 @fseek(%struct._IO_FILE*, i64, i32) #1
+
+declare i64 @ftell(%struct._IO_FILE*) #1
+
+; Function Attrs: allocsize(0)
+declare noalias i8* @GC_malloc(i64) #2
+
+declare i64 @fread(i8*, i64, i64, %struct._IO_FILE*) #1
+
+declare i32 @fprintf(%struct._IO_FILE*, i8*, ...) #1
+
+; Function Attrs: noreturn nounwind
+declare void @exit(i32) #3
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local { i64, i64* } @initIntArray(i64 %0, i64 %1) #0 {
@@ -29,7 +116,7 @@ define dso_local { i64, i64* } @initIntArray(i64 %0, i64 %1) #0 {
   store i64 %7, i64* %8, align 8
   %9 = load i64, i64* %4, align 8
   %10 = mul i64 %9, 8
-  %11 = call noalias i8* @GC_malloc(i64 %10) #3
+  %11 = call noalias i8* @GC_malloc(i64 %10) #4
   %12 = bitcast i8* %11 to i64*
   %13 = getelementptr inbounds %struct.int_array, %struct.int_array* %3, i32 0, i32 1
   store i64* %12, i64** %13, align 8
@@ -65,26 +152,23 @@ define dso_local { i64, i64* } @initIntArray(i64 %0, i64 %1) #0 {
   ret { i64, i64* } %31
 }
 
-; Function Attrs: allocsize(0)
-declare noalias i8* @GC_malloc(i64) #1
-
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local void @printInt(i64 %0) #0 {
   %2 = alloca i64, align 8
   store i64 %0, i64* %2, align 8
   %3 = load i64, i64* %2, align 8
-  %4 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.str, i64 0, i64 0), i64 %3)
+  %4 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.str.1, i64 0, i64 0), i64 %3)
   ret void
 }
 
-declare i32 @printf(i8*, ...) #2
+declare i32 @printf(i8*, ...) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local void @printFloat(double %0) #0 {
   %2 = alloca double, align 8
   store double %0, double* %2, align 8
   %3 = load double, double* %2, align 8
-  %4 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str.1, i64 0, i64 0), double %3)
+  %4 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str.2, i64 0, i64 0), double %3)
   ret void
 }
 
@@ -105,7 +189,7 @@ define dso_local void @printBytes(i64 %0, i8* %1) #0 {
   ret void
 }
 
-declare i64 @fwrite(i8*, i64, i64, %struct._IO_FILE*) #2
+declare i64 @fwrite(i8*, i64, i64, %struct._IO_FILE*) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local void @printString(i8* %0) #0 {
@@ -116,7 +200,7 @@ define dso_local void @printString(i8* %0) #0 {
   ret void
 }
 
-declare i32 @puts(i8*) #2
+declare i32 @puts(i8*) #1
 
 ; Function Attrs: noinline nounwind optnone sspstrong uwtable
 define dso_local { i8, i8* } @getLineStdin() #0 {
@@ -151,12 +235,14 @@ define dso_local { i8, i8* } @getLineStdin() #0 {
   ret { i8, i8* } %17
 }
 
-declare i64 @getline(i8**, i64*, %struct._IO_FILE*) #2
+declare i64 @getline(i8**, i64*, %struct._IO_FILE*) #1
 
 attributes #0 = { noinline nounwind optnone sspstrong uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #1 = { allocsize(0) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #2 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
-attributes #3 = { allocsize(0) }
+attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #2 = { allocsize(0) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #3 = { noreturn nounwind "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #4 = { allocsize(0) }
+attributes #5 = { noreturn nounwind }
 
 !llvm.module.flags = !{!0, !1, !2, !3, !4}
 !llvm.ident = !{!5}

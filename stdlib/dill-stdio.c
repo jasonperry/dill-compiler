@@ -18,6 +18,38 @@ struct byte_array {
   char* data;
 };
 
+// This doesn't make it appear in the .ll
+// FILE *fopen(const char *filename, const char *mode);
+
+// it won't get named right anyway, so just use one
+FILE* openFile(const char *filename, const char *mode) {
+  // error checking.
+  return fopen(filename, mode);
+}
+
+void closeFile(FILE* file) {
+  fclose(file);
+}
+
+struct byte_array readFile(FILE* file) {
+  // how to check if it's not open?
+  fseek(file, 0L, SEEK_END);
+  size_t length = ftell(file);
+  fseek(file, 0L, SEEK_SET);
+  struct byte_array result;
+  result.length = length;
+  result.data = GC_malloc(length);
+  size_t bytesRead = fread(result.data, 1L, length, file);
+  if (bytesRead != length) {
+    fprintf(stderr, "Runtime Error: tried to read %lu bytes, read %lu instead\n",
+	    length, bytesRead);
+    exit(1);
+  }
+  return result;
+}
+  
+  
+
 struct int_array initIntArray(int64_t length, int64_t value) {
   struct int_array a;
   a.length = length;
