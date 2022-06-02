@@ -140,6 +140,8 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                match fields with
                | [] -> Ok ([], prevty)
                | (fname, ixopt)::rest -> (
+                   (* TODO: check for opaque type here for better error messages
+                      "cannot access fields of types whose structure is hidden" *)
                  match get_ttag_field prevty fname with
                  | None -> 
                     Error {loc=ex.decor;

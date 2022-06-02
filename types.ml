@@ -1,9 +1,9 @@
 (** Types for type info, seems this will be used end-to-end *)
 
-(** in-place type variables for generics, including constraints *)
+(** in-place type variables for generics, with signature impl requirements *)
 type typevar = {
     varname: string;
-    interfaces: string list
+    impls: string list (* probably should be a set later. *)
   }
 
 (** Type information about a single record field. *)
@@ -136,7 +136,8 @@ let get_cdata_field cdata fname =
 
 (** Try to fetch field info from a typetag *)
 let get_ttag_field ttag fname =
-  if ttag.nullable then None
+  if ttag.tclass.kindData = Hidden then None
+  else if ttag.nullable then None
   else if ttag.array then (
     if fname = "length" then
       Some { fieldname="length"; priv=false; mut=false; fieldtype=int_ttag }

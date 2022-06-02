@@ -7,5 +7,7 @@ proc main()
 begin
    var s: Secrets = setSecret(4, 3.5, 'P');
    printBytes([secretByte(s)]);
+   (* try to access hidden field *)
+   printBytes([s.z]);
    printString("");
 end main

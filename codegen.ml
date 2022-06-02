@@ -221,9 +221,17 @@ let build_gc_array_malloc eltType llsize name the_module builder =
   match lookup_function "GC_malloc" the_module with
   | None -> failwith "BUG: GC_malloc llvm function not found"
   | Some llmalloc ->
-    let dataptr = build_call llmalloc [|llsize|] "mallocbytes" builder in
+    let datasize = build_mul llsize (size_of eltType) "malloc_size" builder in
+    let dataptr = build_call llmalloc [|datasize|] "mallocbytes" builder in
     build_bitcast dataptr (pointer_type eltType) name builder
 
+let build_gc_malloc eltType name the_module builder =
+  match lookup_function "GC_malloc" the_module with
+  | None -> failwith "BUG: GC_malloc llvm function not found"
+  | Some llmalloc ->
+    let dataptr = build_call llmalloc [|size_of eltType|] "mallocbytes" builder in
+    build_bitcast dataptr (pointer_type eltType) name builder
+  
 
 (** Generate an equality comparison. This could get complex. *)
 let rec gen_eqcomp val1 val2 valty lltypes builder =
@@ -815,9 +823,12 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
             promote_value ev rettype builder lltypes )
         in
         let retval =
+          (* If type is opaque, need to return a void pointer. *)
           if rettype.tclass.opaque then
             (debug_print ("-- Generating opaque return value for " ^ exp_to_string rexp);
-             let retvalAddr = build_alloca (type_of expval) "retvalAddr" builder in
+             let retvalAddr =
+               (* TODO: detect if it's already stored on the heap. How? *)
+               build_gc_malloc (type_of expval) "retvalAddr" the_module builder in
              ignore (build_store expval retvalAddr builder);
              build_bitcast retvalAddr (pointer_type void_type) "retvalAddr_void" builder)
             (* what if value is already a pointer? will I double-point it? *)
@@ -1266,7 +1277,7 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
         let (lltype, fieldmap) = gen_lltype context tenv lltenv layout cdata in
         debug_print (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
-            ^ " to lltenv. lltype: \n  " ^ string_of_lltype lltype);
+            ^ " to lltenv, lltype: " ^ string_of_lltype lltype);
         Lltenv.add newkey (lltype, fieldmap) lltenv
       ) tenv Lltenv.empty in
   (* 2. Generate decls from the symtable for imported global variables. *)
