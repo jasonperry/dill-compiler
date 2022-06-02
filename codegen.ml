@@ -16,6 +16,7 @@ let int32_type = i32_type context
 let bool_type = i1_type context
 let byte_type = i8_type context
 let void_type = void_type context
+let voidptr_type = pointer_type (i8_type context)
 let nulltag_type = i8_type context
 let varianttag_type = i32_type context
 
@@ -161,7 +162,8 @@ let rec gen_lltype context
        (structtype, fieldmap)
      | Hidden ->
        (* Unknown implementation, must be treated as void pointer *)
-       (pointer_type void_type, StrMap.empty)
+       (* (pointer_type void_type, StrMap.empty) *)
+       (voidptr_type, StrMap.empty)
      | _ -> (* TODO: opaque type and newtype *)
        (* Now it's an opaque type, but I really don't want to assume.
           need to put an opaque marker in classData?
@@ -734,18 +736,20 @@ and gen_call the_module builder syms lltypes (fname, args) =
              if mut then
                match argexpr.e with
                | ExpVar _ -> (   (* (v, vlds) *)
-                 let varentry, _ =
-                   Symtable.findvar (exp_to_string argexpr) syms in
-                 match varentry.addr with
-                 | Some alloca ->
-                    (* I think this is where I promote. *)
-                    (* if varentry.symtype.nullable <> argexpr.decor.nullable then *)
-                    if argexpr.decor.nullable then
-                      failwith "Not yet supporting mutable nullable args"
-                    else 
-                      alloca
-                 | None -> failwith "BUG: alloca not found for mutable arg"
-               )
+                   (* new idea: if it's already a pointer type just pass it?
+                      How to get the lltype? *)
+                   let varentry, _ =
+                     Symtable.findvar (exp_to_string argexpr) syms in
+                   match varentry.addr with
+                   | Some alloca ->
+                     (* I think this is where I promote. *)
+                     (* if varentry.symtype.nullable <> argexpr.decor.nullable then *)
+                     if argexpr.decor.nullable then
+                       failwith "Not yet supporting mutable nullable args"
+                     else 
+                       alloca
+                   | None -> failwith "BUG: alloca not found for mutable arg"
+                 )
                | _ -> failwith "BUG: non-var mutable argument in codegen"
              else
                let argval = gen_expr the_module builder syms lltypes argexpr in
@@ -778,7 +782,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* at end didn't work, it was after the terminator *)
     (* let declpos = builder_at_end context
         (entry_block (block_parent (insertion_block builder))) in *)
-    let alloca = build_alloca allocatype varname declpos in 
+    let alloca =
+      build_alloca allocatype varname declpos in 
     Symtable.set_addr syms varname alloca;
     match eopt with
     | None -> ()
@@ -830,7 +835,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
                (* TODO: detect if it's already stored on the heap. How? *)
                build_gc_malloc (type_of expval) "retvalAddr" the_module builder in
              ignore (build_store expval retvalAddr builder);
-             build_bitcast retvalAddr (pointer_type void_type) "retvalAddr_void" builder)
+             build_bitcast retvalAddr voidptr_type "retvalAddr_void" builder)
             (* what if value is already a pointer? will I double-point it? *)
           else expval in
         debug_print (string_of_llvalue retval);
@@ -1160,18 +1165,18 @@ let gen_fdecls the_module lltypes fsyms =
         if procentry.rettype.tclass.opaque then (
           debug_print ("-- Generating opaque return type for "
                        ^ string_of_lltype rawRetType);
-          pointer_type void_type
+          voidptr_type (* pointer_type void_type *)
         )
         else rawRetType in
       let paramtypes =
         List.map (fun entry ->
             let ptype = ttag_to_llvmtype lltypes entry.symtype in
-            if entry.symtype.tclass.opaque then
-              pointer_type void_type (* ptype *)
+            (* if entry.symtype.tclass.opaque then
+               voidptr_type (* pointer_type void_type *) *)
             (* if is_primitive_type entry.symtype then ptype
             else pointer_type ptype *) (* simplifying try *)
             (* make it the pointer type if it's passed mutable *)
-            else if entry.mut then
+            if entry.mut then
               if entry.symtype.nullable then
                 (* If nullable we want a nullable pointer to the inner type. *)
                 struct_type context [|
@@ -1179,7 +1184,8 @@ let gen_fdecls the_module lltypes fsyms =
                     pointer_type (Lltenv.find_class_lltype
                                     entry.symtype.tclass lltypes)
                   |]
-              else pointer_type ptype
+              else
+                pointer_type ptype
             else ptype
           ) procentry.fparams
         |> Array.of_list in

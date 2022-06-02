@@ -1,9 +1,9 @@
-(* first file i/o function tests *)
+(* file i/o test (file doesn't exist error) *)
 open stdio;
 
 proc main()
 begin
-   var f = openFile("hello.dl", "r");
+   var f = openFile("noexistee.dl", "r");
    (* modifies the internal state *)
    var fileData = readFile(#f);
    printBytes(fileData);

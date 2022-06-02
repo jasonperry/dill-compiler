@@ -10,7 +10,7 @@ proc printString(s: String) => Void;
 proc getLineStdin(n: Int) => String?;
 
 proc openFile(filename: String, mode: String) => stdio::File;
-proc closeFile(file: stdio::File) => Void;
-proc readFile(file: stdio::File) => Byte[];
+proc closeFile(#file: stdio::File) => Void;
+proc readFile(#file: stdio::File) => Byte[];
 
 end stdio

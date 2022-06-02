@@ -23,15 +23,21 @@ struct byte_array {
 
 // it won't get named right anyway, so just use one
 FILE* openFile(const char *filename, const char *mode) {
-  // error checking.
-  return fopen(filename, mode);
+  FILE* result = fopen(filename, mode);
+  if (result == NULL) {
+    perror("Runtime error (openFile)");
+    exit(1);
+  }
+  return result;
 }
 
-void closeFile(FILE* file) {
-  fclose(file);
+void closeFile(FILE** file) {
+  fclose(*file);
 }
 
-struct byte_array readFile(FILE* file) {
+// void pointer passed mutable results in the double-point.
+struct byte_array readFile(FILE** fpp) {
+  FILE* file = *fpp;
   // how to check if it's not open?
   fseek(file, 0L, SEEK_END);
   size_t length = ftell(file);
@@ -41,7 +47,8 @@ struct byte_array readFile(FILE* file) {
   result.data = GC_malloc(length);
   size_t bytesRead = fread(result.data, 1L, length, file);
   if (bytesRead != length) {
-    fprintf(stderr, "Runtime Error: tried to read %lu bytes, read %lu instead\n",
+    fprintf(stderr,
+	    "Runtime Error(readFile): tried to read %lu bytes, got %lu instead\n",
 	    length, bytesRead);
     exit(1);
   }
