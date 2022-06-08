@@ -106,6 +106,7 @@ rule token = parse  (* funny that it's called parse *)
   | "private" { PRIVATE }
   | '.'       { DOT }
   | "type"    { TYPE }
+  | "rec"     { REC }
   | "opaque"  { OPAQUE }
   | "struct"  { STRUCT }
   | "variant" { VARIANT }

@@ -22,7 +22,7 @@
 %token MODULE MODSPEC
 %token IMPORT AS OPEN 
 %token PRIVATE EXPORT
-%token TYPE OPAQUE STRUCT VARIANT MUT
+%token TYPE OPAQUE REC STRUCT VARIANT MUT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -125,19 +125,35 @@ typedeclBody:
   | SEMI
     { {typename="";
        kindinfo=Hidden;
+       rectype=false;
        opaque=true;
        decor=$loc}
     }
-  | IS tdi=typedefInfo SEMI
+  | IS rt=option(REC) tdi=typedefInfo SEMI
     { {typename="";
+       rectype=(
+	 match rt with
+	 | None -> false
+	 | Some _ -> ( match tdi with
+		       | Newtype _ -> $syntaxerror
+		       | _ -> true)
+	 );
        kindinfo=tdi;
        opaque=false;
        decor=$loc}
     }
 
 typedef:
-  | op=option(OPAQUE) TYPE tname=IDENT_UC IS tdi=typedefInfo SEMI
+  | op=option(OPAQUE) TYPE tname=IDENT_UC IS
+    rt=option(REC) tdi=typedefInfo SEMI
     { {typename=tname;
+       rectype=(
+	 match rt with
+	 | None -> false
+	 | Some _ -> ( match tdi with
+		       | Newtype _ -> $syntaxerror
+		       | _ -> true)
+	 );
        kindinfo=tdi;
        opaque=Option.is_some(op);
        decor=$loc} }

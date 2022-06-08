@@ -1,0 +1,16 @@
+(* mutually recursive data type *)
+module mutrec01 begin
+
+type IntNode is struct
+   value: Int,
+   mut next: FloatNode;
+
+type FloatNode is struct
+   value: Float,
+   mut next: CharNode;
+
+type CharNode is struct
+   value: Byte,
+   mut next: IntNode?;
+   
+end list01

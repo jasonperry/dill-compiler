@@ -1,0 +1,9 @@
+(* first example of recursive data type *)
+module list01 begin
+
+type FloatList is rec struct
+   value: Float,
+   mut next: FloatList?;  (* record-with-pointer, not pointer-to-record *)
+
+end list01
+

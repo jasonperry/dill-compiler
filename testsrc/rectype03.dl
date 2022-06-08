@@ -1,0 +1,9 @@
+(* variant recursive data type *)
+module rectype03 begin
+
+type FloatChain is rec variant
+   | thenum: Float
+   | next: FloatChain;  (* record-with-pointer, not pointer-to-record *)
+
+end rectype03
+

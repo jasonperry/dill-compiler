@@ -159,12 +159,13 @@ type 'sd kindInfo =
 
 (** struct for definition of any type. *)
 type 'sd typedef = {
-    (* module name is added at higher context. *)
-    typename: string;
-    kindinfo: 'sd kindInfo;
-    opaque: bool;
-    decor: 'sd
-  }
+  (* module name is added at higher context. *)
+  typename: string;
+  rectype: bool;
+  kindinfo: 'sd kindInfo;
+  opaque: bool;
+  decor: 'sd
+}
 
 
 (* import and full module syntax begins here *)

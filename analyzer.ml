@@ -1240,27 +1240,32 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               value="Type redeclaration: " ^ tdef.typename }]
   | None -> (
     match tdef.kindinfo with
-    | Fields fields ->
-       (* check for nonexistent types, field redeclaration *)
-       let rec check_fields flist acc = match flist with
-         | [] -> Ok (List.rev acc)
-         | fdecl :: rest ->
+      | Fields fields ->
+        (* add tentative type name to tenv (without field info? how to replace?
+           Maybe better just to look for the recursive case specially?
+           Create a new tenv2 that just has the provisional, then go back to the
+           original. Yay, functional! *)
+        (* check for nonexistent types, field redeclaration *)
+        let rec check_fields flist acc = match flist with
+          | [] -> Ok (List.rev acc)
+          | fdecl :: rest ->
             match check_typeExpr tenv fdecl.fieldtype with
             | Error e ->
-               Error [{loc=fdecl.decor;
-                       value="Field type error: " ^ e}]
+              (* see here if recursive? *)
+              Error [{loc=fdecl.decor;
+                      value="Field type error: " ^ e}]
             | Ok ttag -> 
-               if List.exists (fun (fi : fieldInfo) ->
-                      fi.fieldname = fdecl.fieldname) acc then
-                 Error [{ loc=fdecl.decor;
-                          value="Field redeclaration " ^ fdecl.fieldname }]
-               else 
-                 let finfo =
-                   {fieldname=fdecl.fieldname; priv=fdecl.priv;
-                    mut=fdecl.mut;
-                    fieldtype = ttag
-                   }
-                 in check_fields rest (finfo::acc)
+              if List.exists (fun (fi : fieldInfo) ->
+                  fi.fieldname = fdecl.fieldname) acc then
+                Error [{ loc=fdecl.decor;
+                         value="Field redeclaration " ^ fdecl.fieldname }]
+              else 
+                let finfo = {
+                  fieldname=fdecl.fieldname; priv=fdecl.priv;
+                  mut=fdecl.mut;
+                  fieldtype = ttag
+                }
+                in check_fields rest (finfo::acc)
        in 
        (match check_fields fields [] with
         | Error e -> Error e
