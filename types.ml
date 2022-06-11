@@ -28,13 +28,12 @@ and classData = {
                         * module where they were defined. *)
     opaque: bool;
     muttype: bool;  (* true if any field or variant is mutable *)
-    params: typevar list; (* generic params *)
-    (* Impls are no longer part of the type definition, so we'll get rid 
-       of this. Only possibility is constraints for the type variables. 
-       Need to think about that. *)
-    (* implements: string list;  *)
+    rectype: bool;
     (* When we do generics, need to link params to the field type variables. 
        (possibly just by var name) *)
+    params: typevar list; (* generic params *)
+    (* Impls are no longer part of the type definition *)
+    (* implements: string list;  *)
     kindData: kindData
   }
 
@@ -43,8 +42,9 @@ and classData = {
 and typetag = {
     (* what to do for function type? *)
     modulename: string;
-    typename: string; 
-    tclass: classData;
+    typename: string;
+    (* must be mutable so it can be updated in recursive definitions. *)
+    mutable tclass: classData;
     (* Will I need an "unresolved" typetag for generics? *)
     paramtypes: typetag list; (* resolved generics. *)
     array: bool;   (* array type *)
@@ -95,31 +95,31 @@ let rec typetag_to_string (tt: typetag) =
 
 (* Class definitions for built-in types, and tags for convenience. *)
 let null_class = { classname="NullType"; in_module = ""; kindData = Primitive;
-                   opaque=false; muttype=false; params=[]; }
+                   opaque=false; muttype=false; rectype=false; params=[]; }
 let null_ttag = gen_ttag null_class []
 (* NOTE: void is not a type! Maybe it shouldn't be one in Dill, just have
  * procs that return nothing. *)
 let void_class =  { classname="Void"; in_module = ""; muttype=false;
-                    opaque=false; kindData = Primitive; params=[]; }
+                    opaque=false; kindData=Primitive; rectype=false; params=[]; }
 let void_ttag = gen_ttag void_class []
 
-let int_class = { classname="Int"; in_module = ""; muttype=false;
+let int_class = { classname="Int"; in_module = ""; muttype=false; rectype=false;
                   opaque=false; kindData=Primitive; params=[]; }
 let int_ttag = gen_ttag int_class []
 
-let float_class = { classname="Float"; in_module=""; muttype=false; params=[];
-                    opaque=false; kindData=Primitive; }
+let float_class = { classname="Float"; in_module=""; muttype=false; rectype=false;
+                    params=[]; opaque=false; kindData=Primitive; }
 let float_ttag = gen_ttag float_class []
 
-let byte_class = { classname="Byte"; in_module=""; muttype=false; params=[];
-                   opaque=false; kindData=Primitive; }
+let byte_class = { classname="Byte"; in_module=""; muttype=false; rectype=false;
+                   params=[]; opaque=false; kindData=Primitive; }
 let byte_ttag = gen_ttag byte_class []
 
-let bool_class = { classname="Bool"; in_module = ""; muttype=false; params=[];
-                   opaque=false; kindData=Primitive; }
+let bool_class = { classname="Bool"; in_module = ""; muttype=false; rectype=false;
+                   params=[]; opaque=false; kindData=Primitive; }
 let bool_ttag = gen_ttag bool_class []
 
-let string_class = { classname="String"; in_module=""; muttype=false;
+let string_class = { classname="String"; in_module=""; muttype=false; rectype=false;
                      opaque=false; params=[]; kindData=Primitive; }
 let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)

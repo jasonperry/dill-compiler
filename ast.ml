@@ -140,7 +140,8 @@ type 'sd fieldDecl = {
     mut: bool;
     (* Create 'typevar' field matching the struct later *)
     fieldtype: typeExpr;
-    decor: 'sd (* to be a typetag *)
+    decor: 'sd (* to be a typetag, like exprs...but it's NOT!
+                  it's just syms, like a statement FIXME *)
   }
 
 (** A single named option for a variant type. *)
@@ -215,12 +216,12 @@ and fieldDecl_to_string fd =
 and typedef_to_string tdef = 
   "type " ^ tdef.typename
   ^ (match tdef.kindinfo with
-     | Fields fields ->
-        " is struct\n  "
-        ^ String.concat ",\n  " (List.map fieldDecl_to_string fields)
-     | Variants variants ->
-        " is variant\n  | "
-        ^ String.concat "\n  | "
+      | Fields fields ->
+        " is" ^ (if tdef.rectype then " rec" else "") ^ " struct\n   "
+        ^ String.concat ",\n   " (List.map fieldDecl_to_string fields)
+      | Variants variants ->
+        " is" ^ (if tdef.rectype then " rec" else "") ^ " variant\n   | "
+        ^ String.concat "\n   | "
             (List.map (fun vdec ->
                  vdec.variantName
                  ^ (match vdec.variantType with 

@@ -1249,17 +1249,40 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
         let rec check_fields flist acc = match flist with
           | [] -> Ok (List.rev acc)
           | fdecl :: rest ->
-            match check_typeExpr tenv fdecl.fieldtype with
-            | Error e ->
-              (* see here if recursive? *)
-              Error [{loc=fdecl.decor;
-                      value="Field type error: " ^ e}]
-            | Ok ttag -> 
-              if List.exists (fun (fi : fieldInfo) ->
-                  fi.fieldname = fdecl.fieldname) acc then
-                Error [{ loc=fdecl.decor;
-                         value="Field redeclaration " ^ fdecl.fieldname }]
-              else 
+            if List.exists (fun (fi : fieldInfo) ->
+                fi.fieldname = fdecl.fieldname) acc then
+              Error [{ loc=fdecl.decor;
+                       value="Field redeclaration " ^ fdecl.fieldname }]
+            else 
+              match check_typeExpr tenv fdecl.fieldtype with
+              | Error e ->
+                if not tdef.rectype then
+                  Error [{loc=fdecl.decor; value="Field type error: " ^ e}]
+                else (
+                  (* construct typetag and finfo for forward-defined field. *)
+                  debug_print ("Creating placeholder for recursive field "
+                               ^ fdecl.fieldname);
+                  let dummyClass = {
+                    classname = "--PLACEHOLDER--";
+                    in_module = modname;
+                    opaque=false; muttype=false; rectype=true;
+                    params=[]; kindData=Hidden
+                  } in 
+                  let ttag = {
+                    modulename = modname;
+                    typename = fdecl.fieldtype.classname;
+                    tclass = dummyClass;
+                    array = fdecl.fieldtype.array;
+                    paramtypes = [];
+                    nullable = fdecl.fieldtype.nullable;
+                  } in
+                  let finfo = {
+                    fieldname=fdecl.fieldname; priv=fdecl.priv;
+                    mut=fdecl.mut;
+                    fieldtype = ttag
+                  } in
+                  check_fields rest (finfo::acc))                   
+              | Ok ttag -> 
                 let finfo = {
                   fieldname=fdecl.fieldname; priv=fdecl.priv;
                   mut=fdecl.mut;
@@ -1275,9 +1298,10 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               in_module = modname;
               opaque = tdef.opaque;
               muttype = List.exists (fun (finfo: fieldInfo) ->
-                            (* Yes, there are two ways a field can be changed! *)
-                            finfo.mut || finfo.fieldtype.tclass.muttype)
-                          flist;
+                  (* Yes, there are two ways a field can be changed! *)
+                  finfo.mut || finfo.fieldtype.tclass.muttype)
+                  flist;
+              rectype = tdef.rectype;
               params = [];
               (* for generics: generate field info with same type
                 variables as outer *)
@@ -1322,6 +1346,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
                           (fun st -> Option.is_some (snd st)
                                      && (Option.get (snd st)).tclass.muttype
                           ) variants;
+              rectype = tdef.rectype;
               params = [];
               kindData = Variant variants
             }
@@ -1338,6 +1363,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
             classname = tdef.typename;
             in_module = modname; (* defined in this module now *)
             muttype = cdata.muttype;
+            rectype = cdata.rectype;
             opaque = cdata.opaque;
             params = cdata.params;
             (* construct a tag for the underlying type *)
@@ -1358,6 +1384,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
         opaque = true;
         muttype = true; (* Can't assume it's not mutable,
                            it's based on what's called *)
+        rectype = false; (* doesn't matter, it's a pointer anyway?? *)
         params = [];
         kindData = Hidden
       }
@@ -1481,22 +1508,41 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
     (* Add new scope so imports will be topmost in the module scope. *)
     let syms = Symtable.new_scope syms in
     (* create tenv entries (classdata) for type definitions *)
-    (* I was feeling salty to write this fold, but it may have some redundancies *)
     let typesres =
-      List.fold_left (fun tenvres td ->
-          match tenvres with
+      List.fold_left (fun acc td ->
+          match acc with
+          (* have to check twice to push the error back through. *)
           | Error e -> Error e
-          | Ok tenv -> (
-            match check_typedef dmod.name tenv td with
-            | Ok cdata -> Ok (TypeMap.add ("", cdata.classname) cdata tenv)
-            | Error e -> Error e
-          ))
-        (Ok tenv) dmod.typedefs
+          | Ok (tenv, classes) -> (
+              match check_typedef dmod.name tenv td with
+              (* keep the cdatas too, for the fixup *)
+              | Ok cdata ->
+                Ok (TypeMap.add ("", cdata.classname) cdata tenv,
+                    cdata :: classes)
+              | Error e -> Error e
+            ))
+        (Ok (tenv, [])) dmod.typedefs
     in
     match typesres with
     | Error e -> Error e
-    | Ok tenv -> 
-       (* spam syms into the decor of the AST typedefs to update the decor type.
+    | Ok (tenv, newclasses) ->
+      (* update recursive type fields with completed classData *)
+      List.iter (
+        fun (cdata: classData) -> if cdata.rectype then
+            match cdata.kindData with
+            | Struct finfos -> 
+              List.iter (fun (finfo: fieldInfo) ->
+                  if finfo.fieldtype.tclass.rectype then (
+                    let finishedClass = TypeMap.find
+                        ("", finfo.fieldtype.typename) tenv in
+                    debug_print ("-check_module: Updating classData for field "
+                                 ^ finfo.fieldname ^ " of " ^ cdata.classname);
+                    finfo.fieldtype.tclass <- finishedClass
+                  )
+                ) finfos;
+            | _ -> (); (* TODO: for variant types also *)
+      ) newclasses;
+      (* spam syms into the decor of the AST typedefs to update the decor type.
           Could there be a better way? *)
        let newtypedefs = 
          List.map (fun tdef ->
@@ -1574,7 +1620,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
             varname = gdecl.varname;
             typeexp = 
               (* regenerate a typeExpr from symtable type (because the
-                 AST may not have the type expression? *)
+                 AST may not have the type expression?) *)
               let vttag =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
               { modname = vttag.modulename;
