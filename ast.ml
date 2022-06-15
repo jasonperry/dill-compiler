@@ -163,7 +163,7 @@ type 'sd typedef = {
   (* module name is added at higher context. *)
   typename: string;
   rectype: bool;
-  kindinfo: 'sd kindInfo;
+  kindinfo: 'sd kindInfo; (* should be 'ed ! *)
   opaque: bool;
   decor: 'sd
 }

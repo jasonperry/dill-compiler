@@ -467,13 +467,11 @@ argList:
 				  | None -> (false, ex)
 	       ) al }
 
-nullAssnExp:  (* This needs lookahead, will it work? *)
-  | VAR vn=varName COLON ty=typeExp NULLASSIGN e=expr
-    { ExpNullAssn (true, ((vn, None),[]), Some ty, e) }
-  | VAR vn=varName NULLASSIGN e=expr
-    { ExpNullAssn (true, ((vn, None),[]), None, e) }
+nullAssnExp:  (* switching to option reduced S/R conflicts *)
+  | VAR vn=varName ty=option(preceded(COLON, typeExp)) NULLASSIGN e=expr
+    { ExpNullAssn (true, ((vn, None),[]), ty, e) }
   | ve=varExp NULLASSIGN e=expr
-    { ExpNullAssn (false, ve, None, e) }
+    { ExpNullAssn (false, ve, None, e)}
 (*  | dec=option(VAR) v=varName NULLASSIGN e=expr
     { ExpNullAssn ( Option.is_some dec, v, e) } *)
 
