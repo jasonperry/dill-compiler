@@ -1,0 +1,13 @@
+(* import with invalid module name *)
+module import01 begin
+
+open Collatz;
+
+export proc main()
+begin
+
+  collatz(6171); 
+
+end main
+
+end import01

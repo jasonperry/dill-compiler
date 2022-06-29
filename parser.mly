@@ -66,9 +66,11 @@ dillmodule:
     { if mn = mn2 then
 	{ mb with name=mn }
       else (* $syntaxerror *)
-	raise (SyntaxError ($loc, "Module name mismatch"))
+	raise (SyntaxError ($loc(mn2), "Module name mismatch"))
 	(* raise Parsing.Parse_error (* also deprecated *) *)
     }
+  | MODULE error
+    { raise (SyntaxError ($loc($2), "Not a valid module name")) } 
   | mb=moduleBody (* unnamed top-level module *)
     { mb }
 
@@ -89,7 +91,8 @@ moduleBody:
       }
     }
 
-moduleName: mn=IDENT_LC { mn } (* will this ever need to be anything more? *)
+moduleName:
+  | mn=IDENT_LC { mn } (* will this ever need to be anything more? *)
 
 modspec:
   | MODSPEC mn=moduleName BEGIN
@@ -107,7 +110,7 @@ modspec:
 	  procdecls=pd;
 	}
       else
-      	raise (SyntaxError ($loc, "Modspec name mismatch"))
+      	raise (SyntaxError ($loc(mn2), "Modspec name mismatch"))
     }
 
 includeStmt:
@@ -119,11 +122,19 @@ importStmt:
   | IMPORT mn=moduleName SEMI  { Using (mn, None) }
   | IMPORT mn=moduleName AS alias=moduleName SEMI { Using (mn, Some alias) }
 
-openStmt: OPEN mn=moduleName SEMI { Open mn }
+openStmt:
+  | OPEN mn=moduleName SEMI { Open mn }
+  | OPEN moduleName error
+    { raise (SyntaxError (($endpos($2), $endpos($2)), "expected ';'")) }
+  | OPEN error
+    { raise (SyntaxError ($loc($2), "Invalid module name in import")) }
 
 typedecl:
   | TYPE tname=IDENT_UC td=typedeclBody
     { {td with typename=tname} }
+  | TYPE error
+    { raise (SyntaxError ($loc, "Invalid type identifier")) }
+
 
 typedeclBody:
   | SEMI
@@ -141,7 +152,7 @@ typedeclBody:
 	 | Some _ -> ( match tdi with
 		       | Newtype _ ->
 			  raise (SyntaxError
-				   ($loc, "newtype can't be marked recursive"))
+				   ($loc(rt), "Newtype can't be marked recursive"))
 		       | _ -> true)
 	 );
        kindinfo=tdi;
@@ -159,12 +170,14 @@ typedef:
 	 | Some _ -> ( match tdi with
 		       | Newtype _ ->
 			  raise (SyntaxError
-				   ($loc, "newtype can't be marked recursive"))
+				   ($loc(rt), "Newtype can't be marked recursive"))
 		       | _ -> true)
 	 );
        kindinfo=tdi;
        opaque=Option.is_some(op);
        decor=$loc} }
+  | option(OPAQUE) TYPE error
+    { raise (SyntaxError ($loc($3), "Invalid type identifier")) }
 
 typedefInfo:
   | STRUCT fl=fieldList
@@ -201,7 +214,7 @@ proc:
 	{ decor=$loc; decl=pd; body=sb }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11)
              * (or wait for a hand-rolled parser? *)
-	raise (SyntaxError ($loc, "procedure name mismatch"))
+	raise (SyntaxError ($loc(name2), "procedure name mismatch"))
     }
 
 procHeader:

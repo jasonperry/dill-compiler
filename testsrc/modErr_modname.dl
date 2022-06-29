@@ -1,0 +1,10 @@
+(* name format error *)
+
+module Thisname begin (* should be lowercase *)
+
+proc double(x: Float) => Float
+begin
+   return x * 2;
+end double
+
+end Thisname (* mismatch *)

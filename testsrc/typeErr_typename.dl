@@ -1,0 +1,14 @@
+(* typename format error *)
+
+module thisname begin
+
+type lowertype is struct
+   x: Int,
+   y: Float;
+   
+proc double(x: Float) => Float
+begin
+   return x * 2;
+end double
+
+end thisname

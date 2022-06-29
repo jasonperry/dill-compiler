@@ -1,0 +1,13 @@
+(* import with invalid module name *)
+module import01 begin
+
+open collatz (* missing semi *)
+
+export proc main() => Int
+begin
+
+  return collatz(6171); 
+
+end main
+
+end import01
