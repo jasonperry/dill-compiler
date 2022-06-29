@@ -38,7 +38,8 @@
 
 %{
     open Ast
-    (* let mod_name = ref "" (* ONE inherited attribute, okay? *) *)
+	 (* let mod_name = ref "" (* ONE inherited attribute, okay? *) *)
+    open Syntax
 %}
 
 %type <Ast.locinfo Ast.expr> expr
@@ -64,7 +65,9 @@ dillmodule:
     END mn2=moduleName
     { if mn = mn2 then
 	{ mb with name=mn }
-      else $syntaxerror
+      else (* $syntaxerror *)
+	raise (SyntaxError ($loc, "Module name mismatch"))
+	(* raise Parsing.Parse_error (* also deprecated *) *)
     }
   | mb=moduleBody (* unnamed top-level module *)
     { mb }
@@ -103,7 +106,8 @@ modspec:
 		     ) gls;
 	  procdecls=pd;
 	}
-      else $syntaxerror
+      else
+      	raise (SyntaxError ($loc, "Modspec name mismatch"))
     }
 
 includeStmt:
@@ -135,7 +139,9 @@ typedeclBody:
 	 match rt with
 	 | None -> false
 	 | Some _ -> ( match tdi with
-		       | Newtype _ -> $syntaxerror
+		       | Newtype _ ->
+			  raise (SyntaxError
+				   ($loc, "newtype can't be marked recursive"))
 		       | _ -> true)
 	 );
        kindinfo=tdi;
@@ -151,7 +157,9 @@ typedef:
 	 match rt with
 	 | None -> false
 	 | Some _ -> ( match tdi with
-		       | Newtype _ -> $syntaxerror
+		       | Newtype _ ->
+			  raise (SyntaxError
+				   ($loc, "newtype can't be marked recursive"))
 		       | _ -> true)
 	 );
        kindinfo=tdi;
@@ -193,7 +201,7 @@ proc:
 	{ decor=$loc; decl=pd; body=sb }
       else  (* TODO: try "new way" error handling (Menhir Ch. 11)
              * (or wait for a hand-rolled parser? *)
-	$syntaxerror
+	raise (SyntaxError ($loc, "procedure name mismatch"))
     }
 
 procHeader:

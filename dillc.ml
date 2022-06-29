@@ -75,6 +75,10 @@ let handle_parse_errors filename buf = function
      print_string
        ("  At line " ^ format_loc spos epos ^ ": syntax error.\n");
      failwith "Compilation terminated at parsing."
+  | Syntax.SyntaxError ((spos, epos), msg) ->
+    print_endline ("Error while parsing file " ^ filename ^ ":");
+    print_string ("  At line " ^ format_loc spos epos ^ ": " ^ msg ^ ".\n");
+    failwith "Compilation terminated at parsing."
   | _ -> failwith "Unknown error from parser."
 
 

@@ -1,0 +1,10 @@
+(* name mismatch error *)
+
+module thisname begin
+
+proc double(x: Float) => Float
+begin
+   return x * 2;
+end double
+
+end thatname (* mismatch *)
