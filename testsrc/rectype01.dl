@@ -1,9 +1,19 @@
 (* first example of recursive data type *)
 module list01 begin
 
+open stdio;
+   
 type FloatList is rec struct
    value: Float,
-   mut next: FloatList?;  (* record-with-pointer, not pointer-to-record *)
+   next: FloatList?;  (* record-with-pointer, not pointer-to-record *)
+
+export proc main()
+begin
+   var fl1: FloatList;
+   (* have to promote to a nullable record, get a pointer and cast it to i8* *)
+   fl1 = { value=1.0, next=null };
+   printFloat(fl1.value); (* requires dereference *)
+end main
 
 end list01
 

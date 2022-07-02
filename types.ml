@@ -42,7 +42,7 @@ and classData = {
 and typetag = {
     (* what to do for function type? *)
     modulename: string;
-    typename: string;
+    typename: string;  (* Is this redundant? Just use the classdata? *)
     (* must be mutable so it can be updated in recursive definitions. *)
     mutable tclass: classData;
     (* Will I need an "unresolved" typetag for generics? *)

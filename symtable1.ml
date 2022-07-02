@@ -23,6 +23,12 @@ let base_tenv =
   |> TypeMap.add ("", null_ttag.typename) null_class
   |> TypeMap.add ("", string_ttag.typename) string_class
 
+let string_of_tenv tenv =
+  String.concat ", " (
+    List.map (fun ((mn, tn), _) -> mn ^ "::" ^ tn)
+      (TypeMap.bindings tenv)
+  )
+
 (* Symtable concept: a map for current scope, parent and children nodes *)
 
 (** Symbol table entry type for a variable. *)
