@@ -13,6 +13,16 @@ begin
    (* have to promote to a nullable record, get a pointer and cast it to i8* *)
    fl1 = { value=1.0, next=null };
    printFloat(fl1.value); (* requires dereference *)
+
+   var fl2: FloatList = { value=2.0, next=fl1 };
+
+   var fl3: FloatList = { value=3.0, next={value=4.0, next=null}};
+
+   (* the assignment isn't being handled correctly with the pointer? *)
+   (* if var innerRec ?= fl3.next then
+      printFloat(innerRec.value);
+   endif *)
+   
 end main
 
 end list01

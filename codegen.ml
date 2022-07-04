@@ -599,18 +599,27 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         (* check if null promotion is needed; the field lltype might be an opaque
            pointer, so use the typename to fetch the actual type from the lltenv *)
         let fieldtype = element_type (type_of fieldaddr) in
-        debug_print ("field and expr types: "
+        debug_print ("ExpRecord: field and expr types: "
                      ^ string_of_lltype fieldtype ^ ", "
                      ^ string_of_lltype (type_of fexpval));
         let finalval =
           if fieldtype = type_of fexpval
           then fexpval
           else (
-            debug_print ("field value promotion needed");
-            promote_value fexpval fieldtype builder ) in
-        (* next: if it's rec, get pointer and cast to the i8*  *)
-        (* if fexp.decor.tclass.rectype then *)
-        debug_print ("field value store: " ^ string_of_llvalue
+            (* if a rectype, cast to i8* first, then check
+               for promotion to nullable *)
+            let castedval = if fexp.decor.tclass.rectype then (
+                debug_print ("ExpRecord: casting field " ^ fname
+                             ^ " to opaque pointer type");
+                build_bitcast fexpval voidptr_type "reccast" builder )
+              else fexpval in
+            if fieldtype = type_of castedval
+            then castedval
+            else (
+              debug_print ("ExpRecord: field value promotion needed");
+              promote_value castedval fieldtype builder ))
+        in
+        debug_print ("ExpRecord: field value store: " ^ string_of_llvalue
                        (build_store finalval fieldaddr builder));
       ) fieldlist;
     (* recursive types return the pointer, otherwise the value *)
@@ -855,12 +864,14 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* cases to handle nullable types *)
     if vetype.nullable = ex.decor.nullable then
       (* indirection level is the same, so just directly assign the value *)
-      ignore (build_store expval alloca builder)
-    else
-      (* will have to handle pointer types too for record type? *)
+      debug_print ("StmtAssign store: "
+                   ^ string_of_llvalue (build_store expval alloca builder))
+    else (
+      (* will have to handle pointer types too for record type? yes. *)
+      debug_print "StmtAssign: null promotion seemingly required";
       let nullabletype = ttag_to_llvmtype lltypes vetype in 
       let promotedval = promote_value expval nullabletype builder in
-      ignore (build_store promotedval alloca builder)
+      ignore (build_store promotedval alloca builder) )
   )
 
   | StmtNop -> () (* will I need to generate so labels work? *)
