@@ -23,7 +23,6 @@
     llvm.scalar_opts
     llvm.target
     llvm.executionengine
-    llvm_X86
     llvm.linker
     llvm.all_backends
     ;menhirLib
