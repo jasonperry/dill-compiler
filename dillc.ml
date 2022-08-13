@@ -193,7 +193,8 @@ let gen_target_machine () =
   Llvm_all_backends.initialize (); (* was _X86 *)
   let open Llvm_target in
   (* let ttriple = "x86_64-pc-linux-gnu" in *)
-  let ttriple = Target.default_triple () in 
+  let ttriple = Target.default_triple () in
+  debug_print ("Generating code for machine triple: " ^ ttriple);
   let target = Target.by_triple ttriple in
   Llvm_target.TargetMachine.create
     ~triple:ttriple

@@ -14,8 +14,9 @@ and fieldInfo = {
     fieldtype: typetag
   }
 
+(** Data needed by the different kinds of types (fields, variants, etc.) *)
 and kindData =
-  | Primitive (* Ooo! *)
+  | Primitive
   | Struct of fieldInfo list
   | Variant of (string * typetag option) list
   | Newtype of typetag
@@ -58,11 +59,11 @@ let get_fields cdata = match cdata.kindData with
   | Struct flist -> flist
   | _ -> failwith ("BUG: " ^ cdata.classname ^ " is not a struct type")
 
+
 (** helper to pull out the variants assuming it's a variant type *)
 let get_variants cdata = match cdata.kindData with
   | Variant vts -> vts
   | _ -> failwith ("BUG: " ^ cdata.classname ^ " is not a variant type")
-
 
 
 (** Generate a type for a typetag for a class (and later, specify generics *)

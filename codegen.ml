@@ -63,7 +63,7 @@ module Lltenv = struct
 end
 
 (** Process a classData to generate a new llvm base type *)
-let rec gen_lltype context
+let rec gen_lltype the_module
     (types: classData TypeMap.t) (lltypes: Lltenv.t) layout (cdata: classData) =
   debug_print ("Generating lltype for " ^ cdata.classname);
   match (cdata.in_module, cdata.classname) with
@@ -77,42 +77,53 @@ let rec gen_lltype context
   | ("", "String") -> pointer_type (i8_type context), StrMap.empty
   | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
   | _ ->
-    (* Process non-primitive type *)
-    (* make a list of names/types for either struct or variant fields. *)
+    (* Process non-primitive type. First, create lltype to fill in later *)
+    let context = module_context the_module in
+    let typename = cdata.in_module ^ "::" ^ cdata.classname in
+    let llstructtype = named_struct_type context typename in
+    (* So far, I could treat struct and variant fields the same way *)
     let fielddata =
       match cdata.kindData with
       | Struct fields ->
-        (* mutability info about struct fields not needed for codegen) *)
+        (* mutability info about struct fields not needed for codegen, so we
+           filter it out. *)
         List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) fields
       | Variant vts -> vts
       | _ -> []
     in 
-    (* Generate list of (name, lltype, offset, type) from fields *)
+    (* Second, generate list of (name, lltype, offset, type) for fields *)
     let ftypeinfo =
       List.mapi (fun i (fieldname, ftyopt) ->
           match ftyopt with
           (* why would this ever be none? *)
           | None -> (fieldname, void_type, i, void_ttag)
           | Some fty -> (
+              (* todo: change to fty.tclass.classname and test *)
               let mname, tname = fty.modulename, fty.typename in
               let basetype = match Lltenv.find_lltype_opt
                                      (mname, tname) lltypes with
-              | Some basetype -> basetype
-              (* In case the field's lltype isn't generated yet, either recurse
-                 or just add a pointer if it's recursive *)
-              | None ->
+              | Some basetype ->
                 if fty.tclass.rectype then (
-                  (* I think this is enough here; but at the end I must have
-                     a pointer type for the whole struct *)
-                  debug_print "generating untyped pointer for recursive field";
-                  voidptr_type )
+                  debug_print "generating pointer for recursive field";
+                  pointer_type basetype )
+                else
+                  basetype
+              (* In case the field's lltype isn't generated yet, either recurse
+                 or just add a the type name if it's recursive *)
+              | None ->
+                if fty.tclass.rectype then
+                  (* strange that it requires the module when it wasn't used *)
+                  match type_by_name the_module typename with
+                  | Some llfieldtype -> pointer_type llfieldtype
+                  | None ->
+                    fst (gen_lltype the_module types lltypes layout
+                           (TypeMap.find (mname, tname) types))
                 else 
-                  fst (gen_lltype context types lltypes layout
+                  fst (gen_lltype the_module types lltypes layout
                          (TypeMap.find (mname, tname) types))
               in
               (* check for non-base types and add them if needed. *)
-              (* TODO: decide how to deal with nested or both *)
-              (* first idea: array of nullable but no nullable arrays *)
+              (* currently allows an array of nullable but no nullable arrays *)
               let ty1 =
                 if fty.nullable then
                   struct_type context [| nulltag_type; basetype |]
@@ -124,28 +135,26 @@ let rec gen_lltype context
                 else ty1 in
               (fieldname, fieldlltype, i, fty))
         ) fielddata in
-    (* Create the mapping from field name to offset and type. *)
+    (* Create the mapping from field names to offset and type. *)
     (* do we still need the high-level type? maybe for lookup info. *)
     let fieldmap =
       List.fold_left (fun fomap (fname, _, i, ftype) ->
           StrMap.add fname (i, ftype) fomap
         ) StrMap.empty ftypeinfo in
-    let typename = cdata.in_module ^ "::" ^ cdata.classname in
     match cdata.kindData with 
     (* generate the llvm named struct type, record case *)
-    (* Smells funny because fields not used, may want to split it out
+    (* Fields have already been generated, but may want to split it out
        into a more sensible separate function for each kind. *)
     | Struct _ ->
-      let structtype = named_struct_type context typename in
-      (* "false" means to not use packed structs. *)
-      struct_set_body structtype
+      (* let structtype = named_struct_type context typename in *)
+      struct_set_body llstructtype
         (List.map (fun (_, lty, _, _) -> lty) ftypeinfo
-         |> Array.of_list) false;
+         |> Array.of_list) false; (* "false" means don't use packed structs. *)
       if cdata.rectype then
         (* recursive types are reference types *)
-        (pointer_type structtype, fieldmap)
+        (pointer_type llstructtype, fieldmap)
       else 
-        (structtype, fieldmap)
+        (llstructtype, fieldmap)
     (* Variant case: struct of tag + optional byte array for the union *)
     | Variant _ ->
       (* Compute max size of any of the variant subtypes. *)
@@ -163,8 +172,8 @@ let rec gen_lltype context
                    ^ Int64.to_string maxsize);
       (* compute two-field struct type (tag and data value) *)
       (* TODO: optimize to have just the tag (enum) if max size is zero. *)
-      let structtype = named_struct_type context typename in
-      struct_set_body structtype
+      (* let vstructtype = named_struct_type context typename in *)
+      struct_set_body llstructtype
         (if maxsize = Int64.zero then 
            [| varianttag_type |]
          else
@@ -172,7 +181,7 @@ let rec gen_lltype context
               (* Voodoo magic: adding 4 bytes fixes my double problem. *)
               array_type (i8_type context) (Int64.to_int maxsize + 4) |])
         false;
-      (structtype, fieldmap)
+      (llstructtype, fieldmap)
     | Hidden ->
       (* Unknown implementation, must be treated as void pointer *)
       (voidptr_type, StrMap.empty)
@@ -207,7 +216,8 @@ let ttag_to_llvmtype lltypes ttag =
 (** Wrap a value in an outer type. Used for assigning, passing or
     returning a value for a nullable type *)
 let promote_value the_val outertype builder =
-  debug_print ("promote_value to type " ^ string_of_lltype outertype);
+  debug_print ("promote_value " ^ string_of_lltype (type_of the_val)
+               ^ " to type " ^ string_of_lltype outertype);
   (* so far, promotion only to nullable. *)
   (* should put in a new way to check since it's using the lltype now? *)
   (* if not (outertype.nullable) then
@@ -575,8 +585,13 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
        * expect value types... and causes other crashes.*)
       (* if is_primitive_type ex.decor then  *)
       debug_print "ExpVar: varexp alloca created";
-      build_load alloca (varname ^ "-expr") builder
-      (* else alloca *)
+      let the_val = build_load alloca (varname ^ "-expr") builder in
+      (* determine if cast needed - also have to check nullable *)
+      (* feeling like it's the wrong place for the cast *)
+      (* let exptype = ttag_to_llvmtype lltypes ex.decor in
+      if exptype <> type_of the_val then
+        build_bitcast the_val exptype "expvar-casted" builder
+         else *) the_val
     )
 
   | ExpRecord fieldlist ->
@@ -605,19 +620,20 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         let finalval =
           if fieldtype = type_of fexpval
           then fexpval
-          else (
+          (* UPD: no cast needed, but maybe a store later if I remove the pointer. *)
+          (* else (
             (* if a rectype, cast to i8* first, then check
                for promotion to nullable *)
-            let castedval = if fexp.decor.tclass.rectype then (
+              let castedval = if fexp.decor.tclass.rectype then (
                 debug_print ("ExpRecord: casting field " ^ fname
                              ^ " to opaque pointer type");
                 build_bitcast fexpval voidptr_type "reccast" builder )
-              else fexpval in
-            if fieldtype = type_of castedval
-            then castedval
-            else (
+               else fexpval in 
+               if fieldtype = type_of castedval 
+               then castedval *)
+          else (
               debug_print ("ExpRecord: field value promotion needed");
-              promote_value castedval fieldtype builder ))
+              promote_value (*castedval*) fexpval fieldtype builder )
         in
         debug_print ("ExpRecord: field value store: " ^ string_of_llvalue
                        (build_store finalval fieldaddr builder));
@@ -824,6 +840,7 @@ and gen_call the_module builder syms lltypes (fname, args) =
     (llfunc, llargs) (* actual build is different if expr or stmt *)
 
 
+(** Generate LLVM code for a statement *)
 let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   let syms = stmt.decor in
   match stmt.st with
@@ -861,7 +878,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let expval = gen_expr the_module builder syms lltypes ex in
     debug_print ("StmtAssign: Generated RHS expr: " ^ string_of_lltype (type_of expval));
     debug_print ("StmtAssign: Alloca type: " ^ string_of_lltype (type_of alloca));
-    (* cases to handle nullable types *)
+    (* cases to handle nullable types and pointer casts *)
     if vetype.nullable = ex.decor.nullable then
       (* indirection level is the same, so just directly assign the value *)
       debug_print ("StmtAssign store: "
@@ -1349,7 +1366,7 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)
-        let (lltype, fieldmap) = gen_lltype context tenv lltenv layout cdata in
+        let (lltype, fieldmap) = gen_lltype the_module tenv lltenv layout cdata in
         debug_print (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
             ^ " to lltenv, lltype: " ^ string_of_lltype lltype);
