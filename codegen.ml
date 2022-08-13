@@ -47,6 +47,8 @@ module Lltenv = struct
      *classes*.  Array and nullable types are generated at the point
      of use. *)
   (* Return just the LLVM type for a given type name. *)
+  let find = TypeMap.find
+  let find_opt = TypeMap.find_opt
   let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
   (* Look up the base typename for a class. *)
   let find_lltype_opt tkey tmap =
@@ -63,134 +65,145 @@ module Lltenv = struct
 end
 
 (** Process a classData to generate a new llvm base type *)
-let rec gen_lltype the_module
+let rec gen_lltype the_module  (* returns (classdata, fieldmap) *)
     (types: classData TypeMap.t) (lltypes: Lltenv.t) layout (cdata: classData) =
-  debug_print ("Generating lltype for " ^ cdata.classname);
-  match (cdata.in_module, cdata.classname) with
-  (* need special case for primitive types. Should handle this with some
-   * data structure, so it's consistent among modules *)
-  | ("", "Void") -> void_type, StrMap.empty
-  | ("", "Int") -> int_type, StrMap.empty
-  | ("", "Float") -> float_type, StrMap.empty
-  | ("", "Byte") -> byte_type, StrMap.empty                                   
-  | ("", "Bool") -> bool_type, StrMap.empty
-  | ("", "String") -> pointer_type (i8_type context), StrMap.empty
-  | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
-  | _ ->
-    (* Process non-primitive type. First, create lltype to fill in later *)
-    let context = module_context the_module in
-    let typename = cdata.in_module ^ "::" ^ cdata.classname in
-    let llstructtype = named_struct_type context typename in
-    (* So far, I could treat struct and variant fields the same way *)
-    let fielddata =
-      match cdata.kindData with
-      | Struct fields ->
-        (* mutability info about struct fields not needed for codegen, so we
-           filter it out. *)
-        List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) fields
-      | Variant vts -> vts
-      | _ -> []
-    in 
-    (* Second, generate list of (name, lltype, offset, type) for fields *)
-    let ftypeinfo =
-      List.mapi (fun i (fieldname, ftyopt) ->
-          match ftyopt with
-          (* why would this ever be none? *)
-          | None -> (fieldname, void_type, i, void_ttag)
-          | Some fty -> (
-              (* todo: change to fty.tclass.classname and test *)
-              let mname, tname = fty.modulename, fty.typename in
-              let basetype = match Lltenv.find_lltype_opt
-                                     (mname, tname) lltypes with
-              | Some basetype ->
-                if fty.tclass.rectype then (
-                  debug_print "generating pointer for recursive field";
-                  pointer_type basetype )
-                else
-                  basetype
-              (* In case the field's lltype isn't generated yet, either recurse
-                 or just add a the type name if it's recursive *)
-              | None ->
-                if fty.tclass.rectype then
-                  (* strange that it requires the module when it wasn't used *)
-                  match type_by_name the_module typename with
-                  | Some llfieldtype -> pointer_type llfieldtype
+  match Lltenv.find_opt (cdata.in_module, cdata.classname) lltypes with
+  | Some (lltype, fieldmap) -> (lltype, fieldmap)
+  | None -> (
+      debug_print ("generating lltype for " ^ cdata.classname);
+      match (cdata.in_module, cdata.classname) with
+      (* need special case for primitive types. Should handle this with some
+       * data structure, so it's consistent among modules *)
+      | ("", "Void") -> void_type, StrMap.empty
+      | ("", "Int") -> int_type, StrMap.empty
+      | ("", "Float") -> float_type, StrMap.empty
+      | ("", "Byte") -> byte_type, StrMap.empty                                   
+      | ("", "Bool") -> bool_type, StrMap.empty
+      | ("", "String") -> pointer_type (i8_type context), StrMap.empty
+      | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
+      | _ ->
+        (* Process non-primitive type. First, create lltype to fill in later *)
+        let context = module_context the_module in
+        let typename = cdata.in_module ^ "::" ^ cdata.classname in
+        let llstructtype =
+          match type_by_name the_module typename with
+          | None -> named_struct_type context typename
+          | Some llty -> llty
+        in
+        (* So far, I could treat struct and variant fields the same way *)
+        let fielddata =
+          match cdata.kindData with
+          | Struct fields ->
+            (* mutability info about struct fields not needed for codegen, so we
+               filter it out. *)
+            List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) fields
+          | Variant vts -> vts
+          | _ -> []
+        in 
+        (* Second, generate list of (name, lltype, offset, type) for fields *)
+        let ftypeinfo =
+          List.mapi (fun i (fieldname, ftyopt) ->
+              match ftyopt with
+              (* why would this ever be none? *)
+              | None -> (fieldname, void_type, i, void_ttag)
+              | Some fty -> (
+                  (* todo: change to fty.tclass.classname and test *)
+                  let mname, tname = fty.modulename, fty.typename in
+                  let basetype = match Lltenv.find_lltype_opt
+                                         (mname, tname) lltypes with
+                  | Some basetype -> basetype (* rectype is already pointed *)
+                  (* In case the field's lltype isn't generated yet, either recurse
+                     or just fetch the named lltype if it's a recursive type *)
                   | None ->
-                    fst (gen_lltype the_module types lltypes layout
-                           (TypeMap.find (mname, tname) types))
-                else 
-                  fst (gen_lltype the_module types lltypes layout
-                         (TypeMap.find (mname, tname) types))
-              in
-              (* check for non-base types and add them if needed. *)
-              (* currently allows an array of nullable but no nullable arrays *)
-              let ty1 =
-                if fty.nullable then
-                  struct_type context [| nulltag_type; basetype |]
-                else basetype in
-              let fieldlltype =
-                if fty.array then
-                  struct_type context
-                    [| int_type; pointer_type (array_type ty1 0) |]
-                else ty1 in
-              (fieldname, fieldlltype, i, fty))
-        ) fielddata in
-    (* Create the mapping from field names to offset and type. *)
-    (* do we still need the high-level type? maybe for lookup info. *)
-    let fieldmap =
-      List.fold_left (fun fomap (fname, _, i, ftype) ->
-          StrMap.add fname (i, ftype) fomap
-        ) StrMap.empty ftypeinfo in
-    match cdata.kindData with 
-    (* generate the llvm named struct type, record case *)
-    (* Fields have already been generated, but may want to split it out
-       into a more sensible separate function for each kind. *)
-    | Struct _ ->
-      (* let structtype = named_struct_type context typename in *)
-      struct_set_body llstructtype
-        (List.map (fun (_, lty, _, _) -> lty) ftypeinfo
-         |> Array.of_list) false; (* "false" means don't use packed structs. *)
-      if cdata.rectype then
-        (* recursive types are reference types *)
-        (pointer_type llstructtype, fieldmap)
-      else 
-        (llstructtype, fieldmap)
-    (* Variant case: struct of tag + optional byte array for the union *)
-    | Variant _ ->
-      (* Compute max size of any of the variant subtypes. *)
-      let maxsize =
-        List.fold_left (fun max llvarty ->
-            let typesize =
-              if llvarty = void_type then Int64.of_int 0
-              else Llvm_target.DataLayout.abi_size llvarty layout
-            in if typesize > max then typesize else max
-          )
-          (Int64.of_int 0)
-          (List.map (fun (_, llvarty, _, _) -> llvarty) ftypeinfo)
-      in
-      debug_print (cdata.classname ^ " max variant size: "
-                   ^ Int64.to_string maxsize);
-      (* compute two-field struct type (tag and data value) *)
-      (* TODO: optimize to have just the tag (enum) if max size is zero. *)
-      (* let vstructtype = named_struct_type context typename in *)
-      struct_set_body llstructtype
-        (if maxsize = Int64.zero then 
-           [| varianttag_type |]
-         else
-           [| varianttag_type;
-              (* Voodoo magic: adding 4 bytes fixes my double problem. *)
-              array_type (i8_type context) (Int64.to_int maxsize + 4) |])
-        false;
-      (llstructtype, fieldmap)
-    | Hidden ->
-      (* Unknown implementation, must be treated as void pointer *)
-      (voidptr_type, StrMap.empty)
-    | _ -> (* TODO: opaque type and newtype *)
-      (* Now it's an opaque type, but I really don't want to assume.
-         need to put an opaque marker in classData?
-         Maybe go with a kind variant instead of just lists that can be empty? *)
-      failwith ("BUG: missing codegen for class type " ^ cdata.classname)
-
+                    if fty.tclass.rectype then
+                      let ftypename = mname ^ "::" ^ tname in
+                      match type_by_name the_module ftypename with
+                      | Some llfieldtype -> pointer_type llfieldtype
+                      | None ->
+                        (* if it's an external rectype, should add it as normal *)
+                        if mname = cdata.in_module then (
+                          debug_print ("recursive field type " ^ ftypename
+                                       ^ " not found, adding named struct lltype.");
+                          pointer_type (named_struct_type context ftypename)
+                        )
+                        else 
+                          (* NOTE! mname not included because local types have no
+                             module prefix in the tenv. Might want to change that... *)
+                          fst (gen_lltype the_module types lltypes layout
+                                 (TypeMap.find ("", tname) types))
+                    else
+                      fst (gen_lltype the_module types lltypes layout
+                             (TypeMap.find ("", tname) types))
+                  in
+                  (* check for non-base types and add them if needed. *)
+                  (* currently allows an array of nullable but no nullable arrays *)
+                  let ty1 =
+                    if fty.nullable then
+                      struct_type context [| nulltag_type; basetype |]
+                    else basetype in
+                  let fieldlltype =
+                    if fty.array then
+                      struct_type context
+                        [| int_type; pointer_type (array_type ty1 0) |]
+                    else ty1 in
+                  (fieldname, fieldlltype, i, fty))
+            ) fielddata in
+        (* Create the mapping from field names to offset and type. *)
+        (* do we still need the high-level type? maybe for lookup info. *)
+        let fieldmap =
+          List.fold_left (fun fomap (fname, _, i, ftype) ->
+              StrMap.add fname (i, ftype) fomap
+            ) StrMap.empty ftypeinfo in
+        match cdata.kindData with 
+        (* generate the llvm named struct type, record case *)
+        (* Fields have already been generated, but may want to split it out
+           into a more sensible separate function for each kind. *)
+        | Struct _ ->
+          struct_set_body llstructtype
+            (List.map (fun (_, lty, _, _) -> lty) ftypeinfo
+             |> Array.of_list) false; (* "false" means don't use packed structs. *)
+          debug_print ("generated struct type body: " ^ string_of_lltype llstructtype);
+          if cdata.rectype then
+            (* recursive types are reference types *)
+            (pointer_type llstructtype, fieldmap)
+          else 
+            (llstructtype, fieldmap)
+        (* Variant case: struct of tag + optional byte array for the union *)
+        | Variant _ ->
+          (* Compute max size of any of the variant subtypes. *)
+          let maxsize =
+            List.fold_left (fun max llvarty ->
+                let typesize =
+                  if llvarty = void_type then Int64.of_int 0
+                  else Llvm_target.DataLayout.abi_size llvarty layout
+                in if typesize > max then typesize else max
+              )
+              (Int64.of_int 0)
+              (List.map (fun (_, llvarty, _, _) -> llvarty) ftypeinfo)
+          in
+          debug_print (cdata.classname ^ " max variant size: "
+                       ^ Int64.to_string maxsize);
+          (* compute two-field struct type (tag and data value) *)
+          (* TODO: optimize to have just the tag (enum) if max size is zero. *)
+          (* let vstructtype = named_struct_type context typename in *)
+          struct_set_body llstructtype
+            (if maxsize = Int64.zero then 
+               [| varianttag_type |]
+             else
+               [| varianttag_type;
+                  (* Voodoo magic: adding 4 bytes fixes my double problem. *)
+                  array_type (i8_type context) (Int64.to_int maxsize + 4) |])
+            false;
+          (llstructtype, fieldmap)
+        | Hidden ->
+          (* Unknown implementation, must be treated as void pointer *)
+          (voidptr_type, StrMap.empty)
+        | _ -> (* TODO: opaque type and newtype *)
+          (* Now it's an opaque type, but I really don't want to assume.
+             need to put an opaque marker in classData?
+             Maybe go with a kind variant instead of just lists that can be empty? *)
+          failwith ("BUG: missing codegen for class type " ^ cdata.classname)
+    )
 
 (** Use a type tag to generate the LLVM type from the base type. *)
 let ttag_to_llvmtype lltypes ttag =
@@ -648,7 +661,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpVariant ((tymod, tyname), variant, eopt) ->
     debug_print ("Generating variant expression code for " ^ tyname);
     (* 1. Look up lltype and allocate struct *)
-    let (llvarty, varmap) = TypeMap.find (tymod, tyname) lltypes in
+    let (llvarty, varmap) = Lltenv.find (tymod, tyname) lltypes in
     (* 2. Look up variant type, allocate struct, store tag value *)
     let typesize = Array.length (struct_element_types llvarty) in
     let (tagval, subty) = StrMap.find variant varmap in

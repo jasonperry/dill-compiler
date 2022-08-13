@@ -1,21 +1,34 @@
 (* mutually recursive data type *)
-module mutrec01 begin
+module rectype02 begin
 
+open stdio;
+   
 type IntNode is rec struct
    value: Int,
-   mut next: FloatNode;
+   mut next: FloatNode?;
 
 type FloatNode is rec struct
    value: Float,
-   mut next: CharNode;
+   mut next: CharNode?; 
 
-(* Need cycle checking, because this one has no forward refs. *)
+(* Need cycle checking in analysis, because this one has no forward refs. *)
 type CharNode is rec struct
    value: Byte,
    mut next: IntNode?;
 
 (* This isn't a recursive type. *)
-type WholeGraph is struct
+type IfcGraph is struct
    g: IntNode;
+
+
+export proc main()
+begin
+   var inode: IntNode = { value=19, next={value=17.7, next=null}};
+   printInt(inode.value);
+   var fnode: FloatNode = {value=4.3, next={value='f', next=null}};
+   printFloat(fnode.value);
+   var cnode: CharNode = {value='f', next={value=18, next=fnode}};
+   printBytes([cnode.value]);
    
-end mutrec01
+end main
+end rectype02
