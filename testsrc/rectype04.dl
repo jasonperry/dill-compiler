@@ -1,0 +1,37 @@
+(* recursive type initialized with a loop *)
+
+module rectype04 begin
+
+open stdio;
+   
+type FloatMutList is rec struct
+   value: Float,
+   mut next: FloatMutList?;
+
+export proc main()
+begin
+   (* OR could have made it nullable *)
+   var listHead: FloatMutList = {value=0.0, next=null};
+   var nv: Float = 1.0;
+   var listIter = listHead; (* copies? *)
+   while nv < 45.0 loop
+      var nextRec: FloatMutList = {value=nv, next=null}; 
+      listIter.next = nextRec;
+      listIter = nextRec;  (* is this double storage? Nah, just temp *)
+      nv = nv + 1.0;
+   endwhile
+
+   (* loop back through *)
+   var listIter2: FloatMutList? = listHead;
+   while listIter2 loop (* need to impl null assign in while loop *)
+      if var lrec ?= listIter2 then
+         printFloat(lrec.value);
+         listIter2 = lrec.next;
+      endif
+   endwhile
+   
+end main
+
+end rectype04
+      
+

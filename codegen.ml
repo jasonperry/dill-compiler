@@ -65,7 +65,7 @@ module Lltenv = struct
 end
 
 (** Process a classData to generate a new llvm base type *)
-let rec gen_lltype the_module  (* returns (classdata, fieldmap) *)
+let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
     (types: classData TypeMap.t) (lltypes: Lltenv.t) layout (cdata: classData) =
   match Lltenv.find_opt (cdata.in_module, cdata.classname) lltypes with
   | Some (lltype, fieldmap) -> (lltype, fieldmap)
@@ -129,10 +129,10 @@ let rec gen_lltype the_module  (* returns (classdata, fieldmap) *)
                         else 
                           (* NOTE! mname not included because local types have no
                              module prefix in the tenv. Might want to change that... *)
-                          fst (gen_lltype the_module types lltypes layout
+                          fst (add_lltype the_module types lltypes layout
                                  (TypeMap.find ("", tname) types))
                     else
-                      fst (gen_lltype the_module types lltypes layout
+                      fst (add_lltype the_module types lltypes layout
                              (TypeMap.find ("", tname) types))
                   in
                   (* check for non-base types and add them if needed. *)
@@ -784,7 +784,11 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         | OpDiv -> build_fdiv e1val e2val "fdivtemp" builder
         | OpPlus -> build_fadd e1val e2val "faddtemp" builder
         | OpMinus -> build_fsub e1val e2val "fsubtemp" builder
-        | OpEq -> build_fcmp Fcmp.Oeq e1val e2val "feqtemp" builder
+        (* | OpEq -> build_fcmp Fcmp.Oeq e1val e2val "feqtemp" builder *)
+        | OpLt -> build_fcmp Fcmp.Ult e1val e2val "flttemp" builder
+        | OpLe -> build_fcmp Fcmp.Ule e1val e2val "fletemp" builder
+        | OpGt -> build_fcmp Fcmp.Ugt e1val e2val "fgttemp" builder
+        | OpGe -> build_fcmp Fcmp.Uge e1val e2val "fgetemp" builder
         | _ -> failwith "float binop Not implemented yet"
       else if e1.decor = bool_ttag then
         match op with
@@ -948,48 +952,13 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtIf (cond, thenblock, elsifs, elsopt) -> (
     (* Evaluate a condition, possibly inserting declaration and value store 
      * in the then block for conditional-null assignments. *)
-    (* TODO: factor this out to use in while loops too *)
-    let gen_cond cond thenbb blocksyms =
-      match cond.e with
-      | ExpNullAssn (isdecl, (((varname, _), _) as varexp), _, nullexp) ->
-         let condval = gen_expr the_module builder syms lltypes nullexp in
-         let nulltag = build_extractvalue condval 0 "nulltag" builder in
-         (* Need an icmp instruction because tag value isn't i1 anymore. *)
-         let condres =
-           build_icmp Icmp.Ne
-             nulltag (const_int nulltag_type 0) "condres" builder in
-         (* need to save start_bb's position before adding code to 
-            the then block *)
-         let start_block = insertion_block builder in
-         position_at_end thenbb builder;
-         (* desugar a new declaration if needed, then generate code
-          * to store the non-null condition result value *)
-         if isdecl then
-           gen_stmt the_module builder lltypes 
-             { st=StmtDecl (varname, None, None); decor=blocksyms };
-         let (alloca, _) =
-           get_varexp_alloca the_module builder varexp blocksyms lltypes in
-         let realval = build_extractvalue condval 1 "condval" builder in
-         (* build_load valaddr "realval" builder in *)
-         ignore (build_store realval alloca builder);
-         (* restore the insertion point to the end of start_bb *)
-         position_at_end start_block builder;
-         condres
-      | _ ->
-         let condval = gen_expr the_module builder syms lltypes cond in
-         (* If a nullable type, then the condition is to test if it's null *)
-         if cond.decor.nullable then
-           let nulltag = build_extractvalue condval 0 "nulltag" builder in
-           build_icmp Icmp.Ne
-             nulltag (const_int nulltag_type 0) "condres" builder
-         else condval
-    in
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
     let then_bb = append_block context "then" the_function in
     let blocksyms = (List.hd thenblock).decor in
     position_at_end start_bb builder;
-    let condval = gen_cond cond then_bb blocksyms in
+    let condval =
+      gen_cond the_module syms lltypes cond then_bb blocksyms builder in
     (* need this because a (variant) comparison in the cond can add bb's *)
     let new_start_bb = insertion_block builder in 
     position_at_end then_bb builder;
@@ -1003,7 +972,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       position_at_end cond_bb builder;
       let then_bb = append_block context "elsifthen" the_function in
       let blocksyms = (List.hd block).decor in
-      let condval = gen_cond cond then_bb blocksyms in
+      let condval =
+        gen_cond the_module syms lltypes cond then_bb blocksyms builder in
       position_at_end then_bb builder;
       List.iter (gen_stmt the_module builder lltypes) block;
       (condval, cond_bb, then_bb, insertion_block builder) (* for jumps *)
@@ -1094,7 +1064,6 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       | _ ->
          let caseval = gen_constexpr_value lltypes caseexp in
            (* gen_expr the_module builder syms lltypes caseexp in *)
-         (* wait, is this my first real equality gen? *)
          (* maybe a gen_compare? *)
          gen_eqcomp matchval caseval matchexp.decor lltypes builder
          (* what if it's an ExpCall? Have to see if the return value is nullable *)
@@ -1133,7 +1102,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
             (* debug_print (string_of_llvalue structptr); *)
             (* load the value from the struct and store in the variable. *)
             (* Wait! If it's mutable don't I need to just make it the same
-               pointer instead? but if it's mutable wont' it be a pointer
+               pointer instead? but if it's mutable won't it be a pointer
                type already? Not local records! ok, trying it... *)
             (* let caseval = build_load valptr "caseval" builder in 
             ignore (build_store caseval alloca builder) *)
@@ -1199,17 +1168,17 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* jump from current block into this one *)
     ignore (build_br test_bb builder);
     (* insert code in test block to compute condition (put test in later) *)
-    position_at_end test_bb builder;
-    let condval = match cond.e with
-      | ExpNullAssn (_,_,_,_) -> failwith "null assign not yet implemented"
-      | _ -> gen_expr the_module builder syms lltypes cond in
-    (* Create loop block and fill it in *)
     let loop_bb = append_block context "loop" the_function in
+    let blocksyms = (List.hd body).decor in
+    position_at_end test_bb builder;
+    let condval =
+      gen_cond the_module syms lltypes cond loop_bb blocksyms builder in
+    (* Create loop block and fill it in *)
     position_at_end loop_bb builder;
     List.iter (gen_stmt the_module builder lltypes) body;
     (* add unconditional jump back to test *)
-    let new_loop_bb = insertion_block builder in (* don't need? *)
-    position_at_end new_loop_bb builder;         (* is it there already? *)
+    let end_loop_bb = insertion_block builder in 
+    position_at_end end_loop_bb builder;
     ignore (build_br test_bb builder);
     let merge_bb = append_block context "afterloop" the_function in
     (* Now, add the conditional branch in the test block. *)
@@ -1228,6 +1197,41 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
 
   | StmtBlock _ -> failwith "not implemented"
 
+(** Generate code for a conditional expression, including possibly null assignment *)
+and gen_cond the_module syms lltypes cond thenbb blocksyms builder =
+  match cond.e with
+  | ExpNullAssn (isdecl, (((varname, _), _) as varexp), _, nullexp) ->
+    let condval = gen_expr the_module builder syms lltypes nullexp in
+    let nulltag = build_extractvalue condval 0 "nulltag" builder in
+    (* Need an icmp instruction because tag value isn't i1 anymore. *)
+    let condres =
+      build_icmp Icmp.Ne
+        nulltag (const_int nulltag_type 0) "condres" builder in
+    (* need to save start_bb's position before adding code to 
+            the then block *)
+    let start_block = insertion_block builder in
+    position_at_end thenbb builder;
+    (* desugar a new declaration if needed, then generate code
+          * to store the non-null condition result value *)
+    if isdecl then
+      gen_stmt the_module builder lltypes 
+        { st=StmtDecl (varname, None, None); decor=blocksyms };
+    let (alloca, _) =
+      get_varexp_alloca the_module builder varexp blocksyms lltypes in
+    let realval = build_extractvalue condval 1 "condval" builder in
+    (* build_load valaddr "realval" builder in *)
+    ignore (build_store realval alloca builder);
+    (* restore the insertion point to the end of start_bb *)
+    position_at_end start_block builder;
+    condres
+  | _ ->
+    let condval = gen_expr the_module builder syms lltypes cond in
+    (* If a nullable type, then the condition is to test if it's null *)
+    if cond.decor.nullable then
+      let nulltag = build_extractvalue condval 0 "nulltag" builder in
+      build_icmp Icmp.Ne
+        nulltag (const_int nulltag_type 0) "condres" builder
+    else condval
 
 (* 
 (** Get a default value for a type. Seems to be needed for unreachable 
@@ -1379,7 +1383,7 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)
-        let (lltype, fieldmap) = gen_lltype the_module tenv lltenv layout cdata in
+        let (lltype, fieldmap) = add_lltype the_module tenv lltenv layout cdata in
         debug_print (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
             ^ " to lltenv, lltype: " ^ string_of_lltype lltype);
