@@ -1,7 +1,7 @@
 I'm working on a statically typed programming language that captures how
 I want to write to write and read imperative code. It's meant to be
 type- and memory-safe, with a good orthogonal set of type-based
-abstractions, and as close to zero runtime overhead as possible. The
+abstractions, with as close to zero runtime overhead as possible. The
 most notable feature is that it makes mutability explicit in the source
 but hides the value/reference distinction. Goals and features
 include:
