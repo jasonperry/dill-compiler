@@ -40,13 +40,16 @@ let check_typeExpr tenv texp : (typetag, string) result =
            array = texp.array})
   | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
 
+(** Exact type comparison. Need this because we have recursively
+    defined types. *)
+let types_equal (t1: typetag) (t2: typetag) =
+  (t1.modulename = t2.modulename && t1.typename = t2.typename
+   && t1.array = t2.array && t1.nullable = t2.nullable)
 
 (** Ensure first argument is of equal or more specific type than second. *)
 let subtype_match (subtag: typetag) (supertag: typetag) =
-  (* subtag = supertag (* can now cause recursive comparison *) *)
-  (* easy case: all names match, exact match *)
-  (subtag.modulename = supertag.modulename && subtag.typename = supertag.typename
-   && subtag.array = supertag.array && subtag.nullable = supertag.nullable)
+  (* easy case exact match *)
+  types_equal subtag supertag
   (* can still match if supertype is nullable *)
   || supertag.nullable &&
      (* case 1: subtype is null *)
@@ -109,6 +112,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
 
   | ExpVar ((varstr, ixopt), fields) -> (
       (* let varstr = exp_to_string ex in *)
+      debug_print ("#AN: checking variable expression " ^ varstr);
       match Symtable.findvar_opt varstr syms with
       | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
       | Some (entry, _) -> (
@@ -174,7 +178,8 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                               | Error err -> Error err
                             ))
                 in
-                debug_print(typetag_to_string headtype);
+                debug_print ("#AN: var expression type " ^
+                             typetag_to_string headtype);
                 match check_fields headtype fields with
                 | Error err -> Error err
                 | Ok (checked_fields, expty) -> 
@@ -191,7 +196,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
         }
       | Some ttag ->
         let res = check_recExpr syms tenv ttag ex in
-        debug_print "finished checking record expression";
+        debug_print "#AN: finished checking record expression";
         res
     )
 
@@ -228,17 +233,26 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
     check_variant syms tenv ex ~declvar:false
 
   | ExpBinop (e1, oper, e2) -> (
+      debug_print "#AN: Checking binary operator expression";
       match check_expr syms tenv e1 with
       | Ok ({e=_; decor=ty1} as e1) -> (  (* without () e1 is the whole thing *)
           match check_expr syms tenv e2 with
           | Ok ({e=_; decor=ty2} as e2) -> (
-              if ty1 <> ty2 then 
+              debug_print "#AN: checked both operands";
+              (* Oh. the type comparison itself recurses *)
+              if not (types_equal ty1 ty2) then 
                 Error {loc=ex.decor;
                        value = ("Operator type mismatch: " ^ typetag_to_string ty1
                                 ^ ", " ^ typetag_to_string ty2)}
-              else
+              else (
                 match oper with
                 | OpEq | OpNe | OpLt | OpGt | OpLe | OpGe ->
+                  if ty1.tclass.rectype then
+                    Error {
+                      loc=ex.decor;
+                      value="Comparison operator not valid for recursive types"
+                    }
+                  else
                   Ok {e=ExpBinop (e1, oper, e2); decor=bool_ttag}
                 | OpAnd | OpOr when ty1 <> bool_ttag ->
                   if ty1 <> bool_ttag then
@@ -251,7 +265,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                 | _ ->
                   (* TODO: check type interfaces for operation. *)
                   Ok {e=ExpBinop (e1, oper, e2); decor=ty1}
-            )
+              ))
           | Error err -> Error err
         )
       | Error err -> Error err
@@ -574,7 +588,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
             | Some tyexp -> ( (* could check this as a Decl *)
               match check_typeExpr tenv tyexp with
               | Error msg -> Error {loc=condexp.decor; value=msg}
-              | Ok dty when dty <> {ety with nullable=false} ->
+              | Ok dty when not (types_equal dty {ety with nullable=false}) ->
                  Error {loc=condexp.decor;
                         value="Declared type " ^ typetag_to_string dty
                               ^ " for variable " ^ varname
@@ -598,7 +612,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
         match check_lvalue condsyms tenv varexp condexp.decor with
            | Error err -> Error err
            | Ok {e=newlval; decor=lvalty} -> 
-              if lvalty <> {ety with nullable=false} then
+              if not (types_equal lvalty {ety with nullable=false}) then
                 Error { loc=condexp.decor;
                         value="Type mismatch in nullable assignment ("
                               ^ typetag_to_string lvalty ^ ", "
@@ -612,16 +626,17 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
               )
   )))
   | _ -> (
-     (* Otherwise, it has to be bool *)
-     match check_expr condsyms tenv condexp with
-     | Error err -> Error err
-     | Ok {e=_; decor=ety} as goodex ->
+      (* Otherwise, it has to be bool *)
+      debug_print "#AN: checking non-assignment conditional expr";
+      match check_expr condsyms tenv condexp with
+      | Error err -> Error err
+      | Ok {e=_; decor=ety} as goodex ->
         if ety <> bool_ttag && not ety.nullable then
           Error {
-              loc=condexp.decor;
-              value=("Conditional must have Boolean or nullable type, found: "
-                     ^ typetag_to_string ety)
-            }
+            loc=condexp.decor;
+            value=("Conditional must have Boolean or nullable type, found: "
+                   ^ typetag_to_string ety)
+          }
         else
           goodex
   )
@@ -861,7 +876,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                   | Error err -> Error [err]
                   | Ok checkedcexp -> (
                       let casetype = checkedcexp.decor in 
-                      if casetype <> mtype then
+                      if not (types_equal casetype mtype) then
                         errout ("Case type " ^ typetag_to_string casetype
                                 ^ " does not match match expression type "
                                 ^ typetag_to_string mtype)
@@ -958,7 +973,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                       else
                         let blocksyms = Symtable.new_scope syms in
                         check_casebody checkedcexp cexpstr cbody blocksyms
-                    else if casetype <> mtype then
+                    else if not (types_equal casetype mtype) then
                       errout ("Case value type " ^ typetag_to_string casetype
                               ^ " does not match match expression type "
                               ^ typetag_to_string mtype)
@@ -1039,7 +1054,7 @@ and check_stmt_seq syms tenv sseq =
     | [] -> List.rev acc
     | stmt::rest -> (
         let res = check_stmt syms tenv stmt in
-        debug_print "checked one statement";
+        debug_print "#AN: statement check completed";
         match stmt.st with
         | StmtReturn _ when rest <> [] ->
           let unreach = Error [{loc=stmt.decor;

@@ -29,6 +29,7 @@ begin
    printFloat(fnode.value);
    var cnode: CharNode = {value='f', next={value=18, next=fnode}};
    printBytes([cnode.value]);
+   printString("\n----");
    
 end main
 end rectype02

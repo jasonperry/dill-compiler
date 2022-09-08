@@ -261,7 +261,7 @@ let rec exp_to_string (e: 'a expr) =
      ^ (match eopt with
         | Some e -> "(" ^ exp_to_string e ^ ")"
         | None -> "")
-  | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ "BINOP " ^ exp_to_string e2
+  | ExpBinop (e1, _, e2) -> exp_to_string e1 ^ " BINOP " ^ exp_to_string e2
   | ExpUnop (_, e) -> "UNOP " ^ exp_to_string e
   | ExpCall (procname, args) ->
      procname ^ "("

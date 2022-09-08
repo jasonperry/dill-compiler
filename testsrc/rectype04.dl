@@ -10,6 +10,7 @@ type FloatMutList is rec struct
 
 export proc main()
 begin
+   (* Next: have it returned from a function *)
    (* OR could have made it nullable *)
    var listHead: FloatMutList = {value=0.0, next=null};
    var nv: Float = 1.0;
@@ -29,6 +30,7 @@ begin
          listIter2 = lrec.next;
       endif
    endwhile
+   
    
 end main
 

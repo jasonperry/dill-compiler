@@ -3,7 +3,8 @@ module rectype03 begin
 
 type FloatChain is rec variant
    | thenum: Float
-   | next: FloatChain;  (* record-with-pointer, not pointer-to-record *)
+   | next: FloatChain  (* record-with-pointer, not pointer-to-record *)
+   | theend;
 
 end rectype03
 

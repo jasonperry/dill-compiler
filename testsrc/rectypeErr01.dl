@@ -1,0 +1,41 @@
+(* recursive data type comparison, not allowed *)
+module rectypeErr01 begin
+
+open stdio;
+   
+type FloatList is rec struct
+   value: Float,
+   next: FloatList?;  (* record-with-pointer, not pointer-to-record *)
+
+export proc main()
+begin
+   var fl1: FloatList;
+   (* have to promote to a nullable record, get a pointer and cast it to i8* *)
+   fl1 = { value=1.44, next=null };
+   printFloat(fl1.value); (* requires dereference *)
+
+   var fl2: FloatList = { value=2.0, next=fl1 }; 
+
+   (* If not checked, codegen exhausts memory. Ha! *)
+   if fl1 == fl2 then
+      printString("Lists are equal");
+   else
+      printString("Lists are not equal");
+   endif 
+   
+   (*if var innerRec ?= fl2.next then
+      printFloat(innerRec.value);
+   endif
+   
+   var fl3: FloatList = { value=3.0, next={value=4.0, next=null}};
+
+   var fl4: FloatList? = fl3.next; 
+
+   if var innerRec2 ?= fl3.next then
+      printFloat(innerRec2.value);
+   endif  *)
+   
+end main
+
+end rectypeErr01
+
