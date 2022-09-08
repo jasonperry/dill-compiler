@@ -1,48 +1,49 @@
 I'm working on a statically typed programming language that captures how
-I want to write imperative code, with safety, a /relatively/ advanced
-type system, and a good orthogonal set of abstractions, with as close to
-zero runtime overhead as possible. The biggest idea is about how it
-handles mutation. Goals and features include:
+I want to write to write and read imperative code. It's meant to be
+type- and memory-safe, with a good orthogonal set of type-based
+abstractions, and as close to zero runtime overhead as possible. The
+most notable feature is that it makes mutability explicit in the source
+but hides the value/reference distinction. Goals and features
+include:
 - "Imperative locally, functional-first globally"; being an imperative
   language, local variables are reassignable. But datatypes are
   immutable by default, and procedure arguments are passed immutably by
-  default and not reassignable.
-- Non-local mutation is made explicit; passing a mutable reference must
-  be indicated at both the function definition and call site. Possibly
-  this will allow for more useful types of static analysis, in addition
-  to making the code's behavior clearer from the source.
-- No distinction of references and values in the code; the
-  explicit mutation is a kind of surrogate for that that's closer to the
-  problem domain. There should be no implicit differences in behavior
-  due to using value vs. reference objects. The mutation tracking should
-  help achieve this with minimal sacrifices to efficiency.
-- Struct and variant types
+  default and are not reassignable.
+- Non-local mutation is made explicit; passing an object mutably is
+  indicated at both the function definition and call site. Otherwise
+  objects have true ("deep") immutability.
+- No distinction of references and values in the code; the explicit
+  mutation should enable the compiler to make efficient decisions about
+  that, allowing the programmer to write code closer to the problem
+  domain. There should be no implicit differences in behavior due to
+  using value vs. reference objects.
+- Struct and variant types, case pattern matching, recursive types
 - All concrete types are datatypes; there are no classes (containers for
   a type and methods), though method call syntax is planned. Method call
-  syntax also distinguishes mutating and non-mutating methods.
+  syntax also distinguishes mutating and non-mutating functions.
 - Null-safety with explicit nullable (option) types; syntax
   and value promotion convenience features
+- Syntax: keywords are used to delineate blocks; curly braces are only
+  for record expressions. Keywords should "do work" of clarifying
+  structure, e.g. ~endif~ and not just ~end~. We try to be more
+  concise than Pascal/Ada syntax, but readability is more
+  important. Semicolons as statement terminators. Making code easy to
+  type and even read aloud are also goals.
 - Modules as the primary construct for code grouping and data
-  hiding. "Private" only means private to a module; functions in a
+  hiding. "Private" means private to a module; functions in a
   module can access private fields of datatypes in that module. All
   imports must be explicitly specified.
 - Separate compilation by means of auto-generated module
-  specifications. This is strictly a compiler feature, that is,
-  module specs are not part of the language definition proper; what a
-  module exposes is completely specified by its source.
-- Keyword-based block syntax instead of curly braces. Keywords should
-  "do work" of clarifying structure, e.g. ~endif~ and not just
-  ~end~. Still, we try to be more concise than Pascal/Ada
-  syntax. Semicolons as statement terminators. "As readable as
-  possible, as verbose as necessary." Making code easy to type and even
-  read aloud are also goals.
+  specifications. This is strictly a compiler feature---module specs are
+  not part of the language definition proper. What a module exposes is
+  completely specified by its source.
 - Planned: generics, with constraints by means of module signatures (the
   modular equivalent of interfaces). Module imports explicitly specify
   which signature implementations you're using.
 - Possibly: coroutines, probably stackless. 
 
-We'll see how far I get. The backend is LLVM, currently targeting only
-x86_64.
+We'll see how far I get. The backend is LLVM with the Boehm garbage
+collector, currently targeting only x86-64.
 
 #+BEGIN_COMMENT
 - Planned: passing procedure references. We'll see if it makes sense to
