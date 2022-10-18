@@ -22,6 +22,7 @@ let nulltag_type = i8_type context
 let varianttag_type = i32_type context
 
 let is_pointer_value llval = classify_type (type_of llval) = TypeKind.Pointer
+let is_pointer_type llval = classify_type llval = TypeKind.Pointer
 
 (* Implement comparison for typetag so we can make a map of them. *)
 (* Note: haven't done this yet, still using the string pair for basetype *)
@@ -101,7 +102,7 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
           | _ -> []
         in 
         (* Second, generate list of (name, lltype, offset, type) for fields *)
-        let ftypeinfo =
+        let ftypeinfo = fielddata |>
           List.mapi (fun i (fieldname, ftyopt) ->
               match ftyopt with
               (* why would this ever be none? *)
@@ -147,7 +148,7 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                         [| int_type; pointer_type (array_type ty1 0) |]
                     else ty1 in
                   (fieldname, fieldlltype, i, fty))
-            ) fielddata in
+            ) in
         (* Create the mapping from field names to offset and type. *)
         (* do we still need the high-level type? maybe for lookup info. *)
         let fieldmap =
@@ -194,7 +195,10 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                   (* Voodoo magic: adding 4 bytes fixes my double problem. *)
                   array_type (i8_type context) (Int64.to_int maxsize + 4) |])
             false;
-          (llstructtype, fieldmap)
+          if cdata.rectype then
+            (pointer_type llstructtype, fieldmap)
+          else
+            (llstructtype, fieldmap)
         | Hidden ->
           (* Unknown implementation, must be treated as void pointer *)
           (voidptr_type, StrMap.empty)
@@ -659,11 +663,18 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
 
 
   | ExpVariant ((tymod, tyname), variant, eopt) ->
-    debug_print ("Generating variant expression code for " ^ tyname);
+    debug_print ("** Generating variant expression code for " ^ tyname);
     (* 1. Look up lltype and allocate struct *)
     let (llvarty, varmap) = Lltenv.find (tymod, tyname) lltypes in
     (* 2. Look up variant type, allocate struct, store tag value *)
-    let typesize = Array.length (struct_element_types llvarty) in
+    debug_print ("variant lltype:" ^ string_of_lltype llvarty);
+    let typesize =
+      if is_pointer_type llvarty then 
+        Array.length (struct_element_types (element_type llvarty))
+      else 
+        Array.length (struct_element_types llvarty)
+    in
+    debug_print ("Got variant typesize of " ^ string_of_int typesize);
     let (tagval, subty) = StrMap.find variant varmap in
     let structsubty =
       struct_type context
@@ -673,7 +684,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
            let llsubty = ttag_to_llvmtype lltypes subty in
            [| varianttag_type; llsubty |]
         ) in
-    debug_print ("  subtype struct: " ^ string_of_lltype structsubty);
+    debug_print ("  variant subtype struct: " ^ string_of_lltype structsubty);
     let structaddr = build_alloca structsubty "variantSubAddr" builder in 
     let tagaddr = build_struct_gep structaddr 0 "tag" builder in
     ignore (build_store (const_int varianttag_type tagval) tagaddr builder);

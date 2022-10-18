@@ -1295,7 +1295,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
                   debug_print ("Creating placeholder for recursive field "
                                ^ fdecl.fieldname);
                   let dummyClass = {
-                    classname = "--PLACEHOLDER--";
+                    classname = fdecl.fieldtype.classname; (*"--PLACEHOLDER--";*)
                     in_module = modname;
                     opaque=false; muttype=false; rectype=true;
                     params=[]; kindData=Hidden
@@ -1353,27 +1353,27 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
                              ^ " reused in variant" }]
             else
               match vdecl.variantType with
-              | Some vt -> (
-                  match check_typeExpr tenv vt with
+              | Some vtexp -> (
+                  match check_typeExpr tenv vtexp with
                   | Error e ->
                     if not tdef.rectype then
                       Error [{loc=tdef.decor;
                               value="Variant subtype error: " ^ e}]
                     else
-                      (* construct placeholder for forward-defined tag. *)
+                      (* construct placeholder for forward-defined class. *)
                       let dummyClass = {
-                        classname = "--PLACEHOLDER--";
+                        classname = vtexp.classname; (* "--PLACEHOLDER--"; *)
                         in_module = modname;
                         opaque=false; muttype=false; rectype=true;
                         params=[]; kindData=Hidden
                       } in 
                       let ttag = {
                         modulename = modname;
-                        typename = vt.classname;
+                        typename = vtexp.classname;
                         tclass = dummyClass;
-                        array = vt.array;
+                        array = vtexp.array;
                         paramtypes = [];
-                        nullable = vt.nullable;
+                        nullable = vtexp.nullable;
                       } in
                       check_variants rest ((vdecl.variantName, Some ttag)::accres)
                   | Ok ttag ->
@@ -1585,16 +1585,30 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
         fun (cdata: classData) -> if cdata.rectype then
             match cdata.kindData with
             | Struct finfos -> 
-              List.iter (fun (finfo: fieldInfo) ->
+              finfos |> List.iter (fun (finfo: fieldInfo) ->
                   if finfo.fieldtype.tclass.rectype then (
                     let finishedClass = TypeMap.find
-                        ("", finfo.fieldtype.typename) tenv in
+                        ("", finfo.fieldtype.tclass.classname) tenv in
                     debug_print ("-check_module: Updating classData for field "
                                  ^ finfo.fieldname ^ " of " ^ cdata.classname);
                     finfo.fieldtype.tclass <- finishedClass
-                  )
-                ) finfos;
-            | _ -> (); (* TODO: for variant types also *)
+                  ))
+            | Variant vlist -> 
+              vlist |> List.iter (fun (vname, vtopt) -> (
+                    match vtopt with
+                    | Some vttag ->
+                      if vttag.tclass.rectype then (
+                        debug_print ("-searching for completed classname "
+                                     ^ vttag.tclass.classname);
+                        let finishedClass = TypeMap.find
+                            ("", vttag.tclass.classname) tenv in
+                        debug_print ("-check_module: Updating classData for variant "
+                                     ^ vname ^ " of " ^ cdata.classname);
+                        vttag.tclass <- finishedClass
+                      )
+                    | None -> ()
+                  ))
+            | _ -> () 
       ) newclasses;
       debug_print ("-- module types in tenv: " ^ string_of_tenv tenv);
       (* spam syms into the decor of the AST typedefs to update the decor type.

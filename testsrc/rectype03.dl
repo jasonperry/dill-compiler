@@ -11,7 +11,7 @@ type FloatChain is rec variant
 export proc main()
 begin
    var fc1 = FloatChain|thenum(4.5); (* works with no codegen change *)
-   var fc2 = FloatChain|next(FloatChain|thenum(4.3)); (* not yet *)
+   (* var fc2 = FloatChain|next(FloatChain|thenum(4.3)); (* not yet *) *)
    (* stdio::printString("Hello there."); *)
 end main
    
