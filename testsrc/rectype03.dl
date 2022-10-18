@@ -1,10 +1,22 @@
 (* variant recursive data type *)
 module rectype03 begin
 
+import stdio;
+   
 type FloatChain is rec variant
    | thenum: Float
    | next: FloatChain  (* record-with-pointer, not pointer-to-record *)
    | theend;
 
+export proc main()
+begin
+   var fc1 = FloatChain|thenum(4.5); (* works with no codegen change *)
+   var fc2 = FloatChain|next(FloatChain|thenum(4.3)); (* not yet *)
+   (* stdio::printString("Hello there."); *)
+end main
+   
 end rectype03
 
+(* So ugly! Do we need variant datatypes really? *)
+
+(* var fc1 = FloatChain|next(FloatChain|next(FloatChain|thenum(4.3))); *)

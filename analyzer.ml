@@ -1262,7 +1262,7 @@ let check_globdecl syms tenv modname gstmt =
   )
 
 
-(** Check a struct declaration, generating classData for the tenv. *)
+(** Check a struct/variant type definition, generating classData for the tenv. *)
 let check_typedef modname tenv (tdef: locinfo typedef) = 
   (* TODO: handle recursive type declarations *)
   (* check for typename redeclaration *)
@@ -1354,14 +1354,33 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
             else
               match vdecl.variantType with
               | Some vt -> (
-                match check_typeExpr tenv vt with
-                | Error e ->
-                   Error [{loc=tdef.decor;
-                           value="Variant subtype error: " ^ e}]
-                | Ok ttag ->
-                   check_variants rest ((vdecl.variantName, Some ttag)::accres)
-              )
-              | None -> check_variants rest ((vdecl.variantName, None)::accres)
+                  match check_typeExpr tenv vt with
+                  | Error e ->
+                    if not tdef.rectype then
+                      Error [{loc=tdef.decor;
+                              value="Variant subtype error: " ^ e}]
+                    else
+                      (* construct placeholder for forward-defined tag. *)
+                      let dummyClass = {
+                        classname = "--PLACEHOLDER--";
+                        in_module = modname;
+                        opaque=false; muttype=false; rectype=true;
+                        params=[]; kindData=Hidden
+                      } in 
+                      let ttag = {
+                        modulename = modname;
+                        typename = vt.classname;
+                        tclass = dummyClass;
+                        array = vt.array;
+                        paramtypes = [];
+                        nullable = vt.nullable;
+                      } in
+                      check_variants rest ((vdecl.variantName, Some ttag)::accres)
+                  | Ok ttag ->
+                    check_variants rest ((vdecl.variantName, Some ttag)::accres)
+                )
+              | None -> (* bare-name variant *)
+                check_variants rest ((vdecl.variantName, None)::accres)
        in
        match check_variants variants [] with
        | Error elist -> Error elist
@@ -1374,6 +1393,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               classname = tdef.typename;
               in_module = modname;
               opaque = tdef.opaque;
+              (* Should variant types be immutable always? Need to think. *)
               muttype = List.exists
                           (fun st -> Option.is_some (snd st)
                                      && (Option.get (snd st)).tclass.muttype

@@ -90,7 +90,7 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
           | None -> named_struct_type context typename
           | Some llty -> llty
         in
-        (* So far, I could treat struct and variant fields the same way *)
+        (* Pull out fields; same for both struct and variant types *)
         let fielddata =
           match cdata.kindData with
           | Struct fields ->
