@@ -1,7 +1,7 @@
 (* variant recursive data type *)
 module rectype03 begin
 
-import stdio;
+open stdio;
    
 type FloatChain is rec variant
    | thenum: Float
@@ -10,9 +10,33 @@ type FloatChain is rec variant
 
 export proc main()
 begin
-   var fc1 = FloatChain|thenum(4.5); (* works with no codegen change *)
-   (* var fc2 = FloatChain|next(FloatChain|thenum(4.3)); (* not yet *) *)
+   var fc0 = FloatChain|theend;
+   var fc1 = FloatChain|thenum(4.5); (* works with no codegen change *) 
+   var fc2 = FloatChain|next(FloatChain|thenum(4.3));
+   var fc3 = FloatChain|next(FloatChain|next(FloatChain|thenum(4.3)));
    (* stdio::printString("Hello there."); *)
+
+   case fc3
+      of FloatChain|next(n) then
+         (* Inner case statement not executing. Is n not the right value? *)
+         case n
+            of FloatChain|thenum(f) then
+               printString("Number coming up?");
+               printFloat(f);
+            of FloatChain|next(n2) then (* what if I use the same variable? *)
+               printString("Too long, I give up.");
+            of FloatChain|theend then
+               printString("End already?"); 
+            (* else
+               printString("nothing matched."); *)
+          endcase
+       of FloatChain|thenum(f) then
+          printFloat(f);
+          (* printString("the number."); *)
+       of FloatChain|theend then
+          printString("the end.");
+   endcase
+   
 end main
    
 end rectype03

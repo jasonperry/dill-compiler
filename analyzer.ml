@@ -40,27 +40,6 @@ let check_typeExpr tenv texp : (typetag, string) result =
            array = texp.array})
   | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
 
-(** Exact type comparison. Need this because we have recursively
-    defined types. *)
-let types_equal (t1: typetag) (t2: typetag) =
-  (t1.modulename = t2.modulename && t1.typename = t2.typename
-   && t1.array = t2.array && t1.nullable = t2.nullable)
-
-(** Ensure first argument is of equal or more specific type than second. *)
-let subtype_match (subtag: typetag) (supertag: typetag) =
-  (* easy case exact match *)
-  types_equal subtag supertag
-  (* can still match if supertype is nullable *)
-  || supertag.nullable &&
-     (* case 1: subtype is null *)
-     (subtag.tclass = null_class ||
-      (* case 2: subtype matches supertype except for null *)
-      (subtag.modulename = supertag.modulename && subtag.typename = supertag.typename
-       && subtag.array = supertag.array))
-  (* Specific type is one of the types in a union *)
-  (* Could do it recursively? Wait and see if it's better not to. *)
-  (* || List.exists ((=) subtag) supertag.tclass.variants *)
-
 
 (** Syntactically determine if an expression is constant *)
 let rec is_const_expr = function

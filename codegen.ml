@@ -663,7 +663,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
 
 
   | ExpVariant ((tymod, tyname), variant, eopt) ->
-    debug_print ("** Generating variant expression code for " ^ tyname);
+    debug_print ("** Generating variant expression code of type " ^ tyname);
     (* 1. Look up lltype and allocate struct *)
     let (llvarty, varmap) = Lltenv.find (tymod, tyname) lltypes in
     (* 2. Look up variant type, allocate struct, store tag value *)
@@ -685,7 +685,12 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
            [| varianttag_type; llsubty |]
         ) in
     debug_print ("  variant subtype struct: " ^ string_of_lltype structsubty);
-    let structaddr = build_alloca structsubty "variantSubAddr" builder in 
+    let structaddr =
+      if ex.decor.tclass.rectype then
+        build_gc_malloc structsubty "variantSubAddr" the_module builder 
+      else 
+        build_alloca structsubty "variantSubAddr" builder
+    in 
     let tagaddr = build_struct_gep structaddr 0 "tag" builder in
     ignore (build_store (const_int varianttag_type tagval) tagaddr builder);
     (* 3. generate code for expr (if exists) and store in the value slot *)
@@ -696,19 +701,26 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         * (for instance, so "null" will be promoted *)
        let expval =
          let eval1 = gen_expr the_module builder syms lltypes e in
-         if e.decor <> subty then
+         debug_print "finished codegen for variant field";
+         if not (types_equal e.decor subty) then
            let nullabletype = ttag_to_llvmtype lltypes subty in 
            promote_value eval1 nullabletype builder
          else eval1 in
        let valaddr = build_struct_gep structaddr 1 "varVal" builder in
        ignore (build_store expval valaddr builder)
     );
-    (* 4. cast specific struct to the general struct and load the whole thing *)
+    (* 4. cast the pointer to the general struct type and load the whole thing *)
     (* It still wants the cast even if no value (because named struct?) *)
-    let castedaddr = build_bitcast structaddr (pointer_type llvarty)
-        "varstruct" builder in
-    let varval = build_load castedaddr "filledVariant" builder in
-    varval 
+    let castedaddr =
+      if ex.decor.tclass.rectype then
+        build_bitcast structaddr llvarty "varstruct" builder
+      else
+        build_bitcast structaddr (pointer_type llvarty) "varstruct" builder in
+    debug_print ("Casted variant struct addr " ^ string_of_llvalue structaddr
+                 ^ " ter " ^ string_of_llvalue castedaddr);
+    if ex.decor.tclass.rectype then
+      castedaddr
+    else build_load castedaddr "filledVariant" builder
   (* it's stored anyway, so why not just use the pointer? *)
   (* because semantics, and LLVM can elide load/store anyway. *)
   (* castedaddr *)
@@ -1033,12 +1045,18 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   )
 
   | StmtCase (matchexp, cblocks, elseopt) -> (
+    debug_print "** Generating case statement";
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
-    (* generate value of expression to match *)
-    let matchval = gen_expr the_module builder syms lltypes matchexp in
+    (* generate value of the expression to match (the top one) *)
+    let matchval =
+      let mv = gen_expr the_module builder syms lltypes matchexp in
+      if is_pointer_value mv then
+        build_load mv "matchval" builder
+      else mv in
     (* Need to store the match val also, to have the pointer  *)
     (* TODO: optimize to omit this if it's an enum-only variant *)
+    (* TODO: it's an extra load/store if it's a pointer - optimize? *)
     let matchaddr =
       build_alloca (type_of matchval) "matchaddr" builder in
     ignore (build_store matchval matchaddr builder);
@@ -1048,18 +1066,22 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       | None -> None
       | Some (_, fieldmap) -> Some fieldmap in
     (* Get the conditional value for matching against the case. *)
-    let gen_caseexp caseexp = 
+    let gen_caseexp caseexp =
       match caseexp.e with
       | ExpVariant (_, vname, _) ->
+        debug_print ("Generating case comparison on "
+                     ^ string_of_llvalue matchval);
          (* only compare the tags; the load of the value into the
             variable is done in the block body *)
-         let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
-         let fieldmap = Option.get fieldmap in
-         (* compare tag value of case to tag of the matchval *)
-         let casetag = fst (StrMap.find vname fieldmap) in
-         build_icmp
-           Icmp.Eq (const_int varianttag_type casetag) matchtagval
-           "casecomp" builder
+        let matchtagval = build_extractvalue matchval 0 "matchtag" builder in 
+        let fieldmap = Option.get fieldmap in
+        (* compare tag value of case to tag of the matchval *)
+        let casetag = fst (StrMap.find vname fieldmap) in
+        debug_print ("Comparing case tag " ^ string_of_int casetag
+                     ^ " with value tag" ^ string_of_llvalue matchtagval);
+        build_icmp
+          Icmp.Eq (const_int varianttag_type casetag) matchtagval
+          "casecomp" builder
       | ExpVal {e=ExpVar(_, _); decor=_} ->
          (* 'val(x)' matches whenever the tag value is 1 (non-null) *)
          let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
@@ -1087,7 +1109,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       let comp_bb = append_block context "casecomp" the_function in
       position_at_end comp_bb builder;
       let blocksyms = (List.hd caseblock).decor in
-      debug_print (st_node_to_string blocksyms);
+      debug_print ("case block symtable: " ^ st_node_to_string blocksyms);
       let condval = gen_caseexp caseexp (* casebody_bb blocksyms *) in
       let casebody_bb = append_block context "casebody" the_function in
       (* Need the syms for the variable that's declared to hold the value *)
