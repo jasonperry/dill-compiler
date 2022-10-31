@@ -1,0 +1,26 @@
+(* import variant type *)
+
+module union05 begin
+
+import union04;
+open stdio;
+
+proc checkVariants(s1: union04::Status, s2: union04::Status) => Bool
+begin
+  return s1 == s2;
+end checkVariants
+
+export proc main()
+begin
+   (* wow, so ugly again. but it works! *)
+   var s1: union04::Status = union04::|error(43);
+   var res = checkVariants(s1, union04::|error(43));
+
+   if res then
+      printString("Statuses are the same");
+   else
+      printString("Statuses are different");
+   endif
+end main
+
+end union05

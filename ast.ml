@@ -220,8 +220,8 @@ and typedef_to_string tdef =
         " is" ^ (if tdef.rectype then " rec" else "") ^ " struct\n   "
         ^ String.concat ",\n   " (List.map fieldDecl_to_string fields)
       | Variants variants ->
-        " is" ^ (if tdef.rectype then " rec" else "") ^ " variant\n   | "
-        ^ String.concat "\n   | "
+        " is" ^ (if tdef.rectype then " rec" else "") ^ " variant\n   "
+        ^ String.concat ",\n   "
             (List.map (fun vdec ->
                  vdec.variantName
                  ^ (match vdec.variantType with 

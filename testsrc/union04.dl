@@ -1,0 +1,11 @@
+(* variant to export *)
+
+module union04 begin
+
+
+type Status is variant
+  |ok,
+  |error: Int;
+
+end union04
+  

@@ -5,28 +5,28 @@ module union02 begin
 open stdio;
 
 type Num is variant
-  | fo: Float?
-  | i: Int;
+  |fo: Float?,
+  |i: Int;
 
 export proc main() => Int
 begin
-   var u1 = Num|i(4);
+   var u1: Num = |i(4);
    (* var fm: Float? = 5.5; *)
    (* var u2 = Num|i(14); *)
    (* var u2 = Num|fo(fm); *)
-   var u4 = Num|fo(null); (* bugfix needed *)
+   var u4: Num = |fo(null); (* bugfix needed *)
    
    (* fixed: it wasn't catching the type error in the case. *)
    (* var u3: Num? = null; *)
 
    (* fixed so this promotes the value properly. *)
-   var u2: Num = Num|fo(5.5); (* val(5.5) *)
-   u2 = Num|fo(null);
+   var u2: Num = |fo(5.5); (* val(5.5) *)
+   u2 = |fo(null);
 
    case u2
-   of Num|i(i) then
+   of |i(i) then
       printInt(i);
-   of Num|fo(nf) then
+   of |fo(nf) then
       (* hmm, when I add a statement between, it works... 
       * because the if statement isn't the first anymore *)
       (* printString("float nullable case, testing...\n"); *)
