@@ -10,13 +10,16 @@ type FloatChain is rec variant
 
 export proc main()
 begin
+   (* alias FC = FloatChain; * *)
    var fc0 = FloatChain|theend;
    var fc1 = FloatChain|thenum(4.5); (* works with no codegen change *) 
    var fc2 = FloatChain|next(FloatChain|thenum(4.3));
    var fc3 = FloatChain|next(FloatChain|next(FloatChain|thenum(4.3)));
-   (* stdio::printString("Hello there."); *)
 
-   case fc3
+   (* while fc3 is not FloatChain|thenum(n) loop *) (* idea. *)
+      
+   
+   case fc2
       of FloatChain|next(n) then
          (* Inner case statement not executing. Is n not the right value? *)
          case n

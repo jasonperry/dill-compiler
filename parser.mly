@@ -4,6 +4,7 @@
 %token <char> BYTECONST
 %token <string> IDENT_LC
 %token <string> IDENT_UC
+%token <string> IDENT_VARIANT
 %token LPAREN RPAREN LBRACE RBRACE LSQRB RSQRB
 %token PLUS MINUS TIMES DIV MOD
 %token UMINUS (* not lexed *)
@@ -13,7 +14,7 @@
 %token TRUE FALSE NULL VAL
 %token COLON DCOLON SEMI DOT COMMA HASH QMARK ARROW DARROW
 %token ASSIGN NULLASSIGN
-%token VAR
+%token VAR REF
 %token IS BEGIN END
 %token IF THEN ELSIF ELSE ENDIF
 %token WHILE LOOP ENDWHILE
@@ -202,12 +203,15 @@ fieldDecl:
     } }
 
 variantList:
-  | option(PIPE) vl=separated_nonempty_list(PIPE, variantDecl)
+(* | option(PIPE) vl=separated_nonempty_list(PIPE, variantDecl) *)
+  | vl=separated_nonempty_list(COMMA, variantDecl)
     { vl }
 
 variantDecl:
-  | vname=IDENT_LC vty=option(preceded(COLON, typeExp))
-    { {variantName=vname; variantType=vty; decor=$loc} }
+  | vname=IDENT_VARIANT vty=option(preceded(COLON, typeExp))
+    (* remove the initial pipe character *)
+    { {variantName=vname; (* (String.sub vname 1 (String.length vname - 1)); *)
+       variantType=vty; decor=$loc} }
 
 proc:
   | pd=procHeader BEGIN sb=stmtSeq END name2=IDENT_LC
@@ -419,12 +423,12 @@ seqExp:
     { ExpSeq vl }
 
 variantExp: (* Now using pairs everywhere for type names *)
-  | mn=moduleName DCOLON tn=IDENT_UC PIPE vn=IDENT_LC
+  | mn=moduleName DCOLON (*tn=IDENT_UC PIPE*) vn=IDENT_VARIANT
         eopt=option(delimited(LPAREN, expr, RPAREN))
-    { ExpVariant ((mn, tn), vn, eopt) }
-  | tn=IDENT_UC PIPE vn=IDENT_LC
+    { ExpVariant (mn, vn, eopt) }
+  | (* tn=IDENT_UC *) vn=IDENT_VARIANT
         eopt=option(delimited(LPAREN, expr, RPAREN))
-    { ExpVariant (("", tn), vn, eopt) }
+    { ExpVariant ("", vn, eopt) }
 
 fieldAssign:
   | vn=varName ASSIGN e=expr

@@ -209,7 +209,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
   (* return type is array of, or special sequence type to be more general? *) 
 
   | ExpVariant (_, _, _) ->
-    check_variant syms tenv ex ~declvar:false
+    check_variant syms tenv ex ~declvar:false thint
 
   | ExpBinop (e1, oper, e2) -> (
       debug_print "#AN: Checking binary operator expression";
@@ -412,17 +412,19 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
 
 
 (** check a variant expression (used in both expressions and case matches *)
-and check_variant syms tenv ex ~declvar =
+and check_variant syms tenv ex ~declvar thint =
   match ex.e with 
-  | ExpVariant ((mname, tname), vname, eopt) -> (
-      (* 1. the variant type exists *)
-      match TypeMap.find_opt (mname, tname) tenv with
-      | None ->
-        Error {loc=ex.decor;
-               value=("Unknown type " ^ mname ^ "::" ^ tname
-                      ^ " in variant expression")}
-      | Some cdata -> (
-          let variants = get_variants cdata in
+  | ExpVariant (mname, vname, eopt) -> (
+      match thint with
+      (* Later we can add better variant type disambiguation. *)
+      | None -> Error {loc=ex.decor;
+                       value=("Cannot determine type of variant expression " ^
+                              exp_to_string ex)}
+      | Some ty -> (
+        (* 1. the variant type exists *)
+        let tname = ty.tclass.classname in
+        let cdata = TypeMap.find (mname, tname) tenv in
+        let variants = get_variants cdata in
           (* 2. vname is a variant of it *)
           match List.find_opt (fun (vstr, _) -> vstr = vname) variants with
           | None ->
@@ -439,7 +441,9 @@ and check_variant syms tenv ex ~declvar =
                                ^ " does not hold a value"}
                 else
                   (* NOTE: replacing with the type's actual module name here. *)
-                  Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
+                  (* wait, I shouldn't really need to, since all the type info
+                     is going in the decor. *)
+                  Ok {e=ExpVariant (ty.modulename, vname, None);
                       decor=gen_ttag cdata []}
               | Some vtype -> (
                   match eopt with
@@ -456,7 +460,7 @@ and check_variant syms tenv ex ~declvar =
                         | Ok echecked ->
                           if subtype_match echecked.decor vtype then
                             Ok {
-                              e=ExpVariant ((cdata.in_module, tname), vname,
+                              e=ExpVariant (ty.modulename, vname,
                                             Some echecked);
                               decor=gen_ttag cdata []
                             }
@@ -468,7 +472,7 @@ and check_variant syms tenv ex ~declvar =
                                     ^ typetag_to_string vtype
                             }
                       else
-                        Ok {e=ExpVariant ((cdata.in_module, tname), vname, None);
+                        Ok {e=ExpVariant (ty.modulename, vname, None);
                             decor=gen_ttag cdata []}
 
                     )))))
@@ -849,9 +853,9 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
               (* 1. check the case expression *)
               match cexp.e with 
               (* expression-type-specific stuff starts here. *)
-              | ExpVariant ((modname, tyname), vntname, eopt) -> (
+              | ExpVariant (modname, vntname, eopt) -> (
                   (* typecheck as an expression but skip the variable if any *)
-                  match check_variant syms tenv cexp ~declvar:true with
+                  match check_variant syms tenv cexp ~declvar:true (Some mtype) with
                   | Error err -> Error [err]
                   | Ok checkedcexp -> (
                       let casetype = checkedcexp.decor in 
@@ -865,12 +869,12 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                           List.find (fun (vn, _) -> vntname = vn)
                             (get_variants casetype.tclass) in
                         if List.exists ((=) vntname) caseacc then 
-                          errout ("Duplicate variant case " ^ tyname ^ "|" ^ vntname)
+                          errout ("Duplicate variant case " ^ "|" ^ vntname)
                         else
                           match eopt with (* result.fold? join? bind? *)
                           | None -> 
                             let newcexp =
-                              {e=ExpVariant((modname, tyname), vntname, None);
+                              {e=ExpVariant(modname, vntname, None);
                                decor=matchexp.decor} in
                             let blocksyms = Symtable.new_scope syms in
                             check_casebody newcexp vntname cbody blocksyms
@@ -880,7 +884,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                                 let vntty = Option.get vnttyopt in
                                 let (newcexp: typetag expr) =
                                   {e=ExpVariant(
-                                       (modname, tyname), vntname,
+                                       modname, vntname,
                                        Some {e=ExpVar((cvar, None), []); decor=vntty});
                                    decor=matchexp.decor} in
                                 let blocksyms = Symtable.new_scope syms in

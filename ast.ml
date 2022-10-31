@@ -55,8 +55,8 @@ type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpVar of 'ed var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
   | ExpSeq of 'ed expr list
-  (* module name, type name, variant name, initializer *)
-  | ExpVariant of (string * string) * string * 'ed expr option
+  (* module name, (no more) type name, variant name, initializer *)
+  | ExpVariant of string * string * 'ed expr option
   | ExpBinop of 'ed expr * binary_op * 'ed expr
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * (bool * 'ed expr) list (* proc name, mut * value list *)
@@ -255,9 +255,9 @@ let rec exp_to_string (e: 'a expr) =
       ^ "}"
   | ExpSeq vl ->
      "{" ^ String.concat ", " (List.map exp_to_string vl) ^ "}"
-  | ExpVariant ((mn, tn), vn, eopt) ->
+  | ExpVariant (mn, vn, eopt) ->
      (if mn <> "" then mn ^ "::" else "")
-     ^ tn ^ "|" ^ vn
+     ^ (*tn ^ "|" ^*) vn
      ^ (match eopt with
         | Some e -> "(" ^ exp_to_string e ^ ")"
         | None -> "")

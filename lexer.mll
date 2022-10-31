@@ -11,6 +11,7 @@ let exp = ['e' 'E'] ['-' '+']? digit+
 let fconst = digit+ '.' digit* exp?
 let ident_lc = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
 let ident_uc = ['A'-'Z'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
+let ident_variant = ['|'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
 
 (* Unused, from the calc example *)
 (* rule line = parse
@@ -80,6 +81,7 @@ rule token = parse  (* funny that it's called parse *)
   | "::"    { DCOLON }
   | ':'	    { COLON }
   | "var"   { VAR }
+  | "ref"   { REF }
   | "if"    { IF }
   | "then"  { THEN }
   | "elsif" { ELSIF }
@@ -117,6 +119,7 @@ rule token = parse  (* funny that it's called parse *)
   | "val"     { VAL }
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
+  | ident_variant as v  { IDENT_VARIANT v }
   | eof     { EOF }
   | _ as c 
     { raise (Error (Printf.sprintf "Unexpected character %c" c)) }

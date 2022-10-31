@@ -662,7 +662,8 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       build_load recaddr "recordval" builder
 
 
-  | ExpVariant ((tymod, tyname), variant, eopt) ->
+  | ExpVariant (tymod, variant, eopt) ->
+    let tyname = (ex.decor).tclass.classname in 
     debug_print ("** Generating variant expression code of type " ^ tyname);
     (* 1. Look up lltype and allocate struct *)
     let (llvarty, varmap) = Lltenv.find (tymod, tyname) lltypes in
@@ -1049,6 +1050,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     let start_bb = insertion_block builder in
     let the_function = block_parent start_bb in
     (* generate value of the expression to match (the top one) *)
+    (* testing if pointer here and loading seems to fix things. *)
     let matchval =
       let mv = gen_expr the_module builder syms lltypes matchexp in
       if is_pointer_value mv then
@@ -1229,6 +1231,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
 
   | StmtBlock _ -> failwith "not implemented"
+
 
 (** Generate code for a conditional expression, including possibly null assignment *)
 and gen_cond the_module syms lltypes cond thenbb blocksyms builder =
