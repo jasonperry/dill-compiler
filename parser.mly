@@ -38,6 +38,7 @@
 %nonassoc NOT
 
 %{
+    open Common
     open Ast
 	 (* let mod_name = ref "" (* ONE inherited attribute, okay? *) *)
     open Syntax
@@ -224,10 +225,15 @@ proc:
     }
 
 procHeader:
-  | ex = option(EXPORT) PROC pn=IDENT_LC
+  | ex = option(EXPORT) PROC tvs=option(tyvarList) pn=IDENT_LC
     LPAREN pl=paramList RPAREN rt=option(preceded(DARROW, typeExp))
     { {decor=$loc;
        name=pn;
+       typeParams=(match tvs with
+		   | None -> []
+		   | Some tvList -> List.map (fun tv ->
+					       {varname=tv; impls=[]}) tvList
+		  );
        params=pl;
        export=Option.is_some ex;
        rettype = (
@@ -238,6 +244,10 @@ procHeader:
     }
 
 procDecl: ph=procHeader SEMI { ph }
+
+tyvarList:
+  | LPAREN tvs=separated_nonempty_list(COMMA, IDENT_LC) RPAREN
+    { tvs }
 
 paramList:
   | pl=separated_list(COMMA, paramInfo)
