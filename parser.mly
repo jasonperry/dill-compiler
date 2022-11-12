@@ -355,14 +355,34 @@ caseBlock:
 
 typeExp:
   (* typename plus possibly array, null markers *)
-  | mn=moduleName DCOLON tn=IDENT_UC qm=option(QMARK) arr=option(pair(LSQRB,RSQRB))
-    { { modname=mn; classname=tn;
+  | mn=moduleName DCOLON tn=IDENT_UC
+    tprms=option(delimited(LPAREN, nonempty_list(typeExp), RPAREN))
+    qm=option(QMARK) arr=option(pair(LSQRB,RSQRB))
+    { { texpkind=(
+	  Concrete {
+	      modname=mn; classname=tn;
+	      typeargs=(match tprms with
+			| Some tplist -> tplist
+			| None -> []) });
         nullable=Option.is_some qm;
-	array=Option.is_some arr } }
+	array=Option.is_some arr;
+	decor=$loc } }
   | tn=IDENT_UC qm=option(QMARK) arr=option(pair(LSQRB,RSQRB))
-    { { modname=""; classname=tn;
+    { { texpkind=(
+	  Concrete {
+	      modname=""; classname=tn;
+	      typeargs=(match tprms with
+			| Some tplist -> tplist
+			| None -> []) });
         nullable=Option.is_some qm;
-	array=Option.is_some arr } }
+	array=Option.is_some arr;
+	decor=$loc } }
+  | tvar=IDENT_LC qm=option(QMARK) arr=option(pair(LSQRB,RSQRB))
+    { { texpkind=(Generic tvar);
+	nullable=Option.is_some qm;
+	array=Option.is_some arr;
+	decor=$loc } }
+	
 
 (* Expressions are what evaluates to a value. *)
 expr:

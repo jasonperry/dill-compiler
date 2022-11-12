@@ -1,6 +1,7 @@
 (** Abstract syntax tree structure *)
 
 (* open Types *) (* yay, now generic over what it's decorated with! *)
+open Common
 
 type consttype =
   | FloatVal of float
@@ -40,14 +41,26 @@ type locinfo = Lexing.position * Lexing.position
 type 'a located =
   { loc: Lexing.position * Lexing.position; value: 'a }
 
-(** Syntactic type expression. Needs to be decorated with loc? *)
-type typeExpr = {
-    modname: string; (* change: use empty strings for none *)
-    classname: string;
-    (* module, params, array, null *)
-    nullable: bool;
-    array: bool
-  }
+type 'ed classTypeExpr = {
+  modname: string;
+  classname: string;
+  typeargs: 'ed typeExpr list
+}
+
+and 'ed texpKind =
+  (* but the fields aren't named now... what's wrong with OCaml type modeling? *)
+  | Generic of string  (* type variable *)
+  | Concrete of 'ed classTypeExpr
+
+(** Syntactic type expression. Now decorating with loc, because with
+    generics we need more advanced checking. *)
+and 'ed typeExpr = {
+  texpkind: 'ed texpKind;
+  (* semantically, these two get folded into the type as classes. *)
+  nullable: bool;
+  array: bool;
+  decor: 'ed
+}
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
@@ -61,7 +74,7 @@ type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpUnop of unary_op * 'ed expr
   | ExpCall of string * (bool * 'ed expr) list (* proc name, mut * value list *)
   (* the bool is true if declaring a new var *)
-  | ExpNullAssn of bool * 'ed var_expr * typeExpr option * 'ed expr
+  | ExpNullAssn of bool * 'ed var_expr * 'ed typeExpr option * 'ed expr
 
 (** Type for an lvalue. Module name is currently concatted on
     (I guess because local symtables store them that way).  *)
@@ -74,7 +87,7 @@ and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
 
 type ('ed,'sd) raw_stmt = 
-  | StmtDecl of string * typeExpr option * 'ed expr option
+  | StmtDecl of string * 'ed typeExpr option * 'ed expr option
   | StmtAssign of 'ed var_expr * 'ed expr
   | StmtNop
   | StmtReturn of 'ed expr option
@@ -96,37 +109,38 @@ and ('ed,'sd) stmt = { st: ('ed,'sd) raw_stmt; decor: 'sd }
 
 
 (** Global variable declaration only; only used in modspecs. *)
-type 'sd globaldecl = {
+type ('ed, 'sd) globaldecl = {
     varname: string;
     (* in_module: string; *)
-    typeexp: typeExpr;
+    typeexp: 'ed typeExpr;
     decor: 'sd
   }
 
 (** Global var declaration with required initializer. *)
 type ('ed, 'sd) globalstmt = {
     varname: string;
-    typeexp: typeExpr option;
+    typeexp: 'ed typeExpr option;
     init: 'ed expr option; (* required by semantics, check in analyzer *)
     decor: 'sd
   }
 
 (* I thought about removing the decoration from the decl, but it can
  * stand on its own in an interface file, so I guess it needs it. *)
-type 'sd procdecl = {
-    name: string;
-    (* One could imagine removing the typeExprs after analysis. *)
-    (* bool is mut indicator; maybe "paraminfo" type later *)
-    params: (bool * string * typeExpr) list; 
-    (* TODO: Also need "private" signifier. *)
-    export: bool;
-    rettype: typeExpr;
-    decor: 'sd
-  }
+type ('ed,'sd) procdecl = {
+  name: string;
+  typeParams: typevar list; (* need to change? *)
+  (* One could imagine removing the typeExprs after analysis. *)
+  (* bool is mut indicator; maybe "paraminfo" type later *)
+  params: (bool * string * 'ed typeExpr) list; 
+  (* TODO: Also need "private" signifier. *)
+  export: bool;
+  rettype: 'ed typeExpr;
+  decor: 'sd
+}
 
 (** AST procedure record. *)
 type ('ed,'sd) proc = {
-    decl: 'sd procdecl;
+    decl: ('ed, 'sd) procdecl;
     body: ('ed,'sd) stmt list;
     decor: 'sd
   }
@@ -134,36 +148,36 @@ type ('ed,'sd) proc = {
 (* Type definition syntax begins here *)
 
 (** Single field declaration of a struct type. *)
-type 'sd fieldDecl = {
+type ('ed, 'sd) fieldDecl = {
     fieldname: string;
     priv: bool;
     mut: bool;
     (* Create 'typevar' field matching the struct later *)
-    fieldtype: typeExpr;
+    fieldtype: 'ed typeExpr;
     decor: 'sd (* to be a typetag, like exprs...but it's NOT!
                   it's just syms, like a statement FIXME *)
   }
 
 (** A single named option for a variant type. *)
-type 'sd variantDecl = {
+type ('ed, 'sd) variantDecl = {
     variantName: string;
-    variantType: typeExpr option; (* may be a constant symbol *)
+    variantType: 'ed typeExpr option; (* may be a constant symbol *)
     decor: 'sd
   }
 
 (** Type decl info that's different for structs/unions/enums. *)
-type 'sd kindInfo =
-  | Fields of 'sd fieldDecl list
-  | Variants of 'sd variantDecl list
-  | Newtype of typeExpr
+type ('ed, 'sd) kindInfo =
+  | Fields of ('ed, 'sd) fieldDecl
+  | Variants of ('ed, 'sd) variantDecl list
+  | Newtype of 'ed typeExpr
   | Hidden (* for externally-defined opaque types *)
 
 (** struct for definition of any type. *)
-type 'sd typedef = {
+type ('ed, 'sd) typedef = {
   (* module name is added at higher context. *)
   typename: string;
   rectype: bool;
-  kindinfo: 'sd kindInfo; (* should be 'ed ! *)
+  kindinfo: ('ed, 'sd) kindInfo; (* should be 'ed ! *)
   opaque: bool;
   decor: 'sd
 }
@@ -180,19 +194,19 @@ type importStmt =
 type ('ed,'sd) dillmodule = {
     name: string;
     imports: (importStmt located) list;
-    typedefs: 'sd typedef list;
+    typedefs: ('ed, 'sd) typedef list;
     globals: ('ed, 'sd) globalstmt list;
     procs: ('ed,'sd) proc list;
     (* initblock: ('ed,'sd) stmt list *)
   }
 
 (* No expressions in a module spec. *)
-type 'sd module_spec = {
+type ('ed, 'sd) module_spec = {
     name: string;
     imports: (importStmt located) list;
-    typedefs: 'sd typedef list;
-    globals: 'sd globaldecl list;
-    procdecls: 'sd procdecl list
+    typedefs: ('ed, 'sd) typedef list;
+    globals: ('ed, 'sd) globaldecl list;
+    procdecls: ('ed, 'sd) procdecl list
   }
 
 

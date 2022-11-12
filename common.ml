@@ -6,6 +6,12 @@ let debug_print s =
   if !_debug then print_endline s
   else ()
 
+(** in-place type variables for generics, with signature impl requirements *)
+type typevar = {
+    varname: string;
+    impls: string list (* probably should be a set later. *)
+  }
+
 module StrMap = Map.Make(String)
 module StrSet = Set.Make(String)
 
