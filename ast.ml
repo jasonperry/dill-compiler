@@ -167,7 +167,7 @@ type ('ed, 'sd) variantDecl = {
 
 (** Type decl info that's different for structs/unions/enums. *)
 type ('ed, 'sd) kindInfo =
-  | Fields of ('ed, 'sd) fieldDecl
+  | Fields of ('ed, 'sd) fieldDecl list
   | Variants of ('ed, 'sd) variantDecl list
   | Newtype of 'ed typeExpr
   | Hidden (* for externally-defined opaque types *)
@@ -214,10 +214,15 @@ type ('ed, 'sd) module_spec = {
 
 
 let rec typeExpr_to_string te =
-  (if te.modname <> "" then
-     te.modname ^ "::"
-   else "")
-  ^ te.classname
+  (match te.texpkind with
+   | Generic tv -> tv
+   | Concrete cte ->
+     (if cte.modname <> "" then cte.modname ^ "::" else "")
+     ^ (if cte.typeargs = [] then ""
+        else "(" ^
+             String.concat ", " (List.map typeExpr_to_string cte.typeargs)
+             ^ ")")
+     ^ cte.classname)
   ^ (if te.nullable then "?" else "")
   ^ (if te.array then "[]" else "") 
 
@@ -355,7 +360,7 @@ and case_to_string (matchexp, caseblocks, elseopt) =
 
 (* let interpret_params plist =  *)
 
-let procdecl_to_string (pdecl: 'sd procdecl) =
+let procdecl_to_string (pdecl: ('ed, 'sd) procdecl) =
   (if pdecl.export then "export " else "")
   ^ "proc " ^ pdecl.name ^ "("
   ^ String.concat "," (
@@ -388,11 +393,11 @@ let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   ^ "end " ^ dmod.name ^ "\n"
 
 (** This is creating the actual interfaces...so it's important! *)
-let modspec_to_string (mspec: 'sd module_spec) =
+let modspec_to_string (mspec: ('ed, 'sd) module_spec) =
   "modspec " ^ mspec.name ^ " begin \n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
-        fun s (gdecl: 'sd globaldecl) ->
+        fun s (gdecl: ('ed, 'sd) globaldecl) ->
         s ^ "var " ^ gdecl.varname ^ ": "
         ^ typeExpr_to_string gdecl.typeexp ^ ";\n")
       "" mspec.globals

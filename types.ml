@@ -1,7 +1,5 @@
 (** Type types for the type system *)
 
-open Common
-
 (** Type information about a single record field. *)
 type fieldInfo = {
     fieldname: string;
@@ -33,10 +31,8 @@ and classData = {
     kindData: kindData
   }
 
-(** Unique specification of a concrete type. It's what's checked for
-  * a match with other types. *)
-
-(** Unique instantiation of a type. *)
+(** Typetag is the in-place specification of a type. It's what's
+    checked for a match with other types. *)
 and namedtypeinfo = {
   modulename: string;
   mutable tclass: classData;
