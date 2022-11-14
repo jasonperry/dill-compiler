@@ -1,10 +1,9 @@
-I'm working on a statically typed programming language that captures how
-I want to write to write and read imperative code. It's meant to be
+*Dill* is a statically typed programming language to capture how
+I want to write and read imperative code. It's meant to be
 type- and memory-safe, with a good orthogonal set of type-based
 abstractions, with as close to zero runtime overhead as possible. The
-most notable feature is that it makes mutability explicit in the source
-but hides the value/reference distinction. Goals and features
-include:
+most notable feature is that it makes mutability explicit in function calls. 
+Goals and features include:
 - "Imperative locally, functional-first globally"; being an imperative
   language, local variables are reassignable. But datatypes are
   immutable by default, and procedure arguments are passed immutably by
@@ -12,13 +11,14 @@ include:
 - Non-local mutation is made explicit; passing an object mutably is
   indicated at both the function definition and call site. Otherwise
   objects have true ("deep") immutability.
-- No distinction of references and values in the code; the explicit
-  mutation should enable the compiler to make efficient decisions about
-  that, allowing the programmer to write code closer to the problem
-  domain. There should be no implicit differences in behavior due to
-  using value vs. reference objects.
+- No implicit differences in behavior due to using values vs. references (the 
+  explicit mutation helps with this.) 
+  Values and references are distinguished in code only when it matters; for 
+  example, a reference to part of a mutable object must be declared as a reference. 
+- All statically-sized immutable objects are values. Dynamically-sized objects 
+  are never implicitly copied.
 - Struct and variant types, case pattern matching, recursive types
-- All concrete types are datatypes; there are no classes (containers for
+- All types are datatypes; there are no classes (containers for
   a type and methods), though method call syntax is planned. Method call
   syntax also distinguishes mutating and non-mutating functions.
 - Null-safety with explicit nullable (option) types; syntax
@@ -37,7 +37,7 @@ include:
   specifications. This is strictly a compiler feature---module specs are
   not part of the language definition proper. What a module exposes is
   completely specified by its source.
-- Planned: generics, with constraints by means of module signatures (the
+- In progress: generics, with constraints by means of module signatures (the
   modular equivalent of interfaces). Module imports explicitly specify
   which signature implementations you're using.
 - Possibly: coroutines, probably stackless. 
