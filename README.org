@@ -2,7 +2,8 @@
 I want to write and read imperative code. It's meant to be
 type- and memory-safe, with a good orthogonal set of type-based
 abstractions, with as close to zero runtime overhead as possible. The
-most notable feature is that it makes mutability explicit in function calls. 
+most interesting feature is how it makes mutability explicit and simplifies
+management of the value/reference distinction. 
 Goals and features include:
 - "Imperative locally, functional-first globally"; being an imperative
   language, local variables are reassignable. But datatypes are
