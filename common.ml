@@ -26,10 +26,10 @@ module StrPairs =
 
 (** Map from string pairs. Currently only used for (module, classname)
    types in the tenv. *)
-module TypeMap = Map.Make(StrPairs)
+module PairMap = Map.Make(StrPairs)
 
-let print_typekeys (tmap: 'a TypeMap.t) =
-  TypeMap.bindings tmap
+let print_typekeys (tmap: 'a PairMap.t) =
+  PairMap.bindings tmap
   |> List.iter (fun ((modalias, tname), _) ->
          print_endline (modalias ^ " :: " ^ tname))
 

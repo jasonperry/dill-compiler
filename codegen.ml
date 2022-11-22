@@ -39,35 +39,35 @@ module Lltenv = struct
   (* fieldmap is used for both struct offsets and union tags. *)
   type fieldmap = (int * typetag) StrMap.t
   (* Maps modulename, typename pair to the LLVM type and field map. *)
-  type t = (lltype * fieldmap) TypeMap.t  
-  let empty: t = TypeMap.empty
-  let add strpair (llvarty, fmap) map = TypeMap.add strpair (llvarty, fmap) map
+  type t = (lltype * fieldmap) PairMap.t  
+  let empty: t = PairMap.empty
+  let add strpair (llvarty, fmap) map = PairMap.add strpair (llvarty, fmap) map
   (* Can I have a function to take a typetag and pull in_module and
      classname out of that, so I don't have to awkwardly pass pairs?
      Yes, could, but REMEMBER: the LLtenv is only used for looking up
      *classes*.  Array and nullable types are generated at the point
      of use. *)
   (* Return just the LLVM type for a given type name. *)
-  let find = TypeMap.find
-  let find_opt = TypeMap.find_opt
-  let find_lltype tkey tmap = fst (TypeMap.find tkey tmap)
+  let find = PairMap.find
+  let find_opt = PairMap.find_opt
+  let find_lltype tkey tmap = fst (PairMap.find tkey tmap)
   (* Look up the base typename for a class. *)
   let find_lltype_opt tkey tmap =
-    Option.map fst (TypeMap.find_opt tkey tmap)
+    Option.map fst (PairMap.find_opt tkey tmap)
   let find_class_lltype tclass tmap =
-    fst (TypeMap.find (tclass.in_module, tclass.classname) tmap)
+    fst (PairMap.find (tclass.in_module, tclass.classname) tmap)
   (* Get the mapping of fields to types for a struct type. *)
   let find_class_fieldmap tclass tmap =
-    snd (TypeMap.find (tclass.in_module, tclass.classname) tmap)
+    snd (PairMap.find (tclass.in_module, tclass.classname) tmap)
   (* Get the offset of a record field from a type's field map. *)
   let find_field tkey fieldname tmap =
-    let (_, fmap) = TypeMap.find tkey tmap in
+    let (_, fmap) = PairMap.find tkey tmap in
     StrMap.find fieldname fmap
 end
 
 (** Process a classData to generate a new llvm base type *)
 let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
-    (types: classData TypeMap.t) (lltypes: Lltenv.t) layout (cdata: classData) =
+    (types: classData PairMap.t) (lltypes: Lltenv.t) layout (cdata: classData) =
   match Lltenv.find_opt (cdata.in_module, cdata.classname) lltypes with
   | Some (lltype, fieldmap) -> (lltype, fieldmap)
   | None -> (
@@ -131,10 +131,10 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                           (* NOTE! mname not included because local types have no
                              module prefix in the tenv. Might want to change that... *)
                           fst (add_lltype the_module types lltypes layout
-                                 (TypeMap.find ("", tname) types))
+                                 (PairMap.find ("", tname) types))
                     else
                       fst (add_lltype the_module types lltypes layout
-                             (TypeMap.find ("", tname) types))
+                             (PairMap.find ("", tname) types))
                   in
                   (* check for non-base types and add them if needed. *)
                   (* currently allows an array of nullable but no nullable arrays *)
@@ -1063,7 +1063,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       build_alloca (type_of matchval) "matchaddr" builder in
     ignore (build_store matchval matchaddr builder);
     let fieldmap =
-      match TypeMap.find_opt (matchexp.decor.modulename,
+      match PairMap.find_opt (matchexp.decor.modulename,
                               matchexp.decor.typename) lltypes with
       | None -> None
       | Some (_, fieldmap) -> Some fieldmap in
@@ -1415,7 +1415,7 @@ let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
   (* 1. Generate dict of llvm types from the tenv (imports are added
      to it by the analyzer.) *)
   let lltypes =
-    TypeMap.fold (fun _ cdata lltenv ->
+    PairMap.fold (fun _ cdata lltenv ->
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)

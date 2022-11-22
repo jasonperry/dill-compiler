@@ -27,18 +27,49 @@ let reserved_procnames = StrSet.of_list [ "val" ]
  *  Hopefully there's no need for a rewritten typeExp in the AST. *)
 type typeExpr_result = (typetag, string) Stdlib.result
 
-(** Check that a type expression refers to a valid type in the environment, 
-    and return the tag. *)
-let check_typeExpr tenv texp : (typetag, string) result =
-  (* Types should be in the typeenv keyed by the name used locally. *)
-  match TypeMap.find_opt (texp.modname, texp.classname)
-          tenv with
-  | Some cdata ->
-     (* Generate the base ttag for the class, then add nullable marker *)
-     Ok ({(gen_ttag cdata []) with
-           nullable = texp.nullable;
-           array = texp.array})
-  | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
+(** Check that a type expression refers to a valid type in the
+    environment and that all type variables are declared, then create
+    the tag. *)
+let rec check_typeExpr syms tenv texp : (typetag, string) result =
+  match texp.texpkind with
+  | Generic gv -> (
+      match Symtable.findtvar_opt gv syms with
+      (* don't need the names of signatures implemented here? *)
+      | Some (_, _) -> Ok (Typevar gv)
+      | None -> Error ("Undeclared type variable " ^ gv)
+    )
+  | Concrete ctexp -> (
+      (* Types should be in the typeenv keyed by the name used locally. *)
+      match PairMap.find_opt (ctexp.modname, ctexp.classname) tenv with
+      | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
+      | Some cdata ->
+        (* Check that type argument lengths are the same. *)
+        if List.length ctexp.typeargs <> cdata.nparams then
+          Error ("Incorrect number of type arguments for " ^ cdata.classname
+                 ^ "; expected " ^ string_of_int cdata.nparams ^ ", found "
+                 ^ string_of_int (List.length ctexp.typeargs))
+        else (
+          let ress = List.map (check_typeExpr syms tenv) ctexp.typeargs in
+          match List.filter Result.is_error ress with 
+          | (Error err)::_ -> Error err (* only take first error *)
+          | _ -> 
+            let argtags = concat_ok ress in 
+            let innerTtag = 
+              Namedtype {modulename=cdata.in_module; (* redundant? *)
+                         tclass=cdata;
+                         typeargs=argtags} in
+            (* potentially double-wrap with nullable, then array *)
+            let innerTtag = if texp.nullable then
+                Namedtype {modulename="";
+                           tclass=option_class;
+                           typeargs=[innerTtag]}
+              else innerTtag in
+            if texp.array then
+              Ok (Namedtype {modulename="";
+                             tclass=array_class;
+                             typeargs=[innerTtag]})
+            else (Ok innerTtag)
+        ))
 
 
 (** Syntactically determine if an expression is constant *)
@@ -557,7 +588,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
     | Ok ({e=_; decor=ety} as goodex) -> (
       if not ety.nullable then
         Error { loc=condexp.decor;
-                value="Nullable assignment '?=' requires a nullable value" }
+                value="Nullable assignment '?=' requires a nullable rvalue" }
       else if decl then
         if Option.is_some ixopt || flds <> [] then
           Error {loc=condexp.decor;
@@ -569,7 +600,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
             match tyopt with
             | None -> Ok ()
             | Some tyexp -> ( (* could check this as a Decl *)
-              match check_typeExpr tenv tyexp with
+              match check_typeExpr condsyms tenv tyexp with
               | Error msg -> Error {loc=condexp.decor; value=msg}
               | Ok dty when not (types_equal dty {ety with nullable=false}) ->
                  Error {loc=condexp.decor;
@@ -646,7 +677,7 @@ let typecheck_decl syms tenv (varname, tyopt, initopt) =
       let tyres = match tyopt with
         | None -> Ok None
         | Some dtyexp -> (
-          match check_typeExpr tenv dtyexp with 
+          match check_typeExpr syms tenv dtyexp with 
           | Error msg -> Error msg
           | Ok ttag -> Ok (Some ttag) )
       in
@@ -690,13 +721,10 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
         (* Everything is Ok, create symbol table structures. *)
         Symtable.addvar syms v
           {symname=v; symtype=vty; var=true;
+           (* Array types are mutable; entries can be reassigned. *)
            mut=(vty.tclass.muttype || vty.array); addr=None};
         if Option.is_none e2opt then
           syms.uninit <- StrSet.add v syms.uninit;
-        (* add symtable info for record fields, if any. Not anymore! *)
-        (* let the_classdata = vty.tclass in
-           List.iter (add_field_sym syms v (Option.is_some e2opt))
-           the_classdata.fields; *)
         Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
     )
 
@@ -1094,7 +1122,7 @@ let rec block_returns stlist =
 
 
 (** Check a procedure declaration and add it to the given symbol node. *)
-let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
+let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
   let errout msg = Error [{loc=pdecl.decor; value=msg}] in
   if StrSet.mem pdecl.name reserved_procnames then
     errout ("Reserved name " ^ pdecl.name ^ " cannot be a procedure name")
@@ -1105,7 +1133,8 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
        errout ("Redeclaration of procedure " ^ pdecl.name)
     | _ -> (
       (* Typecheck arguments *)
-      let argchecks = List.map (fun (_, _, texp) -> check_typeExpr tenv texp)
+        let argchecks = List.map (fun (_, _, texp) ->
+            check_typeExpr syms tenv texp)
                         pdecl.params in
       if List.exists Result.is_error argchecks then
         (* can't exactly use concat_errors here because typeExpr check
@@ -1190,7 +1219,7 @@ let check_pdecl syms tenv modname (pdecl: 'loc procdecl) =
                  Symtable.addvar procscope param.symname param) paramentries;
              List.iter (fun pfield ->
                  Symtable.addvar procscope pfield.symname pfield) fieldentries;
-             Ok ({name=pdecl.name; params=pdecl.params;
+             Ok ({name=pdecl.name; typeParams=[]; params=pdecl.params;
                   rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
                  procentry)
     ))
@@ -1458,11 +1487,11 @@ let add_imports syms tenv specs istmts =
   let check_importdecls modname prefix tenv the_spec = 
     (* Iterate over global variable declarations and add to symtable *)
     List.map (
-        fun (gdecl: 'st globaldecl) ->
+        fun (gdecl: ('et,'st) globaldecl) ->
         let refname = prefix ^ gdecl.varname in
         (* only codegen should make it a dot name? *)
         let fullname = modname ^ "::" ^ gdecl.varname in
-        match check_typeExpr tenv gdecl.typeexp with
+        match check_typeExpr syms tenv gdecl.typeexp with
         | Error msg ->
            Error [{value=msg ^ " (in imported modspec)"; loc=gdecl.decor}] 
         | Ok ttag -> (
@@ -1601,13 +1630,13 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
              match tdef.kindinfo with
              | Fields fields ->
                 let newfields =
-                  List.map (fun (fd: locinfo fieldDecl) ->
+                  List.map (fun (fd: (locinfo, locinfo) fieldDecl) ->
                       {fd with decor=syms})
                     fields in
                 {tdef with kindinfo=(Fields newfields); decor=syms}
              | Variants variants ->
                 let newvariants =
-                  List.map (fun (vd: locinfo variantDecl) ->
+                  List.map (fun (vd: (locinfo, locinfo) variantDecl) ->
                       {vd with decor=syms}) variants in
                 {tdef with kindinfo=Variants newvariants; decor=syms}
              | Newtype texpr ->
@@ -1631,7 +1660,7 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
            Error (concat_errors pdeclsrlist)
          else
            let newpdecls = 
-             List.map (fun ((pd: 'a st_node procdecl), pentry) ->
+             List.map (fun ((pd: ('ed, 'a st_node) procdecl), pentry) ->
                  Symtable.addproc syms pd.name pentry;
                  pd) 
                (concat_ok pdeclsrlist) in
@@ -1673,7 +1702,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
           { decor = gdecl.decor;
             varname = gdecl.varname;
             typeexp = 
-              (* regenerate a typeExpr from symtable type (because the
+              (* reconstruct a typeExpr from symtable type (because the
                  AST may not have the type expression?) *)
               let vttag =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in

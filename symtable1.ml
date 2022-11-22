@@ -8,25 +8,25 @@ exception SymbolError of string
 (* Types can only be defined at the module level, not nested. *)
 (* Start with one global (later per-module) type environment. *)
 (* The structure of this also will relate to recursively defined types. *)
-type typeenv = classData TypeMap.t
+type typeenv = classData PairMap.t
 
 (** Initial type environment (primitive types) *)
 let base_tenv =
   (* Maybe put this in dillc or types. *)
-  TypeMap.empty
+  PairMap.empty
   (* Maybe just add the string name for the scope *)
-  |> TypeMap.add ("", void_ttag.typename) void_class
-  |> TypeMap.add ("", int_ttag.typename) int_class
-  |> TypeMap.add ("", float_ttag.typename) float_class
-  |> TypeMap.add ("", byte_ttag.typename) byte_class
-  |> TypeMap.add ("", bool_ttag.typename) bool_class
-  |> TypeMap.add ("", null_ttag.typename) null_class
-  |> TypeMap.add ("", string_ttag.typename) string_class
+  |> PairMap.add ("", void_class.classname) void_class
+  |> PairMap.add ("", int_class.classname) int_class
+  |> PairMap.add ("", float_class.classname) float_class
+  |> PairMap.add ("", byte_class.classname) byte_class
+  |> PairMap.add ("", bool_class.classname) bool_class
+  |> PairMap.add ("", null_class.classname) null_class
+  |> PairMap.add ("", string_class.classname) string_class
 
 let string_of_tenv tenv =
   String.concat ", " (
     List.map (fun ((mn, tn), _) -> mn ^ "::" ^ tn)
-      (TypeMap.bindings tenv)
+      (PairMap.bindings tenv)
   )
 
 (* Symtable concept: a map for current scope, parent and children nodes *)
@@ -54,12 +54,19 @@ type 'addr st_procentry = {
     fparams: 'addr st_entry list
   }
 
+(** Symbol table entry for a type variable. No address decor needed. *)
+type st_tvarentry = {
+  tvarname: string;
+  implements: string list
+}
+
 (** Symbol table tree node for a single scope *)
 type 'addr st_node = {
     (* The scope depth is compared to check for redeclaration. *)
     scopedepth: int; 
     mutable syms: 'addr st_entry StrMap.t;
     mutable fsyms: 'addr st_procentry StrMap.t;  (* No overloading! *)
+    mutable tvars: st_tvarentry StrMap.t;
     (* vars declared but not initted in this scope. *)
     mutable uninit: StrSet.t;
     (* vars from higher scope that are initted in this scope.
@@ -81,7 +88,7 @@ let st_node_to_string node =
     ^ String.concat ","
         (List.map (fun entry -> (snd entry).procname) (StrMap.bindings nd.fsyms))
     ^ "]\n"
-    ^ String.concat "" (List.map (ts' (pad ^ "    ")) nd.children)
+    ^ String.concat "" (List.map (ts' (pad ^ "   ")) nd.children)
     ^ pad ^ "}\n" in
   ts' "" node
 
@@ -106,6 +113,7 @@ module Symtable (* : SYMTABLE *) = struct
       syms = StrMap.empty;
       (* can have a list of functions for a given name *)
       fsyms = StrMap.empty;
+      tvars = StrMap.empty;
       parent = None;
       parent_init = StrSet.empty;
       in_proc = None;
@@ -139,7 +147,7 @@ module Symtable (* : SYMTABLE *) = struct
        raise (SymbolError ("redefinition of procedure \"" ^ entry.procname
                            ^ "\""))
 
-  (* Use this in typechecking. *)
+  (** Option-return symtable lookup, for typechecking. *)
   let rec findvar_opt name nd =
     match StrMap.find_opt name nd.syms with
     | Some entry -> Some (entry, nd.scopedepth)
@@ -155,7 +163,17 @@ module Symtable (* : SYMTABLE *) = struct
     | Some ent -> ent
     | None -> raise Not_found
 
-  (** Find a procedure by name. Option version for analyzer. *)
+  (** Option-return type variable lookup. *)
+  let rec findtvar_opt varname node =
+    match StrMap.find_opt varname node.tvars with
+    | Some entry -> Some (entry, node.scopedepth)
+    | None -> (
+        match node.parent with
+        | Some parent -> findtvar_opt varname parent
+        | None -> None
+      )
+  
+  (** Option-return procedure lookup. *)
   let rec findproc_opt name nd =
     match StrMap.find_opt name nd.fsyms with
     | Some proc -> Some (proc, nd.scopedepth)
@@ -180,6 +198,9 @@ module Symtable (* : SYMTABLE *) = struct
         scopedepth = nd.scopedepth + 1;
         syms = StrMap.empty;
         fsyms = StrMap.empty;
+        (* for efficiency, since there's no nested scopes for type variables,
+           should it just get the parent's tvars? *)
+        tvars = StrMap.empty; 
         parent = Some nd;
         parent_init = StrSet.empty;
         in_proc = nd.in_proc;
@@ -190,29 +211,14 @@ module Symtable (* : SYMTABLE *) = struct
     nd.children <- newnode :: nd.children;
     newnode
 
-  (*
-  (** Create  scope for a new module (sets module name) *)
-  let new_module_scope nd modname = 
-    let newnode = {
-        scopedepth = nd.scopedepth + 1;
-        syms = StrMap.empty;
-        fsyms = StrMap.empty;
-        parent = Some nd;
-        parent_init = StrSet.empty;
-        in_proc = nd.in_proc;
-        children = [];
-        (* No copy constructor so... *)
-        uninit = StrSet.union StrSet.empty nd.uninit
-      } in
-    nd.children <- newnode :: nd.children;
-    newnode *)
-  
+
   (** Create a scope for a new procedure (sets "in_proc") *)
   let new_proc_scope nd procentry =
     let newnode = {
         scopedepth = nd.scopedepth + 1;
         syms = StrMap.empty;
         fsyms = StrMap.empty;
+        tvars = StrMap.empty; 
         parent = Some nd;
         parent_init = StrSet.empty;
         in_proc = Some procentry;
@@ -220,7 +226,7 @@ module Symtable (* : SYMTABLE *) = struct
         uninit = StrSet.fold StrSet.add StrSet.empty nd.uninit
       } in
     nd.children <- newnode :: nd.children;
-    newnode    
+    newnode
 
 end (* module Symtable *)
 

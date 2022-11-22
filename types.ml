@@ -1,5 +1,7 @@
 (** Type types for the type system *)
 
+open Common (* using StrMap now *)
+
 (** Type information about a single record field. *)
 type fieldInfo = {
     fieldname: string;
@@ -178,7 +180,7 @@ let is_variant_type ttag = match ttag.tclass.kindData with
     defined classes--can't equality-compare those. *)
 let rec types_equal (t1: typetag) (t2: typetag) =
   match (t1, t2) with
-  | (Typevar _, Typevar _) -> true (* true?? *)
+  | (Typevar tv1, Typevar tv2) -> tv1 = tv2
   | (Namedtype tinfo1, Namedtype tinfo2) -> 
     (tinfo1.modulename = tinfo2.modulename
      && tinfo1.tclass.classname = tinfo2.tclass.classname
@@ -197,3 +199,49 @@ let subtype_match (subtag: typetag) (supertag: typetag) =
       | _ -> false)
 (* Specific type is one of the types in a union. This doesn't apply anymore. *)
   (* || List.exists ((=) subtag) supertag.tclass.variants *)
+
+(** Match an argument type with a possibly more generic type.
+    Return the mapping of parameter type variables to types.
+    Those have to be checked for equality among funargs. *)
+let rec unify_match argtag paramtag =
+  match (argtag, paramtag) with
+  | (_, Typevar tv2) ->
+    (* Anything unifies with just a variable. *)
+    Ok (StrMap.add tv2 argtag StrMap.empty)
+  | (Typevar _, Namedtype _) ->
+    (* Can't unify with a more-specific type *)
+    Error (argtag, paramtag)
+  | (Namedtype tinfo1, Namedtype tinfo2) ->
+    if not (tinfo1.modulename = tinfo2.modulename
+            && tinfo2.tclass.classname = tinfo2.tclass.classname)
+    then Error (argtag, paramtag)
+    else
+      (* recursively match type arguments *)
+      let reslist = List.map2 unify_match tinfo1.typeargs tinfo2.typeargs in
+      (* Return the first error if any. *)
+      match List.find_opt Result.is_error reslist with
+      | Some (Error e) -> Error e
+      | _ -> 
+        (* fold together parameter result maps, checking for mismatched
+           type vars. May need additional unification! Or does it have
+           to be explicit in the argument? *)
+        List.fold_left (fun accmap resmap ->
+            match accmap with
+            | Error e -> Error e (* bubble errors up *)
+            | Ok accmap -> 
+              let resmap = Result.get_ok resmap in
+              (* check bindings of current map (resmap) for duplicates.
+                 Eliminate them; otherwise, add to the acc *)
+              StrMap.fold (fun k v acc2 ->
+                  match acc2 with
+                  | Error e -> Error e
+                  | Ok acc2 -> (
+                      match StrMap.find_opt k acc2 with
+                      | Some ty2 ->  (* has to match exactly *)
+                        if not (types_equal ty2 v) then Error (ty2, v)
+                        else (Ok acc2)
+                      | None -> Ok (StrMap.add k v acc2)
+                    )
+                ) resmap (Ok accmap)
+          ) (Ok (StrMap.empty)) reslist
+      
