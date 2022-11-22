@@ -1,0 +1,26 @@
+(* import variant type with open *)
+
+module union06 begin
+
+open union04; (* from union04 import Status *)
+open stdio;
+
+proc checkVariants(s1: Status, s2: Status) => Bool
+begin
+  return s1 == s2;
+end checkVariants
+
+export proc main()
+begin
+   (* less ugly? Maybe no module name on the constructors? *)
+   var s1: Status = |error(43);
+   var res = checkVariants(s1, |error(43));
+
+   if res then
+      printString("Statuses are the same");
+   else
+      printString("Statuses are different");
+   endif
+end main
+
+end union06

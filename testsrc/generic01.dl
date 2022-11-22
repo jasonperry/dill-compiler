@@ -1,0 +1,19 @@
+(* first test of a generic parameter *)
+
+module generic01 begin
+
+(* smart syntax highlighting would highlight the t as well (but a different
+  color from the concrete types. *)
+proc (t) nth(arr: t[], n: Int) => t
+begin
+   (* too complicated for a first example? an array is a type *)
+   return t[n];
+end nth
+
+export proc main()
+begin
+   var things: Float[] = [3.4, 4.2, 2.2, 9.9];
+   printFloat(nth(things, 3));
+end main
+
+end generic01
