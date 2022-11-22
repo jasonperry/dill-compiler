@@ -1,16 +1,16 @@
 (* printString first test *)
 
-module String02 = 
+module string02 begin
 
-import Stdio;
+import stdio;
 
 export proc main() : Void =
   var s: String = "Hello Dill World.";
   var p: String = s;
   (* print from a variable *)
-  Stdio::printString(p);
+  stdio::printString(p);
   (* print from a constant string *)
-  Stdio::printString("Hello again...");
+  stdio::printString("Hello again...");
 end main
 
-end String02
+end string02

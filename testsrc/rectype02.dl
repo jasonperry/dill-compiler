@@ -23,7 +23,7 @@ type IfcGraph is struct
 
 export proc main()
 begin
-   var inode: IntNode = { value=19, next={value=17.7, next=null}};
+   var inode: IntNode = {value=19, next={value=17.7, next=null}};
    printInt(inode.value);
    var fnode: FloatNode = {value=4.3, next={value='f', next=null}};
    printFloat(fnode.value);

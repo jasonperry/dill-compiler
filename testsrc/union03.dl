@@ -3,8 +3,8 @@
 open stdio;
 
 type Status is variant
-  | ok
-  | error: Int;
+  |ok,
+  |error: Int;
 
 proc checkVariants(s1: Status, s2: Status) => Bool
 begin
@@ -13,8 +13,8 @@ end checkVariants
 
 proc main()
 begin
-  var s1 = Status|error(43);
-  var res = checkVariants(s1, Status|error(43));
+  var s1: Status = |error(43);
+  var res = checkVariants(s1, |error(43));
 
   if res then
     printString("Statuses are the same");

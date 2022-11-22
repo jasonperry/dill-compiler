@@ -3,7 +3,9 @@ open stdio;
 
 proc main()
 begin
-   var f = openFile("hello.dl", "r");
+   (* File type is declared opaque in stdio.dms *)
+   var f: File; (* just so I can type the type here. :) *) 
+   f = openFile("hello.dl", "r");
    (* modifies the internal state *)
    var fileData = readFile(#f);
    printBytes(fileData);

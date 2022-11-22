@@ -8,7 +8,7 @@ begin
   a = [145,33,44,15,43];
   a[2] = 14;
   var i: Int = 0;
-  while i < 5 loop  (* soon: a.length *)
+  while i < a.length loop
     a[i] = a[i] + 1;
     printInt(a[i]);
     i = i + 1;
