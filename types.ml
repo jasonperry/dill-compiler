@@ -64,11 +64,14 @@ and typetag =
   * No, we don't specify, right? But need to generate variables. *)
 let gen_ttag (classdata: classData) argtypes (* concrete or names from context *) =
   (* later: substitute class types *)
-  Namedtype {
-    modulename = classdata.in_module;
-    tclass = classdata;
-    typeargs = argtypes (* Is it right to copy these directly? *)
-  }
+  if List.length argtypes <> classdata.nparams
+  then failwith "ERROR: attempt to generate type with wrong number of arguments"
+  else 
+    Namedtype {
+      modulename = classdata.in_module;
+      tclass = classdata;
+      typeargs = argtypes (* Is it right to copy these directly? *)
+    }
 
 
 (* Class definitions for built-in types, and tags for convenience. *)
@@ -103,14 +106,16 @@ let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)
 
 
-(* Class definitions for built in generic types. Not clear if it's OK
-   to call them primitive. *)
+(* Class definitions for built-in generic types. *)
 let option_class = { classname="Option"; in_module="";
-                     kindData=Struct ([{fieldname="length"; priv=false; mut=false;
+                     kindData=Variant [("val", Some (Typevar "t"));
+                                        ("null", None)];
+                     opaque=true; muttype=false; rectype=false; nparams=1; }
+(* Note that all array types are mutable. *)                   
+let array_class = { classname="Array"; in_module="";
+                    kindData=Struct ([{fieldname="length"; priv=false; mut=false;
                                        fieldtype=int_ttag}]);
-                     opaque=true; muttype=false; rectype=false; nparams=1; }
-let array_class = { classname="Array"; in_module=""; kindData=Primitive;
-                     opaque=true; muttype=false; rectype=false; nparams=1; }
+                    opaque=true; muttype=true; rectype=false; nparams=1; }
 
 
 (** Convert a type tag to printable format. *)
@@ -133,16 +138,34 @@ let rec typetag_to_string = function
 
                            (* helper functions *)
 
+let is_generic_type = function
+  | Typevar _ -> true
+  | _ -> false
+
+let is_recursive_type = function
+  | Typevar _ -> failwith ("Error: generic type not known if recursive")
+  | Namedtype tinfo -> tinfo.tclass.rectype
+
+
 (** helper to pull out the field assuming it's a struct type *)
-let get_fields cdata = match cdata.kindData with
-  | Struct flist -> flist
-  | _ -> failwith ("BUG: " ^ cdata.classname ^ " is not a struct type")
+let get_type_fields = function
+  | Typevar _ -> failwith ("ERROR: get_fields called on generic type")
+  | Namedtype tinfo -> (
+      match tinfo.tclass.kindData with
+      | Struct flist -> flist
+      | _ -> failwith ("BUG: " ^ tinfo.tclass.classname
+                       ^ " is not a struct type")
+    )
 
 
 (** helper to pull out the variants assuming it's a variant type *)
-let get_variants cdata = match cdata.kindData with
-  | Variant vts -> vts
-  | _ -> failwith ("BUG: " ^ cdata.classname ^ " is not a variant type")
+let get_type_variants = function
+  | Typevar _ -> failwith ("BUG: generic type is not a variant type")
+  | Namedtype tinfo -> (
+      match tinfo.tclass.kindData with
+      | Variant vts -> vts
+      | _ -> failwith ("BUG: " ^ tinfo.tclass.classname ^ " is not a variant type")
+    )
 
 
 (** Try to fetch field info from a classdata. *)
@@ -151,6 +174,7 @@ let get_cdata_field cdata fname =
   | Struct fields -> 
     List.find_opt (fun (fi: fieldInfo) -> fi.fieldname = fname) fields
   | _ -> failwith "BUG: attempt to get field from non-struct type"
+
 
 (** Try to fetch field info from a typetag *)
 let get_ttag_field ttag fname =
@@ -163,7 +187,11 @@ let get_ttag_field ttag fname =
 
 (* Probably don't need these now that I explicitly encode. *)
 let is_primitive_type ttag = ttag.tclass.kindData = Primitive
-  
+
+let is_mutable_type = function
+  | Typevar _ -> false (* Unless signature has mutable methods! *)
+  | Namedtype tinfo -> tinfo.tclass.muttype
+
 (* These are useful b/c you can't just check the fields to see if
  * the "outermost" type is struct or variant *)
 let is_struct_type ttag = match ttag.tclass.kindData with
@@ -171,11 +199,44 @@ let is_struct_type ttag = match ttag.tclass.kindData with
   | _ -> false
 
 (* Hmm, should I make a nullable count as a variant type here? *)
-let is_variant_type ttag = match ttag.tclass.kindData with
-  | Variant _ -> true
-  | _ -> false
+let is_variant_type = function
+  | Typevar _ -> false
+  | Namedtype tinfo -> (
+      match tinfo.tclass.kindData with
+      | Variant _ -> true
+      | _ -> false
+    )
 
- 
+let is_option_type = function
+  | Typevar _ -> false (* I guess *)
+  | Namedtype tinfo -> tinfo.tclass = option_class
+
+let is_array_type = function
+  | Typevar _ -> false (* I guess *)
+  | Namedtype tinfo -> tinfo.tclass = array_class
+
+(** Helper to generate an option type of any single type. *)
+let option_type_of innertype = gen_ttag option_class [innertype]
+
+let array_type_of innertype = gen_ttag array_class [innertype]
+
+let array_base_type = function
+  | Typevar _ -> failwith "ERROR: attempt to get base type of non-array type"
+  | Namedtype tinfo ->
+    if tinfo.tclass <> array_class
+    then failwith "ERROR: attempt to get base type of non-array type"
+    else
+      List.hd tinfo.typeargs
+
+let option_base_type = function
+  | Typevar _ -> failwith "ERROR: attempt to get base type of non-Array type"
+  | Namedtype tinfo ->
+    if tinfo.tclass <> option_class
+    then failwith "ERROR: attempt to get base type of non-Option type"
+    else
+      List.hd tinfo.typeargs
+
+
 (** Exact type comparison. Need this because we have recursively
     defined classes--can't equality-compare those. *)
 let rec types_equal (t1: typetag) (t2: typetag) =
@@ -205,11 +266,11 @@ let subtype_match (subtag: typetag) (supertag: typetag) =
     Those have to be checked for equality among funargs. *)
 let rec unify_match argtag paramtag =
   match (argtag, paramtag) with
+  (* Anything unifies with just a variable. *)
   | (_, Typevar tv2) ->
-    (* Anything unifies with just a variable. *)
     Ok (StrMap.add tv2 argtag StrMap.empty)
+  (* Can't unify with a more-specific type *)
   | (Typevar _, Namedtype _) ->
-    (* Can't unify with a more-specific type *)
     Error (argtag, paramtag)
   | (Namedtype tinfo1, Namedtype tinfo2) ->
     if not (tinfo1.modulename = tinfo2.modulename

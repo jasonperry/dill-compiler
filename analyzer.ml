@@ -25,7 +25,7 @@ let reserved_procnames = StrSet.of_list [ "val" ]
 
 (** make the type expr result return only the tag for now. 
  *  Hopefully there's no need for a rewritten typeExp in the AST. *)
-type typeExpr_result = (typetag, string) Stdlib.result
+type typeExpr_result = (typetag, string) result
 
 (** Check that a type expression refers to a valid type in the
     environment and that all type variables are declared, then create
@@ -91,7 +91,7 @@ let rec is_const_expr = function
 type expr_result = (typetag expr, string located) Stdlib.result
 
 
-(** Check semantics of an expression, replacing with a type *)
+(** Check semantics of an expression, replacing decor with a type *)
 let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
     (ex: locinfo expr) : expr_result = 
   match ex.e with
@@ -109,16 +109,17 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
   | ExpConst (StringVal s) ->
     Ok {e=ExpConst (StringVal s); decor=string_ttag}
 
+  (* The "val" constructor for a nullable *)
   | ExpVal (expr) -> (
       match check_expr syms tenv expr with
       | Error eres -> Error eres
       | Ok echecked ->
-        if echecked.decor.nullable then
+        if is_option_type echecked.decor then
           Error {loc=ex.decor;
                  value="Double-nullable typed expressions not allowed"}
         else 
           Ok { e=ExpVal(echecked);
-               decor={echecked.decor with nullable=true}})
+               decor=option_type_of echecked.decor })
 
   | ExpVar ((varstr, ixopt), fields) -> (
       (* let varstr = exp_to_string ex in *)
@@ -132,7 +133,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
           else
             (* Now need to do proper field checking *)
             (* first, make sure var is array type if has index expr. *)
-          if Option.is_some ixopt && not entry.symtype.array then
+          if Option.is_some ixopt && not (is_array_type entry.symtype) then
             Error {loc=ex.decor; value="Index expression on non-array type"
                                        ^ typetag_to_string entry.symtype}
           else 
@@ -154,7 +155,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                 (* get type of expression apart from array *)
                 let headtype =
                   if Option.is_some ixopt then
-                    {entry.symtype with array=false}
+                    array_base_type entry.symtype
                   else entry.symtype
                 in 
                 (* second, recursively check fields. return fields & type *)
@@ -170,7 +171,8 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                                value="Field " ^ fname ^ " does not belong to type "
                                      ^ typetag_to_string prevty}
                       | Some finfo ->
-                        if Option.is_some ixopt && not finfo.fieldtype.array then
+                        if Option.is_some ixopt
+                        && not (is_array_type finfo.fieldtype) then
                           Error {loc=ex.decor;
                                  value="Index expression on non-array type"
                                        ^ typetag_to_string finfo.fieldtype}
@@ -179,9 +181,11 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                           match check_indexexp ixopt with
                           | Error err -> Error err
                           | Ok ixopt -> (
+                              (* Recurse with this type as the outer type. *)
                               match check_fields
-                                      {fieldty
-                                       with array=fieldty.array && (Option.is_none ixopt)}
+                                      (* It's only the array type if no ix *)
+                                      (if Option.is_none ixopt then fieldty
+                                       else array_base_type fieldty)
                                       rest with
                               | Ok (checked_fields, finalty) ->
                                 Ok ((fname, ixopt)::checked_fields, finalty)
@@ -216,7 +220,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                   {loc=ex.decor;
                    value="Unable to determine sequence type in this context"}
       | Some seqty ->
-        let eltty: typetag = {seqty with array=false} in 
+        let eltty: typetag = array_base_type seqty in 
         let checked_elist =
           List.map (check_expr syms tenv ~thint:(Some eltty)) elist in
         (* parser ensures no empty list expressions *)
@@ -234,7 +238,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                    value="Inconsistent types in array expression"}
           else
             (* Note: won't work with array of arrays. *)
-            Ok {e=ExpSeq elist; decor = {eltty with array=true}}
+            Ok {e=ExpSeq elist; decor=array_type_of eltty}
     )                                                
   (* typecheck and all make sure they're the same type. *)
   (* return type is array of, or special sequence type to be more general? *) 
@@ -257,7 +261,13 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
               else (
                 match oper with
                 | OpEq | OpNe | OpLt | OpGt | OpLe | OpGe ->
-                  if ty1.tclass.rectype then
+                  (* Also not valid for generic types? *)
+                  if is_generic_type ty1 then
+                    Error {
+                      loc=ex.decor;
+                      value="Comparison operator not valid for generic types"
+                    }
+                  else if is_recursive_type ty1 then
                     Error {
                       loc=ex.decor;
                       value="Comparison operator not valid for recursive types"
@@ -392,7 +402,7 @@ and check_call syms tenv (fname, args) =
 and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
   match rexp.e with
   | ExpRecord flist ->
-    let fields = get_fields ttag.tclass in
+    let fields = get_type_fields ttag in
     (* make a map from the fields to their types. *)
     (* Need to do it here each time so we can remove them as they're matched. *)
     (* Definitely leave it as a list in the ClassInfo, for ordering. *)
@@ -454,8 +464,8 @@ and check_variant syms tenv ex ~declvar thint =
       | Some ty -> (
         (* 1. the variant type exists *)
         let tname = ty.tclass.classname in
-        let cdata = TypeMap.find (mname, tname) tenv in
-        let variants = get_variants cdata in
+        let cdata = PairMap.find (mname, tname) tenv in
+        let variants = get_type_variants ty in
           (* 2. vname is a variant of it *)
           match List.find_opt (fun (vstr, _) -> vstr = vname) variants with
           | None ->
@@ -468,13 +478,14 @@ and check_variant syms tenv ex ~declvar thint =
                 (* 3. check if the variant takes a value or not *)
                 if Option.is_some eopt then
                   Error {loc=(Option.get eopt).decor;
-                         value="Variant " ^ tname ^ "|" ^ vname
+                         value="Variant |" ^ vname
                                ^ " does not hold a value"}
                 else
                   (* NOTE: replacing with the type's actual module name here. *)
                   (* wait, I shouldn't really need to, since all the type info
                      is going in the decor. *)
-                  Ok {e=ExpVariant (ty.modulename, vname, None);
+                  (*Ok {e=ExpVariant (ty.modulename, vname, None); *)
+                  Ok {e=ExpVariant (mname, vname, None);
                       decor=gen_ttag cdata []}
               | Some vtype -> (
                   match eopt with
@@ -483,7 +494,7 @@ and check_variant syms tenv ex ~declvar thint =
                            value="Variant " ^ tname ^ "|" ^ vname
                                  ^ " requires a value"}
                   | Some e2 -> (
-                      (* 4. typecheck the value (if it's not a declaration in a case) *)
+                      (* 4. typecheck value (if it's not a declaration in a case) *)
                       if not declvar then 
                         match check_expr syms tenv e2 with 
                         | Error err -> Error err
@@ -491,7 +502,7 @@ and check_variant syms tenv ex ~declvar thint =
                         | Ok echecked ->
                           if subtype_match echecked.decor vtype then
                             Ok {
-                              e=ExpVariant (ty.modulename, vname,
+                              e=ExpVariant (mname, vname,
                                             Some echecked);
                               decor=gen_ttag cdata []
                             }
@@ -503,7 +514,7 @@ and check_variant syms tenv ex ~declvar thint =
                                     ^ typetag_to_string vtype
                             }
                       else
-                        Ok {e=ExpVariant (ty.modulename, vname, None);
+                        Ok {e=ExpVariant (mname, vname, None);
                             decor=gen_ttag cdata []}
 
                     )))))
@@ -531,7 +542,7 @@ and check_lvalue syms tenv (((varname, ixopt), flds) as varexpr) loc =
           (* it can be non-var but still mutable *)
           match flds with
           (* still not sure if this is right for array fields *)
-          | [] -> prevmut || (varsym.symtype.array && varsym.mut)
+          | [] -> prevmut || (is_array_type varsym.symtype && varsym.mut)
           | (fname, _)::rest ->
             (* if symbol isn't mutable, fields can never be changed *)
             if not varsym.mut then false else
@@ -561,24 +572,6 @@ let is_redecl varname syms =
   | Some (_, scope) -> scope = syms.scopedepth
 
 
-(** Recursively add record fields to a symbol table. Used by 
-    StmtDecl, ExpNullAssn, check_globdecl, and add_imports. *)
-(* let rec add_field_sym syms varname initted (finfo: fieldInfo) =
-  (* instead of adding nested scope for record fields,
-   * we just add "var.field" symbols *)
-  let varstr = varname ^ "." ^ finfo.fieldname in
-  Symtable.addvar syms varstr
-    {symname=varstr; symtype=finfo.fieldtype; var=finfo.mut;
-     mut=finfo.fieldtype.tclass.muttype; addr=None};
-  (* It's enough to just check if there's an initializer, because 
-   * a record expression will have to init every field. *)
-  if not initted then 
-    syms.uninit <- StrSet.add varstr syms.uninit;
-  (* recursively add fields-of-fields *)
-  let cdata = finfo.fieldtype.tclass in
-  List.iter (add_field_sym syms varstr initted) cdata.fields
- *) 
-
 (** Conditionals can include an assignment, so handle them specially. *)
 let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
   match condexp.e with
@@ -586,10 +579,13 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
     match check_expr condsyms tenv ex with
     | Error err -> Error err
     | Ok ({e=_; decor=ety} as goodex) -> (
-      if not ety.nullable then
+      if not (is_option_type ety) then
         Error { loc=condexp.decor;
                 value="Nullable assignment '?=' requires a nullable rvalue" }
       else if decl then
+        (* Indexed or field expressions not allowed. But actually they could be,
+           right? ~if (things[1] ?= expr()) then~
+           ...it couldn't initialize it, that's all. *)
         if Option.is_some ixopt || flds <> [] then
           Error {loc=condexp.decor;
                  value="var declaration must be a single name"}
@@ -602,7 +598,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
             | Some tyexp -> ( (* could check this as a Decl *)
               match check_typeExpr condsyms tenv tyexp with
               | Error msg -> Error {loc=condexp.decor; value=msg}
-              | Ok dty when not (types_equal dty {ety with nullable=false}) ->
+              | Ok dty when not (types_equal dty (option_base_type ety)) ->
                  Error {loc=condexp.decor;
                         value="Declared type " ^ typetag_to_string dty
                               ^ " for variable " ^ varname
@@ -616,17 +612,18 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
              (* add the variable to symbols. Caller will hold the modified 
                 'condsyms' node *)
              Symtable.addvar condsyms varname
-               {symname=varname; symtype={ety with nullable=false}; var=true;
-                mut=(ety.tclass.muttype || ety.array); addr=None};
+               {symname=varname; symtype=(option_base_type ety); var=true;
+                mut=is_mutable_type ety; addr=None};
              (* rebuild the name-only varexp so it has the result type. *)
-             Ok { e=ExpNullAssn (decl, ((varname, None), []), tyopt, goodex);
+             (* UPD: I replaced tyopt with None, shouldn't be needed? *)
+             Ok { e=ExpNullAssn (decl, ((varname, None), []), None, goodex);
                   decor=bool_ttag }
       else (
         (* Non-decl case, must now check the lvalue expression *)
         match check_lvalue condsyms tenv varexp condexp.decor with
            | Error err -> Error err
            | Ok {e=newlval; decor=lvalty} -> 
-              if not (types_equal lvalty {ety with nullable=false}) then
+              if not (types_equal lvalty (option_base_type ety)) then
                 Error { loc=condexp.decor;
                         value="Type mismatch in nullable assignment ("
                               ^ typetag_to_string lvalty ^ ", "
@@ -634,8 +631,9 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
               else (
                 match newlval with
                 | ExpVar lval ->
-                   Ok { e=ExpNullAssn (decl, lval, tyopt, goodex);
-                        decor=bool_ttag }
+                  (* type expression removed here too. *)
+                  Ok { e=ExpNullAssn (decl, lval, None, goodex);
+                       decor=bool_ttag }
                 | _ -> failwith "Bug: lval expression not ExpVar"
               )
   )))
@@ -645,7 +643,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
       match check_expr condsyms tenv condexp with
       | Error err -> Error err
       | Ok {e=_; decor=ety} as goodex ->
-        if ety <> bool_ttag && not ety.nullable then
+        if ety <> bool_ttag && not (is_option_type ety) then
           Error {
             loc=condexp.decor;
             value=("Conditional must have Boolean or nullable type, found: "
@@ -721,11 +719,10 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
         (* Everything is Ok, create symbol table structures. *)
         Symtable.addvar syms v
           {symname=v; symtype=vty; var=true;
-           (* Array types are mutable; entries can be reassigned. *)
-           mut=(vty.tclass.muttype || vty.array); addr=None};
+           mut=is_mutable_type vty; addr=None};
         if Option.is_none e2opt then
           syms.uninit <- StrSet.add v syms.uninit;
-        Ok {st=StmtDecl (v, tyopt, e2opt); decor=syms}
+        Ok {st=StmtDecl (v, None, e2opt); decor=syms}
     )
 
   | StmtAssign (varexpr, e) -> (
@@ -895,7 +892,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                         (* get type of this specific case's value, if it has one *)
                         let (_, vnttyopt) =
                           List.find (fun (vn, _) -> vntname = vn)
-                            (get_variants casetype.tclass) in
+                            (get_variants casetype) in
                         if List.exists ((=) vntname) caseacc then 
                           errout ("Duplicate variant case " ^ "|" ^ vntname)
                         else
@@ -913,14 +910,15 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                                 let (newcexp: typetag expr) =
                                   {e=ExpVariant(
                                        modname, vntname,
-                                       Some {e=ExpVar((cvar, None), []); decor=vntty});
+                                       Some {e=ExpVar((cvar, None), []);
+                                             decor=vntty});
                                    decor=matchexp.decor} in
                                 let blocksyms = Symtable.new_scope syms in
                                 Symtable.addvar blocksyms cvar {
                                   symname=cvar;
                                   symtype=vntty;
                                   var=false;
-                                  mut=vntty.tclass.muttype; (*correct?*)
+                                  mut=is_mutable_type vntty; (*correct?*)
                                   addr=None 
                                 };
                                 debug_print (st_node_to_string blocksyms);
@@ -931,14 +929,14 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                       )))
               (* val() expression type, to match any non-null nullable *)
               | ExpVal varexpr -> (
-                  if not mtype.nullable then
+                  if not (is_option_type mtype) then
                     errout "val() case can only be used with nullable expressions"
                   else if List.exists ((=) "val") caseacc then 
                     errout ("Duplicate val() case ")
                   else 
                     match varexpr.e with 
                     | ExpVar ((valvar, None), []) -> (
-                        let valty = {mtype with nullable=false} in
+                        let valty = (option_base_type mtype) in
                         let (newcexp: typetag expr) =
                           {e=ExpVal({e=ExpVar((valvar, None), []); decor=valty});
                            decor=matchexp.decor} in
@@ -948,7 +946,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                           symname=valvar;
                           symtype=valty;
                           var=false;
-                          mut=valty.tclass.muttype; (* yes, might want to poke it *)
+                          mut=is_mutable_type valty; (* might want to poke it *)
                           addr=None 
                         };
                         debug_print (st_node_to_string blocksyms);
@@ -970,7 +968,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                   | Error err -> Error [err]
                   | Ok checkedcexp ->
                     let casetype = checkedcexp.decor in
-                    if mtype.nullable then
+                    if (is_option_type mtype) then
                       (* at least for now, don't allow specific values of a 
                          nullable *)
                       if casetype <> null_ttag then
@@ -994,12 +992,10 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                 )
             )
           | [] ->
-            if is_variant_type mtype || mtype.nullable then 
+            if is_variant_type mtype then 
               (* can I just set this to 2 if it's nullable? and add the cases 
                   above for nullables *)
-              let nvariants =
-                if mtype.nullable then 2
-                else List.length (get_variants mtype.tclass) in
+              let nvariants = List.length (get_type_variants mtype) in
               (* check for exhaustiveness here, for now just by comparing lengths*)
               if List.length caseacc < nvariants
               && Option.is_none elseopt then
@@ -1153,9 +1149,9 @@ let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
           match (argtypes, params) with
           | (argtype::argsrest, (mut, _, _)::paramsrest) ->
              (* arrays are mutable. Should I make a helper function for this? *)
-             if mut && not argtype.array && not argtype.tclass.muttype
+             if mut && not (is_mutable_type argtype)
              then Error {loc=pdecl.decor;
-                         value="Type " ^ argtype.tclass.classname
+                         value="Type " ^ typetag_to_string argtype
                                ^ " is immutable and cannot be passed mutable" }
              else check_mutparams argsrest paramsrest
           | ([], []) -> Ok ()
@@ -1173,32 +1169,37 @@ let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
                ) pdecl.params argtypes
            in
            (* Build symbol table entries for all fields of all params, if any *)
-           let fieldentries =
+           (* wait, we don't do this anymore!! *)
+           (* let fieldentries =
              let rec gen_field_entries paramroot fldtype nameacc =
-                 (* (finfo: fieldInfo) *) 
-               match fldtype.tclass.kindData with
-               | Struct flist -> (
-                   flist |> List.concat_map (fun (finfo: fieldInfo) -> 
-                       let fnamestr = nameacc ^ "." ^ finfo.fieldname in
-                       {
-                         symname=fnamestr;
-                         symtype=finfo.fieldtype;
-                         (* immutability propagates down, but I think this
-                            is wrong b/c I should use the parent result *)
-                         var=finfo.mut && paramroot.mut;
-                         (* when are var and mut different? *)
+               (* (finfo: fieldInfo) *)
+               match fldtype with
+               | Typevar _ -> failwith "TODO: symbol table for generic params"
+               | Namedtype ftinfo -> (
+                   match ftinfo.tclass.kindData with
+                   | Struct flist -> (
+                       flist |> List.concat_map (fun (finfo: fieldInfo) -> 
+                           let fnamestr = nameacc ^ "." ^ finfo.fieldname in
+                           {
+                             symname=fnamestr;
+                             symtype=finfo.fieldtype;
+                             (* immutability propagates down, but I think this
+                                is wrong b/c I should use the parent result *)
+                             var=finfo.mut && paramroot.mut;
+                             (* when are var and mut different? *)
                          mut=finfo.mut && paramroot.mut; 
-                         addr=None
-                       } :: (gen_field_entries paramroot finfo.fieldtype fnamestr)
-                     ))
-               | _ -> []
+                             addr=None
+                           } :: (gen_field_entries paramroot finfo.fieldtype fnamestr)
+                         ))
+                   | _ -> []
+                 )
              in List.concat_map
                (fun pentry ->
                   gen_field_entries pentry pentry.symtype pentry.symname)
                paramentries
-           in
+              in *)
            (* Typecheck return type *)
-           match check_typeExpr tenv pdecl.rettype with
+           match check_typeExpr syms tenv pdecl.rettype with
            | Error msg -> Error [{loc=pdecl.decor; value=msg}]
            | Ok rttag -> (
              (* Create procedure symtable entry.
@@ -1217,8 +1218,8 @@ let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
              List.iter (fun param ->
                  (* print_endline ("Adding param symbol " ^ param.symname); *)
                  Symtable.addvar procscope param.symname param) paramentries;
-             List.iter (fun pfield ->
-                 Symtable.addvar procscope pfield.symname pfield) fieldentries;
+             (* List.iter (fun pfield ->
+                 Symtable.addvar procscope pfield.symname pfield) fieldentries; *)
              Ok ({name=pdecl.name; typeParams=[]; params=pdecl.params;
                   rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
                  procentry)
@@ -1227,7 +1228,7 @@ let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
 
 (** Check the body of a procedure whose header has already been checked 
   * (and had its parameters added to the symbol table) *)
-let check_proc tenv (pdecl: 'addr st_node procdecl) proc =
+let check_proc tenv (pdecl: ('ed, 'addr st_node) procdecl) proc =
   debug_print ("About to check procedure " ^ pdecl.name);
   let procscope = pdecl.decor in
   match check_stmt_seq procscope tenv proc.body with
@@ -1246,7 +1247,8 @@ let check_proc tenv (pdecl: 'addr st_node procdecl) proc =
 
 (** Check a global declaration statement (needs const initializer) and
     generate symtable entry. *)
-let check_globdecl syms tenv modname gstmt =
+let check_globdecl syms tenv modname gstmt
+  : ((typetag, 'sd) globalstmt, _) result =
   match gstmt.init with
   (* could do this syntactically...but error messages are better here. *)
   | None -> Error [{loc=gstmt.decor;
@@ -1265,20 +1267,20 @@ let check_globdecl syms tenv modname gstmt =
            symname=varname;
            symtype=vty;
            var=true;
-           mut=vty.tclass.muttype;
+           mut=is_mutable_type vty;
            addr=None
          };
        (* List.iter (add_field_sym syms gstmt.varname true) vty.tclass.fields; *)
-       Ok {varname=gstmt.varname; typeexp=gstmt.typeexp;
+       Ok {varname=gstmt.varname; typeexp=None; (* gstmt.typeexp; *)
            init=e2opt; decor=syms}
   )
 
 
 (** Check a struct/variant type definition, generating classData for the tenv. *)
-let check_typedef modname tenv (tdef: locinfo typedef) = 
+let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) = 
   (* TODO: handle recursive type declarations *)
   (* check for typename redeclaration *)
-  match TypeMap.find_opt ("", tdef.typename) tenv with
+  match PairMap.find_opt ("", tdef.typename) tenv with
   | Some _ ->
      Error [{ loc=tdef.decor;
               value="Type redeclaration: " ^ tdef.typename }]
@@ -1298,7 +1300,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
               Error [{ loc=fdecl.decor;
                        value="Field redeclaration " ^ fdecl.fieldname }]
             else 
-              match check_typeExpr tenv fdecl.fieldtype with
+              match check_typeExpr syms tenv fdecl.fieldtype with
               | Error e ->
                 if not tdef.rectype then
                   Error [{loc=fdecl.decor; value="Field type error: " ^ e}]
@@ -1310,7 +1312,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
                     classname = fdecl.fieldtype.classname; (*"--PLACEHOLDER--";*)
                     in_module = modname;
                     opaque=false; muttype=false; rectype=true;
-                    params=[]; kindData=Hidden
+                    nparams=0; kindData=Hidden
                   } in 
                   let ttag = {
                     modulename = modname;
@@ -1416,7 +1418,7 @@ let check_typedef modname tenv (tdef: locinfo typedef) =
             }
      )
     | Newtype tyex -> (
-        match TypeMap.find_opt (tyex.modname, tyex.classname) tenv with
+        match PairMap.find_opt (tyex.modname, tyex.classname) tenv with
         | None ->
           Error [{value="Unknown type name " ^ typeExpr_to_string tyex;
                   loc=tdef.decor}]
@@ -1473,12 +1475,12 @@ let add_imports syms tenv specs istmts =
     match tdefs with
     | [] -> Ok tenv_acc
     | td::rest ->
-       match check_typedef modname tenv_acc td with
+       match check_typedef syms tenv_acc modname td with
        | Ok cdata ->
           let newtenv =
             (* need to add unqualified type name for modspecs *)
-            TypeMap.add (modalias, cdata.classname) cdata tenv_acc
-            |> TypeMap.add (modname, cdata.classname) cdata in
+            PairMap.add (modalias, cdata.classname) cdata tenv_acc
+            |> PairMap.add (modname, cdata.classname) cdata in
           check_importtypes modname modalias rest newtenv
        | Error es -> Error (add_import_notice es)
                          
@@ -1503,7 +1505,7 @@ let add_imports syms tenv specs istmts =
              Symtable.addvar syms refname {
                  (* Keep the original module name internally. *)
                  symname = fullname; symtype = ttag; 
-                 var = true; mut=ttag.tclass.muttype; addr = None
+                 var = true; mut=is_mutable_type ttag; addr = None
                };
              (* Add field initializers too. Not anymuer! *)
              (* List.iter (add_field_sym syms refname true) ttag.tclass.fields; *)
@@ -1514,7 +1516,7 @@ let add_imports syms tenv specs istmts =
       )) the_spec.globals
     (* iterate over procedure declarations and add those. *)
     @ (List.map (
-             fun (pdecl: 'sd procdecl) ->
+             fun (pdecl: ('ed, 'sd) procdecl) ->
              let refname = prefix ^ pdecl.name in
              let fullname = modname ^ "::" ^ pdecl.name in
              (* check_pdecl now gets module name prefix from AST. *)
@@ -1578,10 +1580,10 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
           (* have to check twice to push the error back through. *)
           | Error e -> Error e
           | Ok (tenv, classes) -> (
-              match check_typedef dmod.name tenv td with
+              match check_typedef syms tenv dmod.name td with
               (* keep the cdatas too, for the fixup *)
               | Ok cdata ->
-                Ok (TypeMap.add ("", cdata.classname) cdata tenv,
+                Ok (PairMap.add ("", cdata.classname) cdata tenv,
                     cdata :: classes)
               | Error e -> Error e
             ))
@@ -1598,8 +1600,8 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
             match cdata.kindData with
             | Struct finfos -> 
               finfos |> List.iter (fun (finfo: fieldInfo) ->
-                  if finfo.fieldtype.tclass.rectype then (
-                    let finishedClass = TypeMap.find
+                  if is_recursive_type finfo.fieldtype then (
+                    let finishedClass = PairMap.find
                         ("", finfo.fieldtype.tclass.classname) tenv in
                     debug_print ("-check_module: Updating classData for field "
                                  ^ finfo.fieldname ^ " of " ^ cdata.classname);
@@ -1612,7 +1614,7 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
                       if vttag.tclass.rectype then (
                         debug_print ("-searching for completed classname "
                                      ^ vttag.tclass.classname);
-                        let finishedClass = TypeMap.find
+                        let finishedClass = PairMap.find
                             ("", vttag.tclass.classname) tenv in
                         debug_print ("-check_module: Updating classData for variant "
                                      ^ vname ^ " of " ^ cdata.classname);
