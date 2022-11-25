@@ -463,7 +463,7 @@ and check_variant syms tenv ex ~declvar thint =
                               exp_to_string ex)}
       | Some ty -> (
         (* 1. the variant type exists *)
-        let tname = ty.tclass.classname in
+        let tname = get_type_classname ty in
         let cdata = PairMap.find (mname, tname) tenv in
         let variants = get_type_variants ty in
           (* 2. vname is a variant of it *)
@@ -482,7 +482,7 @@ and check_variant syms tenv ex ~declvar thint =
                                ^ " does not hold a value"}
                 else
                   (* NOTE: replacing with the type's actual module name here. *)
-                  (* wait, I shouldn't really need to, since all the type info
+                  (* Wait, I shouldn't really need to, since all the type info
                      is going in the decor. *)
                   (*Ok {e=ExpVariant (ty.modulename, vname, None); *)
                   Ok {e=ExpVariant (mname, vname, None);
@@ -892,7 +892,7 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
                         (* get type of this specific case's value, if it has one *)
                         let (_, vnttyopt) =
                           List.find (fun (vn, _) -> vntname = vn)
-                            (get_variants casetype) in
+                            (get_type_variants casetype) in
                         if List.exists ((=) vntname) caseacc then 
                           errout ("Duplicate variant case " ^ "|" ^ vntname)
                         else
@@ -1704,14 +1704,28 @@ let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
           { decor = gdecl.decor;
             varname = gdecl.varname;
             typeexp = 
-              (* reconstruct a typeExpr from symtable type (because the
-                 AST may not have the type expression?) *)
-              let vttag =
+              (* reconstruct a typeExpr from symtable type (don't want to assume 
+                 the AST has the best type expression) *)
+              let vtype =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
-              { modname = vttag.modulename;
-                classname = vttag.typename;
-                nullable = vttag.nullable; (* TODO: test this, was 'false' before *)
-                array = vttag.array }
+              let rec texpr_of_ttag ty =
+                match ty with
+                | Typevar tv -> {
+                    texpkind = Generic tv;
+                    nullable = false;
+                    array = false;
+                    decor = ty (* kind of redundant *)
+                  }
+                | Namedtype tinfo -> {
+                    texpkind = Concrete {
+                                   modname = tinfo.modulename;
+                                   classname = tinfo.tclass.classname;
+                                   typeargs = List.map texpr_of_ttag tinfo.typeargs
+                                 };
+                    nullable = is_option_type ty;
+                    array = is_array_type ty;
+                    decor = ty }
+              in texpr_of_ttag vtype
           }
         ) the_mod.globals;
     procdecls =

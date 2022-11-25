@@ -147,6 +147,11 @@ let is_recursive_type = function
   | Namedtype tinfo -> tinfo.tclass.rectype
 
 
+(** Fetch classname from a concrete type. Used for tenv lookup. *)
+let get_type_classname = function
+  | Typevar _ -> failwith ("Error: get_type_classname called on generic type")
+  | Namedtype tinfo -> tinfo.tclass.classname
+
 (** helper to pull out the field assuming it's a struct type *)
 let get_type_fields = function
   | Typevar _ -> failwith ("ERROR: get_fields called on generic type")

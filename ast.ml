@@ -1,6 +1,6 @@
 (** Abstract syntax tree structure *)
 
-(* open Types *) (* yay, now generic over what it's decorated with! *)
+(* open Types *) (* shouldn't need this *)
 open Common
 
 type consttype =
