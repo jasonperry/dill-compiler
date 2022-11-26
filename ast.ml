@@ -128,7 +128,7 @@ type ('ed, 'sd) globalstmt = {
  * stand on its own in an interface file, so I guess it needs it. *)
 type ('ed,'sd) procdecl = {
   name: string;
-  typeParams: typevar list; (* need to change? *)
+  typeparams: typevar list; (* need to change? *)
   (* One could imagine removing the typeExprs after analysis. *)
   (* bool is mut indicator; maybe "paraminfo" type later *)
   params: (bool * string * 'ed typeExpr) list; 

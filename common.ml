@@ -7,10 +7,10 @@ let debug_print s =
   else ()
 
 (** in-place type variables for generics, with signature impl requirements *)
-type typevar = {
+type typevar = string (* {
     varname: string;
     impls: string list (* probably should be a set later. *)
-  }
+  } *)
 
 module StrMap = Map.Make(String)
 module StrSet = Set.Make(String)

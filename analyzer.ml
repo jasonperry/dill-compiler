@@ -1118,17 +1118,30 @@ let rec block_returns stlist =
 
 
 (** Check a procedure declaration and add it to the given symbol node. *)
-let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
+let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
+  (* Helper function to construct error result *)
   let errout msg = Error [{loc=pdecl.decor; value=msg}] in
+  (* 0. Make sure procedure name isn't a reserved word. *)
   if StrSet.mem pdecl.name reserved_procnames then
     errout ("Reserved name " ^ pdecl.name ^ " cannot be a procedure name")
   else 
-    (* check name for redeclaration *)
+    (* 1. check procedure name for redeclaration *)
     match Symtable.findproc_opt pdecl.name syms with
     | Some (_, scope) when syms.scopedepth = scope ->
        errout ("Redeclaration of procedure " ^ pdecl.name)
     | _ -> (
-      (* Typecheck arguments *)
+      (* 2. Check generic type parameter declarations. *)
+      (* loop through typeparams and add to symtables, but also errout for repeats. *)
+      let tparams_result =
+        List.fold_left (fun symacc tv ->
+            match Symtable.findtvar_opt tv syms with
+            | Some _ -> errout ("Redeclaration of type parameter " ^ tv)
+            | None ->
+               Symtable.addtvar syms tv [];
+               Ok syms
+          ) (Ok syms) pdecl.typeparams in
+      if Result.is_error tparams_result then tparams_result else
+        (* 2. Typecheck arguments *)
         let argchecks = List.map (fun (_, _, texp) ->
             check_typeExpr syms tenv texp)
                         pdecl.params in
@@ -1220,7 +1233,7 @@ let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
                  Symtable.addvar procscope param.symname param) paramentries;
              (* List.iter (fun pfield ->
                  Symtable.addvar procscope pfield.symname pfield) fieldentries; *)
-             Ok ({name=pdecl.name; typeParams=[]; params=pdecl.params;
+             Ok ({name=pdecl.name; typeparams=[]; params=pdecl.params;
                   rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
                  procentry)
     ))
@@ -1229,7 +1242,7 @@ let check_pdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
 (** Check the body of a procedure whose header has already been checked 
   * (and had its parameters added to the symbol table) *)
 let check_proc tenv (pdecl: ('ed, 'addr st_node) procdecl) proc =
-  debug_print ("About to check procedure " ^ pdecl.name);
+  debug_print ("#AN: About to check procedure " ^ pdecl.name);
   let procscope = pdecl.decor in
   match check_stmt_seq procscope tenv proc.body with
   | Error errs -> Error errs
@@ -1278,7 +1291,6 @@ let check_globdecl syms tenv modname gstmt
 
 (** Check a struct/variant type definition, generating classData for the tenv. *)
 let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) = 
-  (* TODO: handle recursive type declarations *)
   (* check for typename redeclaration *)
   match PairMap.find_opt ("", tdef.typename) tenv with
   | Some _ ->
@@ -1287,11 +1299,9 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
   | None -> (
     match tdef.kindinfo with
       | Fields fields ->
-        (* add tentative type name to tenv (without field info? how to replace?
-           Maybe better just to look for the recursive case specially?
-           Create a new tenv2 that just has the provisional, then go back to the
-           original. Yay, functional! *)
-        (* check for nonexistent types, field redeclaration *)
+        (* Check fields of a struct type declaration. Check for
+           nonexistent types, field redeclaration.
+           Not-found types get a placeholder class if they're recursive. *)
         let rec check_fields flist acc = match flist with
           | [] -> Ok (List.rev acc)
           | fdecl :: rest ->
@@ -1309,12 +1319,12 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
                   debug_print ("Creating placeholder for recursive field "
                                ^ fdecl.fieldname);
                   let dummyClass = {
-                    classname = fdecl.fieldtype.classname; (*"--PLACEHOLDER--";*)
+                    classname = fdecl.fieldtype.classname; 
                     in_module = modname;
                     opaque=false; muttype=false; rectype=true;
                     nparams=0; kindData=Hidden
                   } in 
-                  let ttag = {
+                  let ttag = { (* should have a ttag_of_texpr function? *)
                     modulename = modname;
                     typename = fdecl.fieldtype.classname;
                     tclass = dummyClass;
@@ -1327,32 +1337,34 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
                     mut=fdecl.mut;
                     fieldtype = ttag
                   } in
-                  check_fields rest (finfo::acc))                   
-              | Ok ttag -> 
+                  check_fields rest (finfo::acc))
+              | Ok (Namedtype tinfo) -> 
                 let finfo = {
                   fieldname=fdecl.fieldname; priv=fdecl.priv;
                   mut=fdecl.mut;
-                  fieldtype = ttag
-                }
-                in check_fields rest (finfo::acc)
+                  fieldtype = Namedtype tinfo
+                  } in check_fields rest (finfo::acc)
+              | Ok (Typevar _) ->
+                 failwith "Generics in type declarations not supported yet."
        in 
        (match check_fields fields [] with
         | Error e -> Error e
         | Ok flist -> 
-          Ok {
-              classname = tdef.typename;
-              in_module = modname;
-              opaque = tdef.opaque;
-              muttype = List.exists (fun (finfo: fieldInfo) ->
-                  (* Yes, there are two ways a field can be changed! *)
-                  finfo.mut || finfo.fieldtype.tclass.muttype)
-                  flist;
-              rectype = tdef.rectype;
-              params = [];
-              (* for generics: generate field info with same type
-                variables as outer *)
-              kindData = Struct flist;
-            }
+           Ok {
+               (* construct the entire type. *)
+               classname = tdef.typename;
+               in_module = modname;
+               opaque = tdef.opaque;
+               muttype = List.exists (fun (finfo: fieldInfo) ->
+                             (* Yes, there are two ways a field can be changed! *)
+                             finfo.mut || finfo.fieldtype.tclass.muttype)
+                           flist;
+               rectype = tdef.rectype;
+               params = [];
+               (* for generics: generate field info with same type
+                  variables as outer *)
+               kindData = Struct flist;
+             }
        )
     | Variants variants -> (
        let rec check_variants vdecllist accres =
@@ -1519,8 +1531,8 @@ let add_imports syms tenv specs istmts =
              fun (pdecl: ('ed, 'sd) procdecl) ->
              let refname = prefix ^ pdecl.name in
              let fullname = modname ^ "::" ^ pdecl.name in
-             (* check_pdecl now gets module name prefix from AST. *)
-             match check_pdecl syms tenv modname pdecl 
+             (* check_procdecl now gets module name prefix from AST. *)
+             match check_procdecl syms tenv modname pdecl 
              (* { pdecl with name=(prefix ^ pdecl.name) } *) with
              | Ok (_, entry) ->
                 Symtable.addproc syms refname entry;
@@ -1656,7 +1668,7 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
          let newglobals = concat_ok globalsrlist in
          (* Check procedure decls first, to add to symbol table *)
          let pdeclsrlist = List.map (fun proc ->
-                               check_pdecl syms tenv dmod.name proc.decl)
+                               check_procdecl syms tenv dmod.name proc.decl)
                              dmod.procs in
          if List.exists Result.is_error pdeclsrlist then
            Error (concat_errors pdeclsrlist)

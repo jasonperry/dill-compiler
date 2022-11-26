@@ -38,7 +38,7 @@
 %nonassoc NOT
 
 %{
-    open Common
+    (* open Common *) (* used to be for type variables *)
     open Ast
 	 (* let mod_name = ref "" (* ONE inherited attribute, okay? *) *)
     open Syntax
@@ -229,10 +229,9 @@ procHeader:
     LPAREN pl=paramList RPAREN rt=option(preceded(DARROW, typeExp))
     { {decor=$loc;
        name=pn;
-       typeParams=(match tvs with
+       typeparams=(match tvs with
 		   | None -> []
-		   | Some tvList -> List.map (fun tv ->
-					       {varname=tv; impls=[]}) tvList
+		   | Some tvList -> tvList
 		  );
        params=pl;
        export=Option.is_some ex;

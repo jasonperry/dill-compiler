@@ -37,7 +37,7 @@ and classData = {
     checked for a match with other types. *)
 and namedtypeinfo = {
   modulename: string;
-  mutable tclass: classData;
+  mutable tclass: classData; (* allow updating for recursive types *)
   typeargs: typetag list; (* may or may not be resolved *)
 }
 

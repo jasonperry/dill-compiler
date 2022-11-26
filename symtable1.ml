@@ -137,7 +137,15 @@ module Symtable (* : SYMTABLE *) = struct
          | None ->
             failwith ("BUG: Varname " ^ varname ^ " not found for set_addr"))
         nd.syms
-  
+
+  (** Add type variable to symbol table node. *)
+  let addtvar nd varname impls =
+    match StrMap.find_opt varname nd.tvars with
+    | None ->
+       nd.tvars <- StrMap.add varname {tvarname=varname; implements=impls} nd.tvars
+    | Some _ -> (* Is caught by analyzer but just in case *)
+       raise (SymbolError ("redefinition of type parameter " ^ varname))
+        
   (** Add procedure to current scope of a node. *)
   let addproc nd pname entry =
     match StrMap.find_opt pname nd.fsyms with
@@ -200,7 +208,7 @@ module Symtable (* : SYMTABLE *) = struct
         fsyms = StrMap.empty;
         (* for efficiency, since there's no nested scopes for type variables,
            should it just get the parent's tvars? *)
-        tvars = StrMap.empty; 
+        tvars = nd.tvars;
         parent = Some nd;
         parent_init = StrSet.empty;
         in_proc = nd.in_proc;
