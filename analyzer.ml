@@ -452,7 +452,7 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
   | _ -> failwith "BUG: check_recExpr called with non-record expr"
 
 
-(** check a variant expression (used in both expressions and case matches *)
+(** check a variant expression (used in both expressions and case matches) *)
 and check_variant syms tenv ex ~declvar thint =
   match ex.e with 
   | ExpVariant (mname, vname, eopt) -> (
@@ -486,7 +486,8 @@ and check_variant syms tenv ex ~declvar thint =
                      is going in the decor. *)
                   (*Ok {e=ExpVariant (ty.modulename, vname, None); *)
                   Ok {e=ExpVariant (mname, vname, None);
-                      decor=gen_ttag cdata []}
+                      (* TODO: generate typevars when we have them in the AST *)
+                      decor=gen_ttag cdata []} 
               | Some vtype -> (
                   match eopt with
                   | None -> 
@@ -1131,59 +1132,65 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
        errout ("Redeclaration of procedure " ^ pdecl.name)
     | _ -> (
       (* 2. Check generic type parameter declarations. *)
-      (* loop through typeparams and add to symtables, but also errout for repeats. *)
+      (* loop through typeparams and add to symtables, error out for repeats. *)
       let tparams_result =
-        List.fold_left (fun symacc tv ->
-            match Symtable.findtvar_opt tv syms with
-            | Some _ -> errout ("Redeclaration of type parameter " ^ tv)
-            | None ->
-               Symtable.addtvar syms tv [];
-               Ok syms
-          ) (Ok syms) pdecl.typeparams in
-      if Result.is_error tparams_result then tparams_result else
-        (* 2. Typecheck arguments *)
+        List.fold_left (fun resacc tv ->
+            (* Hmm, we're just using the fold to propagate the error here. *)
+            match resacc with
+            | Error e -> Error e
+            | Ok _ -> (
+                match Symtable.findtvar_opt tv syms with
+                | Some _ -> errout ("Redeclaration of type parameter " ^ tv)
+                | None ->
+                  Symtable.addtvar syms tv [];
+                  Ok ()
+              )) (Ok ()) pdecl.typeparams in
+      match tparams_result with
+      | Error e -> Error e (* have to do this to reconstruct result obj *)
+      | Ok () -> 
+        (* 3. Typecheck arguments *)
         let argchecks = List.map (fun (_, _, texp) ->
             check_typeExpr syms tenv texp)
                         pdecl.params in
-      if List.exists Result.is_error argchecks then
+        if List.exists Result.is_error argchecks then
         (* can't exactly use concat_errors here because typeExpr check
          * errors are strings, not list. But should still simplify this. *)
-        let errs =
-          concat_map (
+          let errs =
+            concat_map (
               fun r -> match r with
                        | Ok _ -> []
                        | Error msg -> [{loc=pdecl.decor; value=msg}]
             ) argchecks
         in Error errs
-      else
-        let argtypes = concat_ok argchecks in
-        (* check that any mutability markers on parameters are allowable. *)
-        let rec check_mutparams (argtypes: typetag list) params =
-          match (argtypes, params) with
-          | (argtype::argsrest, (mut, _, _)::paramsrest) ->
-             (* arrays are mutable. Should I make a helper function for this? *)
-             if mut && not (is_mutable_type argtype)
-             then Error {loc=pdecl.decor;
-                         value="Type " ^ typetag_to_string argtype
-                               ^ " is immutable and cannot be passed mutable" }
-             else check_mutparams argsrest paramsrest
-          | ([], []) -> Ok ()
-          | _ -> failwith "BUG: param types and param list length mismatch"
-        in
+        else
+          let argtypes = concat_ok argchecks in
+          (* check that any mutability markers on parameters are allowable. *)
+          let rec check_mutparams (argtypes: typetag list) params =
+            match (argtypes, params) with
+            | (argtype::argsrest, (mut, _, _)::paramsrest) ->
+              (* arrays are mutable. Should I make a helper function for this? *)
+              if mut && not (is_mutable_type argtype)
+              then Error {loc=pdecl.decor;
+                          value="Type " ^ typetag_to_string argtype
+                                ^ " is immutable and cannot be passed mutable" }
+              else check_mutparams argsrest paramsrest
+            | ([], []) -> Ok ()
+            | _ -> failwith "BUG: param types and param list length mismatch"
+          in
         match check_mutparams argtypes pdecl.params with
         | Error err -> Error [err]
         | Ok _ -> 
-           (* Build symbol table entries for params *)
-           let paramentries =
-             List.map2 (
-                 fun (mut, paramname, _ (* typeExp, not needed*)) argtype ->
-                 {symname = paramname; symtype=argtype;
-                  var=false; mut=mut; addr=None}
-               ) pdecl.params argtypes
-           in
+          (* Build symbol table entries for params *)
+          let paramentries =
+            List.map2 (
+              fun (mut, paramname, _ (* typeExp, not needed*)) argtype ->
+                {symname = paramname; symtype=argtype;
+                 var=false; mut=mut; addr=None}
+            ) pdecl.params argtypes
+          in
            (* Build symbol table entries for all fields of all params, if any *)
-           (* wait, we don't do this anymore!! *)
-           (* let fieldentries =
+          (* wait, we don't do this anymore!! *)
+          (* let fieldentries =
              let rec gen_field_entries paramroot fldtype nameacc =
                (* (finfo: fieldInfo) *)
                match fldtype with
@@ -1217,16 +1224,16 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
            | Ok rttag -> (
              (* Create procedure symtable entry.
               * Don't add it to module symtable node here; caller does it. *)
-             let procentry =
+               let procentry =
                (* may get rid of export later. For now, handy for testing modules *)
-               {procname=(if modname = "" || pdecl.export then pdecl.name
-                          else modname ^ "::" ^ pdecl.name);
-                rettype=rttag; fparams=paramentries} in
+                 {procname=(if modname = "" || pdecl.export then pdecl.name
+                            else modname ^ "::" ^ pdecl.name);
+                  rettype=rttag; fparams=paramentries} in
              (* create new inner scope under the procedure, and add args *)
              (* Woops, it creates a "dangling" scope if proc isn't defined *)
-             let procscope = Symtable.new_proc_scope syms procentry in
-             (* Should I add the proc to its own symbol table? Don't see why. *)
-             (* Did I do this so codegen for recursive calls "just works"? *)
+               let procscope = Symtable.new_proc_scope syms procentry in
+               (* Should I add the proc to its own symbol table? Don't see why. *)
+               (* Did I do this so codegen for recursive calls "just works"? *)
              Symtable.addproc procscope pdecl.name procentry;
              List.iter (fun param ->
                  (* print_endline ("Adding param symbol " ^ param.symname); *)
@@ -1236,7 +1243,7 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
              Ok ({name=pdecl.name; typeparams=[]; params=pdecl.params;
                   rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
                  procentry)
-    ))
+           ))
 
 
 (** Check the body of a procedure whose header has already been checked 
@@ -1319,19 +1326,20 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
                   debug_print ("Creating placeholder for recursive field "
                                ^ fdecl.fieldname);
                   let dummyClass = {
-                    classname = fdecl.fieldtype.classname; 
+                    classname = get_texp_classname fdecl.fieldtype; 
                     in_module = modname;
                     opaque=false; muttype=false; rectype=true;
                     nparams=0; kindData=Hidden
                   } in 
-                  let ttag = { (* should have a ttag_of_texpr function? *)
+                  let ttag = gen_ttag dummyClass []
+                  (* { (* should have a ttag_of_texpr function? *)
                     modulename = modname;
                     typename = fdecl.fieldtype.classname;
                     tclass = dummyClass;
                     array = fdecl.fieldtype.array;
                     paramtypes = [];
-                    nullable = fdecl.fieldtype.nullable;
-                  } in
+                                nullable = fdecl.fieldtype.nullable;} *)
+                  in
                   let finfo = {
                     fieldname=fdecl.fieldname; priv=fdecl.priv;
                     mut=fdecl.mut;
@@ -1351,16 +1359,17 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
         | Error e -> Error e
         | Ok flist -> 
            Ok {
-               (* construct the entire type. *)
+               (* construct the classData for the entire struct type. *)
                classname = tdef.typename;
                in_module = modname;
                opaque = tdef.opaque;
                muttype = List.exists (fun (finfo: fieldInfo) ->
-                             (* Yes, there are two ways a field can be changed! *)
-                             finfo.mut || finfo.fieldtype.tclass.muttype)
+                   (* If either field itself is mutable or its type is. *)
+                   finfo.mut
+                   || (get_type_class finfo.fieldtype).muttype)
                            flist;
                rectype = tdef.rectype;
-               params = [];
+               nparams = 0;
                (* for generics: generate field info with same type
                   variables as outer *)
                kindData = Struct flist;
@@ -1380,7 +1389,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
             else
               match vdecl.variantType with
               | Some vtexp -> (
-                  match check_typeExpr tenv vtexp with
+                  match check_typeExpr syms tenv vtexp with
                   | Error e ->
                     if not tdef.rectype then
                       Error [{loc=tdef.decor;
@@ -1388,19 +1397,21 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
                     else
                       (* construct placeholder for forward-defined class. *)
                       let dummyClass = {
-                        classname = vtexp.classname; (* "--PLACEHOLDER--"; *)
+                        classname = get_texp_classname vtexp;
                         in_module = modname;
                         opaque=false; muttype=false; rectype=true;
-                        params=[]; kindData=Hidden
+                        nparams=0; kindData=Hidden
                       } in 
-                      let ttag = {
+                      let ttag = gen_ttag dummyClass []
+                        (* {
                         modulename = modname;
                         typename = vtexp.classname;
                         tclass = dummyClass;
                         array = vtexp.array;
                         paramtypes = [];
                         nullable = vtexp.nullable;
-                      } in
+                           } *)
+                      in
                       check_variants rest ((vdecl.variantName, Some ttag)::accres)
                   | Ok ttag ->
                     check_variants rest ((vdecl.variantName, Some ttag)::accres)
@@ -1421,21 +1432,26 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
               opaque = tdef.opaque;
               (* Should variant types be immutable always? Need to think. *)
               muttype = List.exists
-                          (fun st -> Option.is_some (snd st)
-                                     && (Option.get (snd st)).tclass.muttype
-                          ) variants;
+                  (fun st -> Option.is_some (snd st)
+                             && is_mutable_type (Option.get (snd st))
+                  ) variants;
               rectype = tdef.rectype;
-              params = [];
+              nparams = 0;
               kindData = Variant variants
             }
      )
     | Newtype tyex -> (
-        match PairMap.find_opt (tyex.modname, tyex.classname) tenv with
+        match tyex.texpkind with
+        | Generic _ -> Error [{value="Cannot create newtype of generic type";
+                             loc=tdef.decor}]
+        | Concrete ctex -> 
+          match PairMap.find_opt (ctex.modname, ctex.classname) tenv with
         | None ->
           Error [{value="Unknown type name " ^ typeExpr_to_string tyex;
                   loc=tdef.decor}]
-          (* Create a whole new type with the same properties as the root type *)
-          (* Hmmm.. may even want to have a reference to the type it is, *)
+        (* Create a whole new type with the same properties as the root type *)
+        (* Hmmm.. may even want to have a reference to the type it is, *)
+        (* Also, meed to recursively check the type params *)
         | Some cdata -> 
           Ok {
             classname = tdef.typename;

@@ -152,6 +152,10 @@ let get_type_classname = function
   | Typevar _ -> failwith ("Error: get_type_classname called on generic type")
   | Namedtype tinfo -> tinfo.tclass.classname
 
+let get_type_class = function
+  | Typevar _ -> failwith ("Error: get_type_class called on generic type")
+  | Namedtype tinfo -> tinfo.tclass
+
 (** helper to pull out the field assuming it's a struct type *)
 let get_type_fields = function
   | Typevar _ -> failwith ("ERROR: get_fields called on generic type")

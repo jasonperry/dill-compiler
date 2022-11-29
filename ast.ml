@@ -62,6 +62,11 @@ and 'ed typeExpr = {
   decor: 'ed
 }
 
+let get_texp_classname te = match te.texpkind with
+  | Generic _ -> failwith "Error: get_texp_classname called on generic type"
+  | Concrete cte -> cte.classname
+     
+
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
   | ExpVal of 'ed expr (* builtin val(v) to match non-null nullable *)
