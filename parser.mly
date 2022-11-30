@@ -52,8 +52,11 @@
 %type <(locinfo, locinfo typeExpr) procdecl> procHeader
 %type <(locinfo, locinfo typeExpr) procdecl> procDecl
 %type <(locinfo, locinfo, locinfo typeExpr) proc> proc
-%type <(locinfo, locinfo typeExpr) fieldDecl> fieldDecl
-%type <(locinfo, locinfo typeExpr) variantDecl> variantDecl
+
+(* These are removed from the AST after analysis. *)
+%type <locinfo fieldDecl> fieldDecl
+%type <locinfo variantDecl> variantDecl
+
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(locinfo, locinfo, locinfo typeExpr) dillmodule> dillmodule
 (* Switched to a single module per file until I get object codegen working. *)

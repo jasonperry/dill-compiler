@@ -121,7 +121,7 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                       match type_by_name the_module ftypename with
                       | Some llfieldtype -> pointer_type llfieldtype
                       | None ->
-                        (* if it's an external rectype, should add it as normal *)
+                        (* if it's an external rectype, add it as normal *)
                         if mname = cdata.in_module then (
                           debug_print ("recursive field type " ^ ftypename
                                        ^ " not found, adding named struct lltype.");

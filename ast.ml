@@ -130,7 +130,7 @@ type ('ed, 'sd, 'tt) globalstmt = {
   }
 
 (* I thought about removing the symtable decoration from the decl, but
-   it can * stand on its own in an interface file, so I guess it needs
+   it can stand on its own in an interface file, so I guess it needs
    it. *)
 type ('sd, 'tt) procdecl = {
   name: string;
@@ -154,35 +154,35 @@ type ('ed,'sd,'tt) proc = {
 (* Type definition syntax begins here *)
 
 (** Single field declaration of a struct type. *)
-type ('ed, 'tt) fieldDecl = {
+type 'ed fieldDecl = {
     fieldname: string;
     priv: bool;
     mut: bool;
     (* Create 'typevar' field matching the struct later *)
-    fieldtype: 'tt; (* 'ed typeExpr; *)
+    fieldtype: 'ed typeExpr;
     decor: 'ed (* Only used for locinfo in parsing? *)
   }
 
 (** A single named option for a variant type. *)
-type ('ed, 'tt) variantDecl = {
+type 'ed variantDecl = {
     variantName: string;
-    variantType: 'tt (* 'ed typeExpr *) option; (* may be a constant symbol *)
+    variantType: 'ed typeExpr option; (* may be a constant symbol *)
     decor: 'ed
   }
 
 (** Type decl info that's different for structs/unions/enums. *)
-type ('ed, 'tt) kindInfo =
-  | Fields of ('ed, 'tt) fieldDecl list
-  | Variants of ('ed, 'tt) variantDecl list
-  | Newtype of 'tt (* 'ed typeExpr *)
+type 'ed kindInfo =
+  | Fields of 'ed fieldDecl list
+  | Variants of 'ed variantDecl list
+  | Newtype of 'ed typeExpr
   | Hidden (* for externally-defined opaque types *)
 
 (** struct for definition of any type. *)
-type ('ed, 'sd, 'tt) typedef = {
+type ('ed, 'sd) typedef = {
   (* module name is added at higher context. *)
   typename: string;
   rectype: bool;
-  kindinfo: ('ed, 'tt) kindInfo;
+  kindinfo: 'ed kindInfo;
   opaque: bool;
   decor: 'sd
 }
@@ -199,7 +199,7 @@ type importStmt =
 type ('ed,'sd,'tt) dillmodule = {
     name: string;
     imports: (importStmt located) list;
-    typedefs: ('ed, 'sd, 'tt) typedef list;
+    typedefs: ('ed, 'sd) typedef list;
     globals: ('ed, 'sd, 'tt) globalstmt list;
     procs: ('ed,'sd,'tt) proc list;
     (* initblock: ('ed,'sd) stmt list *)
@@ -209,7 +209,7 @@ type ('ed,'sd,'tt) dillmodule = {
 type ('ed, 'sd, 'tt) module_spec = {
     name: string;
     imports: (importStmt located) list;
-    typedefs: ('ed, 'sd, 'tt) typedef list;
+    typedefs: ('ed, 'sd) typedef list;
     globals: ('sd, 'tt) globaldecl list;
     procdecls: ('sd, 'tt) procdecl list
   }

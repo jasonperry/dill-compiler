@@ -1271,7 +1271,7 @@ let check_globdecl syms tenv modname gstmt
 
 
 (** Check a type definition, generating classData for the tenv. *)
-let check_typedef syms tenv modname (tdef: (locinfo, _, _) typedef) = 
+let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) = 
   (* check for typename redeclaration *)
   match PairMap.find_opt ("", tdef.typename) tenv with
   | Some _ ->
@@ -1632,12 +1632,12 @@ let check_module syms (tenv: typeenv) ispecs
       (* spam syms into the decor of the AST typedefs to update the decor type.
           Could there be a better way? check_typedef should return a new
           typedef itself. I think that's all there is to it. *)
-       let newtypedefs = 
+       (* let newtypedefs = 
          List.map (fun tdef ->
              match tdef.kindinfo with
              | Fields fields ->
                 let newfields =
-                  List.map (fun (fd: (locinfo, locinfo typeExpr) fieldDecl) ->
+                  List.map (fun (fd: locinfo fieldDecl) ->
                       {fd with decor=syms})
                     fields in
                 {tdef with kindinfo=(Fields newfields); decor=syms}
@@ -1652,7 +1652,7 @@ let check_module syms (tenv: typeenv) ispecs
              | Hidden ->
                {tdef with kindinfo=Hidden; decor=syms}
            ) dmod.typedefs in
-       debug_print "#AN: Finished remapping decor of typedefs";
+          debug_print "#AN: Finished remapping decor of typedefs"; *)
        (* Check global declarations *)
        let globalsrlist = List.map (check_globdecl syms tenv dmod.name)
                             dmod.globals in
@@ -1668,7 +1668,7 @@ let check_module syms (tenv: typeenv) ispecs
            Error (concat_errors pdeclsrlist)
          else
            let newpdecls = 
-             List.map (fun ((pd: (typetag, 'a st_node) procdecl), pentry) ->
+             List.map (fun ((pd: ('a st_node, typetag) procdecl), pentry) ->
                  Symtable.addproc syms pd.name pentry;
                  (* need to update the type *)
                  pd) 
@@ -1682,7 +1682,7 @@ let check_module syms (tenv: typeenv) ispecs
              (* Made it this far, assemble the newly-decorated module. *)
              debug_print "procedure bodies checked";
              Ok ({name=dmod.name; imports=dmod.imports;
-                  typedefs=newtypedefs;
+                  typedefs=[]; (* newtypedefs; *)
                   globals=newglobals; procs=newprocs
                  },
                  tenv)
