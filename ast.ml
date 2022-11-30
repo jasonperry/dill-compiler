@@ -56,7 +56,7 @@ and 'ed texpKind =
     generics we need more advanced checking. *)
 and 'ed typeExpr = {
   texpkind: 'ed texpKind;
-  (* semantically, these two get folded into the type as classes. *)
+  (* semantically, option and array get folded into the type as classes. *)
   nullable: bool;
   array: bool;
   decor: 'ed
@@ -91,98 +91,98 @@ and 'ed var_expr = (string * 'ed expr option) * (string * 'ed expr option) list
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
 
-type ('ed,'sd) raw_stmt = 
-  | StmtDecl of string * 'ed typeExpr option * 'ed expr option
+type ('ed,'sd,'tt) raw_stmt = 
+  | StmtDecl of string * 'tt (* 'ed typeExpr *) option * 'ed expr option
   | StmtAssign of 'ed var_expr * 'ed expr
   | StmtNop
   | StmtReturn of 'ed expr option
   (* Hmm, may want to make this a record, it's a little unwieldy. *)
   | StmtIf of 'ed expr (* cond *)
-              * ('ed,'sd) stmt list (* then block *)
-              * ('ed expr * ('ed,'sd) stmt list) list (* elsif blocks *)
-              * ('ed,'sd) stmt list option (* else block *)
+              * ('ed,'sd,'tt) stmt list (* then block *)
+              * ('ed expr * ('ed,'sd,'tt) stmt list) list (* elsif blocks *)
+              * ('ed,'sd,'tt) stmt list option (* else block *)
   | StmtWhile of 'ed expr (* cond *)
-                 * ('ed,'sd) stmt list (* body *)
+                 * ('ed,'sd,'tt) stmt list (* body *)
   | StmtCase of 'ed expr (* object to match *)
-                * ('ed expr * ('ed,'sd) stmt list) list (* case blocks *)
-                * ('ed,'sd) stmt list option (* else block *)
+                * ('ed expr * ('ed,'sd,'tt) stmt list) list (* case blocks *)
+                * ('ed,'sd,'tt) stmt list option (* else block *)
   | StmtCall of 'ed expr  (* call used as statement, must return void *)
-  | StmtBlock of ('ed,'sd) stmt list
+  | StmtBlock of ('ed,'sd,'tt) stmt list
 
-(** Decorated statement type ('a is for the decor of embedded exprs) *)
-and ('ed,'sd) stmt = { st: ('ed,'sd) raw_stmt; decor: 'sd }
+(** Decorated statement type *)
+and ('ed,'sd,'tt) stmt = { st: ('ed,'sd,'tt) raw_stmt; decor: 'sd }
 
 
 (** Global variable declaration only; only used in modspecs. *)
-type ('ed, 'sd) globaldecl = {
+type ('sd, 'tt) globaldecl = {
     varname: string;
     (* in_module: string; *)
-    typeexp: 'ed typeExpr;
+    typeexp: 'tt; (* 'ed typeExpr; *)
     decor: 'sd
   }
 
 (** Global var declaration with required initializer. *)
-type ('ed, 'sd) globalstmt = {
+type ('ed, 'sd, 'tt) globalstmt = {
     varname: string;
-    typeexp: 'ed typeExpr option;
+    typeexp: 'tt option; (* 'ed typeExpr option; *)
     init: 'ed expr option; (* required by semantics, check in analyzer *)
     decor: 'sd
   }
 
-(* I thought about removing the decoration from the decl, but it can
- * stand on its own in an interface file, so I guess it needs it. *)
-type ('ed,'sd) procdecl = {
+(* I thought about removing the symtable decoration from the decl, but
+   it can * stand on its own in an interface file, so I guess it needs
+   it. *)
+type ('sd, 'tt) procdecl = {
   name: string;
   typeparams: typevar list; (* need to change? *)
   (* One could imagine removing the typeExprs after analysis. *)
-  (* bool is mut indicator; maybe "paraminfo" type later *)
-  params: (bool * string * 'ed typeExpr) list; 
+  (* The bool is the mutable indicator *)
+  params: (bool * string * 'tt) list; 
   (* TODO: Also need "private" signifier. *)
   export: bool;
-  rettype: 'ed typeExpr;
+  rettype: 'tt;  (* 'tt will be 'ed typeExpr, then typetag *)
   decor: 'sd
 }
 
 (** AST procedure record. *)
-type ('ed,'sd) proc = {
-    decl: ('ed, 'sd) procdecl;
-    body: ('ed,'sd) stmt list;
+type ('ed,'sd,'tt) proc = {
+    decl: ('sd, 'tt) procdecl;
+    body: ('ed,'sd,'tt) stmt list;
     decor: 'sd
   }
 
 (* Type definition syntax begins here *)
 
 (** Single field declaration of a struct type. *)
-type ('ed, 'sd) fieldDecl = {
+type ('ed, 'tt) fieldDecl = {
     fieldname: string;
     priv: bool;
     mut: bool;
     (* Create 'typevar' field matching the struct later *)
-    fieldtype: 'ed typeExpr;
-    decor: 'sd (* to be a typetag, like exprs...but it's NOT!
-                  it's just syms, like a statement FIXME *)
+    fieldtype: 'tt; (* 'ed typeExpr; *)
+    decor: 'ed (* Only used for locinfo in parsing? *)
   }
 
 (** A single named option for a variant type. *)
-type ('ed, 'sd) variantDecl = {
+type ('ed, 'tt) variantDecl = {
     variantName: string;
-    variantType: 'ed typeExpr option; (* may be a constant symbol *)
-    decor: 'sd
+    variantType: 'tt (* 'ed typeExpr *) option; (* may be a constant symbol *)
+    decor: 'ed
   }
 
 (** Type decl info that's different for structs/unions/enums. *)
-type ('ed, 'sd) kindInfo =
-  | Fields of ('ed, 'sd) fieldDecl list
-  | Variants of ('ed, 'sd) variantDecl list
-  | Newtype of 'ed typeExpr
+type ('ed, 'tt) kindInfo =
+  | Fields of ('ed, 'tt) fieldDecl list
+  | Variants of ('ed, 'tt) variantDecl list
+  | Newtype of 'tt (* 'ed typeExpr *)
   | Hidden (* for externally-defined opaque types *)
 
 (** struct for definition of any type. *)
-type ('ed, 'sd) typedef = {
+type ('ed, 'sd, 'tt) typedef = {
   (* module name is added at higher context. *)
   typename: string;
   rectype: bool;
-  kindinfo: ('ed, 'sd) kindInfo; (* should be 'ed ! *)
+  kindinfo: ('ed, 'tt) kindInfo;
   opaque: bool;
   decor: 'sd
 }
@@ -196,22 +196,22 @@ type importStmt =
   | Using of string * string option
   | Open of string
 
-type ('ed,'sd) dillmodule = {
+type ('ed,'sd,'tt) dillmodule = {
     name: string;
     imports: (importStmt located) list;
-    typedefs: ('ed, 'sd) typedef list;
-    globals: ('ed, 'sd) globalstmt list;
-    procs: ('ed,'sd) proc list;
+    typedefs: ('ed, 'sd, 'tt) typedef list;
+    globals: ('ed, 'sd, 'tt) globalstmt list;
+    procs: ('ed,'sd,'tt) proc list;
     (* initblock: ('ed,'sd) stmt list *)
   }
 
 (* No expressions in a module spec. *)
-type ('ed, 'sd) module_spec = {
+type ('ed, 'sd, 'tt) module_spec = {
     name: string;
     imports: (importStmt located) list;
-    typedefs: ('ed, 'sd) typedef list;
-    globals: ('ed, 'sd) globaldecl list;
-    procdecls: ('ed, 'sd) procdecl list
+    typedefs: ('ed, 'sd, 'tt) typedef list;
+    globals: ('sd, 'tt) globaldecl list;
+    procdecls: ('sd, 'tt) procdecl list
   }
 
 
@@ -374,13 +374,13 @@ let procdecl_to_string (pdecl: ('ed, 'sd) procdecl) =
             ^ varname ^ ": " ^ typeExpr_to_string vartype) pdecl.params)
   ^ ") => " ^ typeExpr_to_string pdecl.rettype
 
-let proc_to_string (proc: ('ed, 'sd) proc) =
+let proc_to_string (proc: ('ed, 'sd, 'tt) proc) =
   (* a little ugly, but maybe I will use the pdecl later. *)
   procdecl_to_string proc.decl ^ "\nbegin\n"
   ^ block_to_string proc.body
   ^ "\nend " ^ proc.decl.name ^ "\n"
 
-let module_to_string (dmod: ('ed, 'sd) dillmodule) =
+let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
   "module " ^ dmod.name ^ " begin \n"
   (* TODO: imports *)
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
@@ -398,7 +398,7 @@ let module_to_string (dmod: ('ed, 'sd) dillmodule) =
   ^ "end " ^ dmod.name ^ "\n"
 
 (** This is creating the actual interfaces...so it's important! *)
-let modspec_to_string (mspec: ('ed, 'sd) module_spec) =
+let modspec_to_string (mspec: ('ed, 'sd, 'tt) module_spec) =
   "modspec " ^ mspec.name ^ " begin \n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (

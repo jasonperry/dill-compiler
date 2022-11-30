@@ -156,6 +156,11 @@ let get_type_class = function
   | Typevar _ -> failwith ("Error: get_type_class called on generic type")
   | Namedtype tinfo -> tinfo.tclass
 
+let set_type_class newclass = function
+  | Typevar _ -> failwith ("Error: cannot set type class of generic type")
+  | Namedtype tinfo ->
+    tinfo.tclass <- newclass
+
 (** helper to pull out the field assuming it's a struct type *)
 let get_type_fields = function
   | Typevar _ -> failwith ("ERROR: get_fields called on generic type")

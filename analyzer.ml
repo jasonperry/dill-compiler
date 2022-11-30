@@ -659,7 +659,7 @@ let check_condexp condsyms (tenv: typeenv) condexp : expr_result =
  * traversals, or else I need a way to pick the correct child.
  * Or, I could assume traversal in the same order. *)
 (* Exprs never start their own new scope! *)
-type 'a stmt_result = ((typetag, 'a st_node) stmt, string located list)
+type 'a stmt_result = ((typetag, 'a st_node, typetag) stmt, string located list)
                      Stdlib.result
 
 (** factored out declaration typechecking code (used by globals also) *)
@@ -709,7 +709,7 @@ let typecheck_decl syms tenv (varname, tyopt, initopt) =
       ))))
 
 
-let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
+let rec check_stmt syms tenv stm : 'a stmt_result =
   match stm.st with 
   (* Declaration: check for redeclaration, check the exp, make sure
    * types match if declared. *)
@@ -862,8 +862,8 @@ let rec check_stmt syms tenv (stm: (locinfo, locinfo) stmt) : 'a stmt_result =
       | Ok matchexp ->
         let mtype = matchexp.decor in
         (* check all case blocks, accumulating cases for exhaustiveness *)
-        let rec check_cases (cblocks: ('ed expr * ('ed,'sd) stmt list) list)
-            caseacc =
+        let rec check_cases
+            (cblocks: ('ed expr * ('ed,'sd,'tt) stmt list) list) caseacc =
           match cblocks with
           | (cexp, cbody)::rest -> (
               let errout msg = Error [{value=msg; loc=cexp.decor}] in
@@ -1119,7 +1119,8 @@ let rec block_returns stlist =
 
 
 (** Check a procedure declaration and add it to the given symbol node. *)
-let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
+let check_procdecl syms tenv modname (pdecl: ('loc, 'loc typeExpr) procdecl)
+  : ((('a st_node, typetag) procdecl * 'a st_procentry), 'er) result =
   (* Helper function to construct error result *)
   let errout msg = Error [{loc=pdecl.decor; value=msg}] in
   (* 0. Make sure procedure name isn't a reserved word. *)
@@ -1164,6 +1165,9 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
         in Error errs
         else
           let argtypes = concat_ok argchecks in
+          let checkedparams = List.map2
+              (fun (m, nm, _) argty -> (m, nm, argty))
+              pdecl.params argtypes in
           (* check that any mutability markers on parameters are allowable. *)
           let rec check_mutparams (argtypes: typetag list) params =
             match (argtypes, params) with
@@ -1188,36 +1192,8 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
                  var=false; mut=mut; addr=None}
             ) pdecl.params argtypes
           in
-           (* Build symbol table entries for all fields of all params, if any *)
-          (* wait, we don't do this anymore!! *)
-          (* let fieldentries =
-             let rec gen_field_entries paramroot fldtype nameacc =
-               (* (finfo: fieldInfo) *)
-               match fldtype with
-               | Typevar _ -> failwith "TODO: symbol table for generic params"
-               | Namedtype ftinfo -> (
-                   match ftinfo.tclass.kindData with
-                   | Struct flist -> (
-                       flist |> List.concat_map (fun (finfo: fieldInfo) -> 
-                           let fnamestr = nameacc ^ "." ^ finfo.fieldname in
-                           {
-                             symname=fnamestr;
-                             symtype=finfo.fieldtype;
-                             (* immutability propagates down, but I think this
-                                is wrong b/c I should use the parent result *)
-                             var=finfo.mut && paramroot.mut;
-                             (* when are var and mut different? *)
-                         mut=finfo.mut && paramroot.mut; 
-                             addr=None
-                           } :: (gen_field_entries paramroot finfo.fieldtype fnamestr)
-                         ))
-                   | _ -> []
-                 )
-             in List.concat_map
-               (fun pentry ->
-                  gen_field_entries pentry pentry.symtype pentry.symname)
-               paramentries
-              in *)
+           (* Code to build symbol table entries for fields of all params
+              used to be here *)
            (* Typecheck return type *)
            match check_typeExpr syms tenv pdecl.rettype with
            | Error msg -> Error [{loc=pdecl.decor; value=msg}]
@@ -1225,7 +1201,7 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
              (* Create procedure symtable entry.
               * Don't add it to module symtable node here; caller does it. *)
                let procentry =
-               (* may get rid of export later. For now, handy for testing modules *)
+                 (* may get rid of export later. For now, handy for testing *)
                  {procname=(if modname = "" || pdecl.export then pdecl.name
                             else modname ^ "::" ^ pdecl.name);
                   rettype=rttag; fparams=paramentries} in
@@ -1238,17 +1214,15 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl) =
              List.iter (fun param ->
                  (* print_endline ("Adding param symbol " ^ param.symname); *)
                  Symtable.addvar procscope param.symname param) paramentries;
-             (* List.iter (fun pfield ->
-                 Symtable.addvar procscope pfield.symname pfield) fieldentries; *)
-             Ok ({name=pdecl.name; typeparams=[]; params=pdecl.params;
-                  rettype=pdecl.rettype; export=pdecl.export; decor=procscope},
+             Ok ({name=pdecl.name; typeparams=[]; params=checkedparams;
+                  rettype=rttag; export=pdecl.export; decor=procscope},
                  procentry)
            ))
 
 
 (** Check the body of a procedure whose header has already been checked 
   * (and had its parameters added to the symbol table) *)
-let check_proc tenv (pdecl: ('ed, 'addr st_node) procdecl) proc =
+let check_proc tenv (pdecl: ('addr st_node, typetag) procdecl) proc =
   debug_print ("#AN: About to check procedure " ^ pdecl.name);
   let procscope = pdecl.decor in
   match check_stmt_seq procscope tenv proc.body with
@@ -1268,7 +1242,7 @@ let check_proc tenv (pdecl: ('ed, 'addr st_node) procdecl) proc =
 (** Check a global declaration statement (needs const initializer) and
     generate symtable entry. *)
 let check_globdecl syms tenv modname gstmt
-  : ((typetag, 'sd) globalstmt, _) result =
+  : (('ed, 'sd, typetag) globalstmt, _) result =
   match gstmt.init with
   (* could do this syntactically...but error messages are better here. *)
   | None -> Error [{loc=gstmt.decor;
@@ -1296,8 +1270,8 @@ let check_globdecl syms tenv modname gstmt
   )
 
 
-(** Check a struct/variant type definition, generating classData for the tenv. *)
-let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) = 
+(** Check a type definition, generating classData for the tenv. *)
+let check_typedef syms tenv modname (tdef: (locinfo, _, _) typedef) = 
   (* check for typename redeclaration *)
   match PairMap.find_opt ("", tdef.typename) tenv with
   | Some _ ->
@@ -1450,8 +1424,10 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
           Error [{value="Unknown type name " ^ typeExpr_to_string tyex;
                   loc=tdef.decor}]
         (* Create a whole new type with the same properties as the root type *)
-        (* Hmmm.. may even want to have a reference to the type it is, *)
-        (* Also, meed to recursively check the type params *)
+        (* Hmmm.. may even want to have a reference to the type it is,
+           for assigning values. Then update type matching! *)
+        (* For Generics: Make sure type params match up.
+           example: newtype StrDict(t) is Dict(String, t); *)
         | Some cdata -> 
           Ok {
             classname = tdef.typename;
@@ -1459,18 +1435,16 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
             muttype = cdata.muttype;
             rectype = cdata.rectype;
             opaque = cdata.opaque;
-            params = cdata.params;
+            nparams = cdata.nparams;
             (* construct a tag for the underlying type *)
-            kindData = Newtype {
-                modulename=tyex.modname;
-                typename=tyex.classname;
-                tclass=cdata;
-                paramtypes=[];
-                array=tyex.array;
-                nullable=tyex.nullable
-              }
-          }
-      )
+            kindData = Newtype (
+                Namedtype {
+                  modulename = modname;
+                  tclass = {cdata with classname = tdef.typename;
+                                       in_module = modname};
+                  typeargs = [] (* TOFIX *)
+              })
+          })
     | Hidden ->
       Ok {
         classname = tdef.typename;
@@ -1479,7 +1453,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
         muttype = true; (* Can't assume it's not mutable,
                            it's based on what's called *)
         rectype = false; (* doesn't matter, it's a pointer anyway?? *)
-        params = [];
+        nparams = 0;
         kindData = Hidden
       }
   )
@@ -1592,7 +1566,9 @@ let add_imports syms tenv specs istmts =
 
 
 (** Check one entire module, rewriting each AST component. *)
-let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
+let check_module syms (tenv: typeenv) ispecs
+    (dmod: (locinfo, 'sd, 'tt) dillmodule)
+  : ((typetag, 'a st_node, typetag) dillmodule * 'tenv, 'er) result =
   (* Check import statements and load modspecs into symtable
      (they've been loaded from .dms files by the top level) *)
   match add_imports syms tenv ispecs dmod.imports with
@@ -1630,51 +1606,53 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
               finfos |> List.iter (fun (finfo: fieldInfo) ->
                   if is_recursive_type finfo.fieldtype then (
                     let finishedClass = PairMap.find
-                        ("", finfo.fieldtype.tclass.classname) tenv in
-                    debug_print ("-check_module: Updating classData for field "
+                        ("", get_type_classname finfo.fieldtype) tenv in
+                    debug_print ("#AN-check_module: Updating classData for field "
                                  ^ finfo.fieldname ^ " of " ^ cdata.classname);
-                    finfo.fieldtype.tclass <- finishedClass
+                    set_type_class finishedClass finfo.fieldtype
                   ))
             | Variant vlist -> 
               vlist |> List.iter (fun (vname, vtopt) -> (
                     match vtopt with
                     | Some vttag ->
-                      if vttag.tclass.rectype then (
+                      if is_recursive_type vttag then (
                         debug_print ("-searching for completed classname "
-                                     ^ vttag.tclass.classname);
+                                     ^ get_type_classname vttag);
                         let finishedClass = PairMap.find
-                            ("", vttag.tclass.classname) tenv in
-                        debug_print ("-check_module: Updating classData for variant "
+                            ("", get_type_classname vttag) tenv in
+                        debug_print ("#AN-check_module: Updating classData for variant "
                                      ^ vname ^ " of " ^ cdata.classname);
-                        vttag.tclass <- finishedClass
+                        set_type_class finishedClass vttag
                       )
                     | None -> ()
                   ))
-            | _ -> () 
+            | _ -> ()
       ) newclasses;
       debug_print ("-- module types in tenv: " ^ string_of_tenv tenv);
       (* spam syms into the decor of the AST typedefs to update the decor type.
-          Could there be a better way? *)
+          Could there be a better way? check_typedef should return a new
+          typedef itself. I think that's all there is to it. *)
        let newtypedefs = 
          List.map (fun tdef ->
              match tdef.kindinfo with
              | Fields fields ->
                 let newfields =
-                  List.map (fun (fd: (locinfo, locinfo) fieldDecl) ->
+                  List.map (fun (fd: (locinfo, locinfo typeExpr) fieldDecl) ->
                       {fd with decor=syms})
                     fields in
                 {tdef with kindinfo=(Fields newfields); decor=syms}
              | Variants variants ->
                 let newvariants =
-                  List.map (fun (vd: (locinfo, locinfo) variantDecl) ->
+                  List.map (fun (vd: (locinfo, locinfo typeExpr) variantDecl) ->
                       {vd with decor=syms}) variants in
                 {tdef with kindinfo=Variants newvariants; decor=syms}
              | Newtype texpr ->
+               (* Need to replace the texpr with the typetag *)
                {tdef with kindinfo=Newtype texpr; decor=syms}
              | Hidden ->
                {tdef with kindinfo=Hidden; decor=syms}
            ) dmod.typedefs in
-       debug_print "Finished remapping decor of typedefs";
+       debug_print "#AN: Finished remapping decor of typedefs";
        (* Check global declarations *)
        let globalsrlist = List.map (check_globdecl syms tenv dmod.name)
                             dmod.globals in
@@ -1690,8 +1668,9 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
            Error (concat_errors pdeclsrlist)
          else
            let newpdecls = 
-             List.map (fun ((pd: ('ed, 'a st_node) procdecl), pentry) ->
+             List.map (fun ((pd: (typetag, 'a st_node) procdecl), pentry) ->
                  Symtable.addproc syms pd.name pentry;
+                 (* need to update the type *)
                  pd) 
                (concat_ok pdeclsrlist) in
            (* Check procedure bodies *)
@@ -1710,7 +1689,7 @@ let check_module syms (tenv: typeenv) ispecs (dmod: ('ed, 'sd) dillmodule) =
   )
 
 (** Generate the interface object for a checked module, to be serialized. *)
-let create_module_spec (the_mod: (typetag, 'a st_node) dillmodule) =
+let create_module_spec (the_mod: (typetag, 'a st_node, 'tt) dillmodule) =
   {
     name = the_mod.name;
     imports = 
