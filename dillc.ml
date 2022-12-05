@@ -113,7 +113,7 @@ let rec open_from_paths plist filename =
 (* import handling might be good to move into its own module 
  * (except the file handling) *)
 (** Recursively scan all modspec files and populate the map of known ones. *)
-let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
+let load_imports cconfig (modmap: ('ed,'sd,'tt) module_spec StrMap.t) istmts =
   let rec load_import mmap istmt =
     let modname = match istmt.value with
       | Using (mn, _) -> mn
@@ -131,7 +131,7 @@ let load_imports cconfig (modmap: 'sd module_spec StrMap.t) istmts =
   List.fold_left load_import modmap istmts
 
 (** Do analysis and codegen phases, return module code and header object *)
-let analysis cconfig ispecs (parsedmod: (locinfo, locinfo) dillmodule) = 
+let analysis cconfig ispecs (parsedmod: (locinfo, locinfo, 'tt) dillmodule) = 
   let open Symtable1 in
   (* populate top-level symbol table. Formerly with pervasive_syms *)
   let topsyms : Llvm.llvalue st_node = Symtable.make_empty () in 
@@ -154,7 +154,7 @@ let codegen (_: dillc_config) tenv syms layout typedmod =
      modcode, header
 
 
-let write_header srcdir header = 
+let write_header srcdir header =
   let headerfilename =
     (*String.lowercase_ascii (String.sub header.name 0 1)
     ^ String.sub header.name 1 (String.length header.name - 1) *)

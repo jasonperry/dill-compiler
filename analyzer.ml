@@ -1517,7 +1517,7 @@ let add_imports syms tenv specs istmts =
              Ok syms (* doesn't get used *)
       )) the_spec.globals
     (* iterate over procedure declarations and add those. *)
-    @ (List.map (
+    @ (List.map ( (* need to fold-map now to keep new pdecls? *)
              fun (pdecl: ('ed, 'sd) procdecl) ->
              let refname = prefix ^ pdecl.name in
              let fullname = modname ^ "::" ^ pdecl.name in
@@ -1689,7 +1689,27 @@ let check_module syms (tenv: typeenv) ispecs
   )
 
 (** Generate the interface object for a checked module, to be serialized. *)
-let create_module_spec (the_mod: (typetag, 'a st_node, 'tt) dillmodule) =
+let create_module_spec (the_mod: (typetag, 'a st_node, typetag) dillmodule)
+  (* Note that it goes "backwards" to reconstruct syntactic type expressions *)
+  : (typetag, 'a st_node, typetag typeExpr) module_spec =
+  let rec texpr_of_ttag ty =
+    match ty with
+    | Typevar tv -> {
+        texpkind = Generic tv;
+        nullable = false;
+        array = false;
+        decor = ty (* kind of redundant *)
+      }
+    | Namedtype tinfo -> {
+                    texpkind = Concrete {
+            modname = tinfo.modulename;
+            classname = tinfo.tclass.classname;
+            typeargs = List.map texpr_of_ttag tinfo.typeargs
+          };
+                    nullable = is_option_type ty;
+                    array = is_array_type ty;
+                    decor = ty }
+  in
   {
     name = the_mod.name;
     imports = 
@@ -1715,26 +1735,18 @@ let create_module_spec (the_mod: (typetag, 'a st_node, 'tt) dillmodule) =
                  the AST has the best type expression) *)
               let vtype =
                 (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
-              let rec texpr_of_ttag ty =
-                match ty with
-                | Typevar tv -> {
-                    texpkind = Generic tv;
-                    nullable = false;
-                    array = false;
-                    decor = ty (* kind of redundant *)
-                  }
-                | Namedtype tinfo -> {
-                    texpkind = Concrete {
-                                   modname = tinfo.modulename;
-                                   classname = tinfo.tclass.classname;
-                                   typeargs = List.map texpr_of_ttag tinfo.typeargs
-                                 };
-                    nullable = is_option_type ty;
-                    array = is_array_type ty;
-                    decor = ty }
-              in texpr_of_ttag vtype
+              texpr_of_ttag vtype
           }
         ) the_mod.globals;
     procdecls =
-      List.map (fun proc -> proc.decl) the_mod.procs
+      (* have to go /back/ to the typeExpr type *)
+      List.map (fun proc -> {
+            name=proc.decl.name;
+            typeparams=proc.decl.typeparams;
+            params=List.map
+                (fun (m, n, ty) -> (m, n, texpr_of_ttag ty)) proc.decl.params;
+            export=proc.decl.export;
+            rettype=texpr_of_ttag proc.decl.rettype;
+            decor=proc.decl.decor
+          }) the_mod.procs
   }

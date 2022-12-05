@@ -479,16 +479,18 @@ let rec gen_constexpr_value lltypes (ex: typetag expr) =
     match ex.e with
     | ExpRecord fieldlist -> 
        (* Iterate over the fields and write the value in an llvalue array *)
-       let lltype = Lltenv.find_class_lltype (ex.decor.tclass) lltypes in
-       let fieldmap = Lltenv.find_class_fieldmap ex.decor.tclass lltypes in
-       let valarray = Array.make (List.length fieldlist)
-                        (const_int int_type 0) in
-       List.iter (fun (fname, fexp) ->
-         let (offset, _) = StrMap.find fname fieldmap in
-         let fieldval = gen_constexpr_value lltypes fexp in
-         Array.set valarray offset fieldval
-       ) fieldlist;
-       const_named_struct lltype valarray
+      let lltype = Lltenv.find_class_lltype (get_type_class ex.decor)
+          lltypes in
+      let fieldmap = Lltenv.find_class_fieldmap (get_type_class ex.decor)
+          lltypes in
+      let valarray = Array.make (List.length fieldlist)
+          (const_int int_type 0) in
+      List.iter (fun (fname, fexp) ->
+          let (offset, _) = StrMap.find fname fieldmap in
+          let fieldval = gen_constexpr_value lltypes fexp in
+          Array.set valarray offset fieldval
+        ) fieldlist;
+      const_named_struct lltype valarray
     | _ -> failwith "Unimplemented constexpr type"
     
 
@@ -532,7 +534,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
                       ^ entry.symname)
   | Some alloca ->
     (* traverse indices and record fields to generate the final alloca. *)
-    let rec get_field_alloca flds ixopt parentty alloca =
+    let rec get_field_alloca flds ixopt (parentty: typetag) alloca =
       (* index expression [] first; strip off array type after indexing *)
       debug_print ("get_varexp_alloca: " ^ string_of_llvalue alloca);
       let (alloca, newty) =
@@ -554,7 +556,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           (* gep to the 0th element first to "follow the pointer" *)
           (build_gep dataptr [|(const_int int_type 0); ixval|]  
              "elementtptr" builder,
-           {parentty with array=false})
+           (array_base_type parentty))
       in
       (* next, get the field offset if there is one. *)
       match flds with
@@ -562,14 +564,15 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
       | (fld, ixopt)::rest -> 
         (* Get just the class of parent type so we can find its field info.
            Analysis determined it's not a nullable. *)
-        let ptypekey = (parentty.modulename, parentty.typename) in
+        let ptypekey = (get_type_modulename parentty,
+                        get_type_classname parentty) in
         (* If array length, it has no further fields, we're done. *)
         (* the test for = "length" should be redundant. *)
-        if parentty.array && fld = "length" then
+        if (is_array_type parentty) && fld = "length" then
           (build_struct_gep alloca 0 "length" builder, int_ttag)
         else (
           (* check if dereference needed first, for recursive type. *)
-          let alloca = if parentty.tclass.rectype
+          let alloca = if is_recursive_type parentty
             then 
               build_load alloca "rectype-deref" builder
             else alloca in
@@ -621,11 +624,12 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
     )
 
   | ExpRecord fieldlist ->
-    let typekey = (ex.decor.modulename, ex.decor.typename) in
+    let typekey = (get_type_modulename ex.decor,
+                   get_type_classname ex.decor) in
     let llty = Lltenv.find_lltype typekey lltypes in
     let recaddr =
       (* recursive record types are heap-allocated. *)
-      if ex.decor.tclass.rectype then
+      if is_recursive_type ex.decor then
         (* llty is already the pointer type *)
         build_gc_malloc (element_type llty) "rectype" the_module builder
       else 
@@ -665,14 +669,14 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
                        (build_store finalval fieldaddr builder));
       ) fieldlist;
     (* recursive types return the pointer, otherwise the value *)
-    if ex.decor.tclass.rectype then
+    if is_recursive_type ex.decor then
       recaddr
     else 
       build_load recaddr "recordval" builder
 
 
   | ExpVariant (tymod, variant, eopt) ->
-    let tyname = (ex.decor).tclass.classname in 
+    let tyname = get_type_classname ex.decor in 
     debug_print ("** Generating variant expression code of type " ^ tyname);
     (* 1. Look up lltype and allocate struct *)
     let (llvarty, varmap) = Lltenv.find (tymod, tyname) lltypes in
@@ -696,7 +700,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         ) in
     debug_print ("  variant subtype struct: " ^ string_of_lltype structsubty);
     let structaddr =
-      if ex.decor.tclass.rectype then
+      if is_recursive_type ex.decor then
         build_gc_malloc structsubty "variantSubAddr" the_module builder 
       else 
         build_alloca structsubty "variantSubAddr" builder
@@ -722,13 +726,13 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
     (* 4. cast the pointer to the general struct type and load the whole thing *)
     (* It still wants the cast even if no value (because named struct?) *)
     let castedaddr =
-      if ex.decor.tclass.rectype then
+      if is_recursive_type ex.decor then
         build_bitcast structaddr llvarty "varstruct" builder
       else
         build_bitcast structaddr (pointer_type llvarty) "varstruct" builder in
     debug_print ("Casted variant struct addr " ^ string_of_llvalue structaddr
                  ^ " ter " ^ string_of_llvalue castedaddr);
-    if ex.decor.tclass.rectype then
+    if is_recursive_type ex.decor then
       castedaddr
     else build_load castedaddr "filledVariant" builder
   (* it's stored anyway, so why not just use the pointer? *)
@@ -854,7 +858,7 @@ and gen_call the_module builder syms lltypes (fname, args) =
   | None -> failwith "BUG: unknown function name in codegen"
   | Some llfunc ->
     let llargs =
-      List.map2 (fun (mut, argexpr) fparam ->
+      List.map2 (fun (mut, (argexpr: typetag expr)) fparam ->
           (* mutable is pass-by-reference; get the variable expr's alloca *)
           if mut then
             match argexpr.e with
@@ -867,7 +871,7 @@ and gen_call the_module builder syms lltypes (fname, args) =
                 | Some alloca ->
                   (* I think this is where I promote. *)
                   (* if varentry.symtype.nullable <> argexpr.decor.nullable then *)
-                  if argexpr.decor.nullable then
+                  if is_option_type argexpr.decor then
                     failwith "Not yet supporting mutable nullable args"
                   else 
                     alloca
@@ -891,7 +895,8 @@ and gen_call the_module builder syms lltypes (fname, args) =
 
 
 (** Generate LLVM code for a statement *)
-let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
+let rec gen_stmt the_module builder lltypes
+    (stmt: (typetag, 'a st_node, 'tt) stmt) =
   let syms = stmt.decor in
   match stmt.st with
   | StmtDecl (varname, _, eopt) -> (
@@ -929,7 +934,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     debug_print ("StmtAssign: Generated RHS expr: " ^ string_of_lltype (type_of expval));
     debug_print ("StmtAssign: Alloca type: " ^ string_of_lltype (type_of alloca));
     (* cases to handle nullable types and pointer casts *)
-    if vetype.nullable = ex.decor.nullable then
+    if is_option_type vetype = is_option_type ex.decor then
       (* indirection level is the same, so just directly assign the value *)
       debug_print ("StmtAssign store: "
                    ^ string_of_llvalue (build_store expval alloca builder))
@@ -962,7 +967,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
         in
         let retval =
           (* If type is opaque, need to return a void pointer. *)
-          if rettype.tclass.opaque then
+          if is_opaque_type rettype then
             (debug_print ("-- Generating opaque return value for " ^ exp_to_string rexp);
              let retvalAddr =
                (* TODO: detect if it's already stored on the heap. How? *)
@@ -999,7 +1004,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
     (* code insertion could add new blocks to the "then" block. *)
     let new_then_bb = insertion_block builder in
     (* elsif generating code *)
-    let gen_elsif (cond, (block: (typetag, 'b) stmt list)) =
+    let gen_elsif (cond, (block: (typetag, 'b, 'tt) stmt list)) =
       (* however, need to insert conditional jump and jump-to-merge later *)
       let cond_bb = append_block context "elsifcond" the_function in
       position_at_end cond_bb builder;
@@ -1072,8 +1077,8 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
       build_alloca (type_of matchval) "matchaddr" builder in
     ignore (build_store matchval matchaddr builder);
     let fieldmap =
-      match PairMap.find_opt (matchexp.decor.modulename,
-                              matchexp.decor.typename) lltypes with
+      match PairMap.find_opt (get_type_modulename matchexp.decor,
+                              get_type_classname matchexp.decor) lltypes with
       | None -> None
       | Some (_, fieldmap) -> Some fieldmap in
     (* Get the conditional value for matching against the case. *)
@@ -1115,7 +1120,7 @@ let rec gen_stmt the_module builder lltypes (stmt: (typetag, 'a st_node) stmt) =
          (* think we don't need to worry about this as long as they're constexprs *)
     in
     (* generate compare and block code, return the block pointers for jumps *)
-    let gen_caseblock caseexp (caseblock: ('ed,'sd) stmt list) =
+    let gen_caseblock caseexp (caseblock: ('ed,'sd,'tt) stmt list) =
       (* however, need to insert conditional jump and jump-to-merge later *)
       let comp_bb = append_block context "casecomp" the_function in
       position_at_end comp_bb builder;
@@ -1272,7 +1277,7 @@ and gen_cond the_module syms lltypes cond thenbb blocksyms builder =
   | _ ->
     let condval = gen_expr the_module builder syms lltypes cond in
     (* If a nullable type, then the condition is to test if it's null *)
-    if cond.decor.nullable then
+    if is_option_type cond.decor then
       let nulltag = build_extractvalue condval 0 "nulltag" builder in
       build_icmp Icmp.Ne
         nulltag (const_int nulltag_type 0) "condres" builder
@@ -1293,7 +1298,7 @@ let default_value ttag =
 
 (** Generate code for a global variable declaration (and constant initializer,
     for now) *)
-let gen_global_decl the_module lltypes (gdecl: ('ed, 'sd) globalstmt) =
+let gen_global_decl the_module lltypes (gdecl: ('ed,'sd,'tt) globalstmt) =
   let syms = gdecl.decor in
   match gdecl.init with
   | Some ex ->
@@ -1311,7 +1316,7 @@ let gen_fdecls the_module lltypes fsyms =
   StrMap.iter (fun _ procentry ->  (* don't need map keys *)
       let rettype =
         let rawRetType = ttag_to_llvmtype lltypes procentry.rettype in
-        if procentry.rettype.tclass.opaque then (
+        if is_opaque_type procentry.rettype then (
           debug_print ("-- Generating opaque return type for "
                        ^ string_of_lltype rawRetType);
           voidptr_type
@@ -1326,12 +1331,12 @@ let gen_fdecls the_module lltypes fsyms =
             else pointer_type ptype *) (* simplifying try *)
             (* make it the pointer type if it's passed mutable *)
             if entry.mut then
-              if entry.symtype.nullable then
+              if is_option_type entry.symtype then
                 (* If nullable we want a nullable pointer to the inner type. *)
                 struct_type context [|
                     nulltag_type;
                     pointer_type (Lltenv.find_class_lltype
-                                    entry.symtype.tclass lltypes)
+                                    (get_type_class entry.symtype) lltypes)
                   |]
               else
                 pointer_type ptype
@@ -1374,8 +1379,8 @@ let gen_proc the_module builder lltypes proc =
              let paramentry = List.nth (fentry.fparams) i
              (* cast to the specific object pointer type if it's opaque but known type *)
              (* possibly cannot be done with just llvm info *)
-             in if paramentry.symtype.tclass.opaque
-                && paramentry.symtype.tclass.kindData <> Hidden then ( 
+             in if is_opaque_type paramentry.symtype
+                && (get_type_class paramentry.symtype).kindData <> Hidden then ( 
                debug_print ("-- Casting opaque argument " ^ varname ^ " to concrete type");
                build_bitcast (param llfunc i)
                  (pointer_type (ttag_to_llvmtype lltypes paramentry.symtype))
@@ -1405,7 +1410,7 @@ let gen_proc the_module builder lltypes proc =
            (* at the LLVM level doesn't work here either. Why?
               Seems like return_type includes too much information *)
            (* (const_null (return_type (type_of llfunc))) *)
-           if fentry.rettype.tclass.opaque then
+           if is_opaque_type fentry.rettype then
              (* WAT! It works if I call it twice? *)
              const_null (return_type (return_type (type_of llfunc)))
            else const_null  (ttag_to_llvmtype lltypes fentry.rettype) in

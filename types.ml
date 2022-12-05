@@ -138,6 +138,10 @@ let get_type_classname = function
   | Typevar _ -> failwith ("Error: get_type_classname called on generic type")
   | Namedtype tinfo -> tinfo.tclass.classname
 
+let get_type_modulename = function
+  | Typevar _ -> failwith ("Error: get_type_modulename called on generic type")
+  | Namedtype tinfo -> tinfo.modulename
+                         
 let get_type_class = function
   | Typevar _ -> failwith ("Error: get_type_class called on generic type")
   | Namedtype tinfo -> tinfo.tclass
@@ -210,6 +214,15 @@ let is_variant_type = function
       | Variant _ -> true
       | _ -> false
     )
+
+let is_opaque_type = function
+  | Typevar _ -> false
+  | Namedtype tinfo -> (
+      match tinfo.tclass.kindData with
+      | Hidden -> true
+      | _ -> false
+    )
+
 
 let is_option_type = function
   | Typevar _ -> false (* I guess *)

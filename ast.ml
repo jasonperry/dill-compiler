@@ -365,7 +365,7 @@ and case_to_string (matchexp, caseblocks, elseopt) =
 
 (* let interpret_params plist =  *)
 
-let procdecl_to_string (pdecl: ('ed, 'sd) procdecl) =
+let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
   (if pdecl.export then "export " else "")
   ^ "proc " ^ pdecl.name ^ "("
   ^ String.concat "," (
@@ -398,11 +398,11 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
   ^ "end " ^ dmod.name ^ "\n"
 
 (** This is creating the actual interfaces...so it's important! *)
-let modspec_to_string (mspec: ('ed, 'sd, 'tt) module_spec) =
+let modspec_to_string (mspec: ('ed, 'sd, 't typeExpr) module_spec) =
   "modspec " ^ mspec.name ^ " begin \n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
-        fun s (gdecl: ('ed, 'sd) globaldecl) ->
+        fun s (gdecl: ('sd, 't typeExpr) globaldecl) ->
         s ^ "var " ^ gdecl.varname ^ ": "
         ^ typeExpr_to_string gdecl.typeexp ^ ";\n")
       "" mspec.globals
