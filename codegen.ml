@@ -83,8 +83,10 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
       | ("", "String") -> pointer_type (i8_type context), StrMap.empty
       | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
       | _ ->
-        (* Process non-primitive type. First, create lltype to fill in later *)
+        (* Process non-primitive type.
+           First, create named struct lltype to fill in later *)
         let context = module_context the_module in
+        (* guess we always use the qualified type name in llvm *)
         let typename = cdata.in_module ^ "::" ^ cdata.classname in
         let llstructtype =
           match type_by_name the_module typename with
@@ -105,18 +107,18 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
         let ftypeinfo = fielddata |>
           List.mapi (fun i (fieldname, ftyopt) ->
               match ftyopt with
-              (* why would this ever be none? *)
+                (* None only for variant types? *)
               | None -> (fieldname, void_type, i, void_ttag)
-              | Some fty -> (
-                  (* todo: change to fty.tclass.classname and test *)
-                  let mname, tname = fty.modulename, fty.typename in
+              | Some (Typevar tv) -> (fieldname, voidptr_type, i, Typevar tv)
+              | Some (Namedtype tinfo as fty) ->
+                  let mname, tname = tinfo.modulename, tinfo.tclass.classname in
                   let basetype = match Lltenv.find_lltype_opt
                                          (mname, tname) lltypes with
                   | Some basetype -> basetype (* rectype is already pointed *)
                   (* In case the field's lltype isn't generated yet, either recurse
                      or just fetch the named lltype if it's a recursive type *)
                   | None ->
-                    if fty.tclass.rectype then
+                    if tinfo.tclass.rectype then
                       let ftypename = mname ^ "::" ^ tname in
                       match type_by_name the_module ftypename with
                       | Some llfieldtype -> pointer_type llfieldtype
@@ -139,16 +141,16 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                   (* check for non-base types and add them if needed. *)
                   (* currently allows an array of nullable but no nullable arrays *)
                   let ty1 =
-                    if fty.nullable then
+                    if is_option_type fty then
                       struct_type context [| nulltag_type; basetype |]
                     else basetype in
                   let fieldlltype =
-                    if fty.array then
+                    if is_array_type fty then
                       struct_type context
                         [| int_type; pointer_type (array_type ty1 0) |]
                     else ty1 in
                   (fieldname, fieldlltype, i, fty))
-            ) in
+            in
         (* Create the mapping from field names to offset and type. *)
         (* do we still need the high-level type? maybe for lookup info. *)
         let fieldmap =
@@ -210,24 +212,28 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
     )
 
 (** Use a type tag to generate the LLVM type from the base type. *)
-let ttag_to_llvmtype lltypes ttag =
-  (* find_opt only for debugging. *)
-  (* I think we will look up the field offsets elsewhere *)
-  match Lltenv.find_lltype_opt (ttag.modulename, ttag.typename) lltypes with
-  | None -> failwith ("BUG: no lltype found for " ^ ttag.modulename
-                      ^ "::" ^ ttag.typename)
-  | Some basetype ->
-     let ttag_with_null =
-       if ttag.nullable then
-         (* (debug_print ("Generating struct for nullable type: "
+let ttag_to_llvmtype lltypes ty = match ty with
+  | Typevar _ -> failwith "Generic type codegen not supported yet"
+  | Namedtype tinfo -> (
+    (* find_opt only for debugging. *)
+      match Lltenv.find_lltype_opt (tinfo.modulename, tinfo.tclass.classname)
+              lltypes with
+      | None -> failwith ("BUG: no lltype found for " ^ tinfo.modulename
+                          ^ "::" ^ tinfo.tclass.classname)
+      | Some basetype ->
+        let ttag_with_null =
+          if is_option_type ty then
+            (* (debug_print ("Generating struct for nullable type: "
                       ^ typetag_to_string ttag);  *)
-         struct_type context [| nulltag_type; basetype |]
-       else basetype in
-     if ttag.array then
-       struct_type context
-         [| int_type; pointer_type (array_type ttag_with_null 0) |]
-     else
-       ttag_with_null
+            struct_type context [| nulltag_type; basetype |]
+          else basetype in
+        if is_array_type ty then
+          struct_type context
+            [| int_type; pointer_type (array_type ttag_with_null 0) |]
+        else
+          (* TODO: figure out what to do with type variables (recursive) *)
+          ttag_with_null
+    )
 
 
 (** Wrap a value in an outer type. Used for assigning, passing or
@@ -275,8 +281,11 @@ let build_gc_malloc eltType name the_module builder =
 
 (** Generate an equality comparison. This could get complex. *)
 let rec gen_eqcomp val1 val2 valty lltypes builder =
-  if is_struct_type valty then
-    let fields = get_fields valty.tclass in
+  match valty with
+  | Typevar _ -> failwith "!BUG (codegen): can't compare generic types for equality"
+  | Namedtype _ -> 
+    if is_struct_type valty then
+      let fields = get_type_fields valty in
     let rec checkloop i prevcmp =
       (* generate next field compare value, generate AND with previous *)
       (* later: optimize to not need to generate a const starting value *)
@@ -307,7 +316,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
     in
     checkloop 0 (const_int bool_type 1)
   else if is_variant_type valty then (
-    let variants = get_variants valty.tclass in
+    let variants = get_type_variants valty in
     (* check tag, then load and cast the variable type if it exists and 
        compare that. *)
     let var1tag =
@@ -1407,7 +1416,8 @@ let gen_proc the_module builder lltypes proc =
 
 
 (** Generate LLVM code for an analyzed module. *)
-let gen_module tenv topsyms layout (modtree: (typetag, 'a st_node) dillmodule) =
+let gen_module tenv topsyms layout
+    (modtree: (typetag, 'a st_node, typetag) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   (* Llvm.set_target_triple ttriple the_module; *)
   Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) the_module;

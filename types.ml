@@ -46,20 +46,6 @@ and typetag =
   | Namedtype of namedtypeinfo
 
       
-(* old, pre-generic definition. *)
-(* and typetag = {
-    (* Later: function types? Just a pair of types? *)
-    modulename: string; 
-    typename: string;  (* Is this redundant? Just use the classdata? *)
-    (* must be mutable so it can be updated in recursive definitions. *)
-    mutable tclass: classData;
-    (* Will I need an "unresolved" typetag for generics? *)
-    paramtypes: typetag list; (* resolved generics. *)
-    array: bool;   (* array type *)
-    (* size: int;  (* probably not here, might need a recursive flag *) *)
-    nullable: bool;
-   } *)
-
 (** Generate a type for a typetag for a class (and later, specify generics)
   * No, we don't specify, right? But need to generate variables. *)
 let gen_ttag (classdata: classData) argtypes (* concrete or names from context *) =
@@ -208,9 +194,13 @@ let is_mutable_type = function
 
 (* These are useful b/c you can't just check the fields to see if
  * the "outermost" type is struct or variant *)
-let is_struct_type ttag = match ttag.tclass.kindData with
-  | Struct _ -> true
-  | _ -> false
+let is_struct_type = function
+  | Typevar _ -> false
+  | Namedtype tinfo -> (
+      match tinfo.tclass.kindData with
+      | Struct _ -> true
+      | _ -> false
+    )
 
 (* Hmm, should I make a nullable count as a variant type here? *)
 let is_variant_type = function

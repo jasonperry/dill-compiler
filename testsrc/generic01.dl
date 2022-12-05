@@ -7,7 +7,7 @@ module generic01 begin
 proc (t) nth(arr: t[], n: Int) => t
 begin
    (* too complicated for a first example? an array is a type *)
-   return t[n];
+   return arr[n];
 end nth
 
 export proc main()
