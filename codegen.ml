@@ -215,12 +215,12 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
 let ttag_to_llvmtype lltypes ty = match ty with
   | Typevar _ -> failwith "Generic type codegen not supported yet"
   | Namedtype tinfo -> (
-    (* find_opt only for debugging. *)
       match Lltenv.find_lltype_opt (tinfo.modulename, tinfo.tclass.classname)
               lltypes with
       | None -> failwith ("BUG: no lltype found for " ^ tinfo.modulename
                           ^ "::" ^ tinfo.tclass.classname)
       | Some basetype ->
+        (* But now that Option is a class, it is the basetype *)
         let ttag_with_null =
           if is_option_type ty then
             (* (debug_print ("Generating struct for nullable type: "
@@ -1233,7 +1233,7 @@ let rec gen_stmt the_module builder lltypes
     (* Now, add the conditional branch in the test block. *)
     position_at_end test_bb builder;
     ignore (build_cond_br condval loop_bb merge_bb builder);
-    position_at_end merge_bb builder    
+    position_at_end merge_bb builder
   )
   
   | StmtCall {decor=_; e=ExpCall (fname, args)} ->

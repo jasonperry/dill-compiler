@@ -22,6 +22,8 @@ let base_tenv =
   |> PairMap.add ("", bool_class.classname) bool_class
   |> PairMap.add ("", null_class.classname) null_class
   |> PairMap.add ("", string_class.classname) string_class
+  |> PairMap.add ("", option_class.classname) option_class
+  |> PairMap.add ("", array_class.classname) array_class
 
 let string_of_tenv tenv =
   String.concat ", " (

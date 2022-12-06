@@ -734,7 +734,7 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
         match check_expr syms tenv ~thint:(Some lvalty) e with
         | Error err -> Error [err]
         | Ok ({e=_; decor=ettag} as te) ->
-          debug_print "RHS of assignment checked OK. Types:";
+          debug_print "#AN: RHS of assignment checked OK. Types:";
           debug_print ("  " ^ typetag_to_string lvalty);
           debug_print ("  " ^ typetag_to_string ettag);
           (* value-assignee typecheck *)

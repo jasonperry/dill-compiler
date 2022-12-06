@@ -273,9 +273,10 @@ let subtype_match (subtag: typetag) (supertag: typetag) =
   (* Only other case for now: match if supertype is nullable *)
   || (match supertag with
       | Namedtype tinfo -> tinfo.tclass = option_class &&
-                           types_equal (List.hd tinfo.typeargs) subtag
+                           (types_equal (List.hd tinfo.typeargs) subtag
+                            || (get_type_class subtag) = null_class)
       | _ -> false)
-(* Specific type is one of the types in a union. This doesn't apply anymore. *)
+  (* Specific type is one of the types in a union. This doesn't apply anymore. *)
   (* || List.exists ((=) subtag) supertag.tclass.variants *)
 
 (** Match an argument type with a possibly more generic type.
