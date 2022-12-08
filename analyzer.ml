@@ -273,7 +273,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                       value="Comparison operator not valid for recursive types"
                     }
                   else
-                  Ok {e=ExpBinop (e1, oper, e2); decor=bool_ttag}
+                    Ok {e=ExpBinop (e1, oper, e2); decor=bool_ttag}
                 | OpAnd | OpOr when ty1 <> bool_ttag ->
                   if ty1 <> bool_ttag then
                     Error {
@@ -323,18 +323,21 @@ and match_params paramsyms (args: (bool * typetag expr) list) =
   | ([], []) -> Ok ()
   | (_, []) | ([], _) ->
     Error "Argument number mismatch"
-  | (pentry::prest, (argmut, argexp)::arest) ->
+  | (pentry::prest, (argmut, argexp)::arest) -> (
     (* Later, this could inform code generation of template types *)
-    if not (subtype_match argexp.decor pentry.symtype)
-    then Error ("type mismatch for " ^ pentry.symname
-                ^ "; expected " ^ typetag_to_string pentry.symtype
-                ^ ", found " ^ typetag_to_string (argexp.decor))
-    else (
+    (* TODO: keep the record of type var mappings and check for
+       consistency. Also, do we generate anything codegen could use? *)
+    match ((*subtype_match*) unify_match argexp.decor pentry.symtype) with
+    | Error (argtag, paramtag) ->
+      Error ("Type mismatch: cannot unify type "
+             ^ typetag_to_string argtag ^ " with " ^ typetag_to_string paramtag
+             ^ " for parameter " ^ pentry.symname)
+    | Ok _ -> 
       if pentry.mut <> argmut
-      then Error ("Mutability flag mismatch for parameter "
-                  ^ pentry.symname)
+      then Error ("Mutability flag mismatch for parameter " ^ pentry.symname)
       else match_params prest arest
-    )
+      (* TODO: We also have to fix the return type for this call! *)
+  )
 
 (** Procedure call check, used for both exprs and stmts. *)
 and check_call syms tenv (fname, args) =
@@ -462,10 +465,10 @@ and check_variant syms tenv ex ~declvar thint =
                        value=("Cannot determine type of variant expression " ^
                               exp_to_string ex)}
       | Some ty -> (
-        (* 1. the variant type exists *)
-        let tname = get_type_classname ty in
-        let cdata = PairMap.find (mname, tname) tenv in
-        let variants = get_type_variants ty in
+          (* 1. the variant type exists *)
+          let tname = get_type_classname ty in
+          let cdata = PairMap.find (mname, tname) tenv in
+          let variants = get_type_variants ty in
           (* 2. vname is a variant of it *)
           match List.find_opt (fun (vstr, _) -> vstr = vname) variants with
           | None ->

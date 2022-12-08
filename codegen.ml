@@ -220,11 +220,11 @@ let ttag_to_llvmtype lltypes ty = match ty with
       | None -> failwith ("BUG: no lltype found for " ^ tinfo.modulename
                           ^ "::" ^ tinfo.tclass.classname)
       | Some basetype ->
+        (* Will I want to reconstruct it from the class if generic types
+           are concretized? *) 
         (* But now that Option is a class, it is the basetype *)
         let ttag_with_null =
           if is_option_type ty then
-            (* (debug_print ("Generating struct for nullable type: "
-                      ^ typetag_to_string ttag);  *)
             struct_type context [| nulltag_type; basetype |]
           else basetype in
         if is_array_type ty then
@@ -239,7 +239,7 @@ let ttag_to_llvmtype lltypes ty = match ty with
 (** Wrap a value in an outer type. Used for assigning, passing or
     returning a value for a nullable type *)
 let promote_value the_val outertype builder =
-  debug_print ("promote_value " ^ string_of_lltype (type_of the_val)
+  debug_print ("#CG: promote_value " ^ string_of_lltype (type_of the_val)
                ^ " to type " ^ string_of_lltype outertype);
   (* so far, promotion only to nullable. *)
   (* should put in a new way to check since it's using the lltype now? *)
