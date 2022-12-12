@@ -319,25 +319,34 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
 (** Helper for check_call to match a formal with actual parameter list *)
 (* Should I embed this in check_call? *)
 and match_params paramsyms (args: (bool * typetag expr) list) =
-  match (paramsyms, args) with
-  | ([], []) -> Ok ()
-  | (_, []) | ([], _) ->
-    Error "Argument number mismatch"
-  | (pentry::prest, (argmut, argexp)::arest) -> (
-    (* Later, this could inform code generation of template types *)
-    (* TODO: keep the record of type var mappings and check for
-       consistency. Also, do we generate anything codegen could use? *)
-    match ((*subtype_match*) unify_match argexp.decor pentry.symtype) with
-    | Error (argtag, paramtag) ->
-      Error ("Type mismatch: cannot unify type "
-             ^ typetag_to_string argtag ^ " with " ^ typetag_to_string paramtag
-             ^ " for parameter " ^ pentry.symname)
-    | Ok _ -> 
-      if pentry.mut <> argmut
-      then Error ("Mutability flag mismatch for parameter " ^ pentry.symname)
-      else match_params prest arest
-      (* TODO: We also have to fix the return type for this call! *)
-  )
+  let rec accloop paramsyms (args: (bool * typetag expr) list) accmap = 
+    match (paramsyms, args) with
+    | ([], []) -> Ok accmap
+    | (_, []) | ([], _) ->
+      Error ("Argument number mismatch: procedure expects "
+             ^ string_of_int (List.length paramsyms) ^ " arguments, got "
+             ^ string_of_int (List.length args))
+    (* may not make sense to recurse on the outer function anymore *)
+    | (pentry::prest, (argmut, argexp)::arest) -> (
+        (* Anything need to be kept here to inform code generation? *)
+        match ((*subtype_match*) unify_match argexp.decor pentry.symtype) with
+        | Error (argtag, paramtag) ->
+          Error ("Cannot unify type " ^ typetag_to_string argtag
+                 ^ " with " ^ typetag_to_string paramtag
+                 ^ " for parameter " ^ pentry.symname)
+        | Ok tvarmap -> (* probably have to surround with a fold *)
+          if pentry.mut <> argmut
+        then Error ("Mutability flag mismatch for parameter " ^ pentry.symname)
+        else
+          (* merge map with accumulated map *)
+          match merge_tvarmaps tvarmap accmap with
+          | Error (tag1, tag2) ->
+            Error ("Inconsistent type variable usage between "
+                   ^ typetag_to_string tag1 ^ " and "
+                   ^ typetag_to_string tag2)
+          | Ok mergedmap -> accloop prest arest mergedmap
+      )
+  in accloop paramsyms args StrMap.empty
 
 (** Procedure call check, used for both exprs and stmts. *)
 and check_call syms tenv (fname, args) =
@@ -369,7 +378,7 @@ and check_call syms tenv (fname, args) =
         match match_params proc.fparams args_typed with 
         | Error estr -> 
           Error ("Argument match failure for " ^ fname ^ ": " ^ estr)
-        | Ok () ->
+        | Ok tvarmap -> 
           (* trying putting mutability checking here, after all other checks. *)
           let rec check_mutability = function
             | (mut, argexp)::argsrest -> (
@@ -383,8 +392,7 @@ and check_call syms tenv (fname, args) =
                       (* FIX: exp_to_string won't work with array element refs. *)
                       Symtable.findvar (exp_to_string argexp) syms in
                     if not (varentry.var && varentry.mut)
-                    then Error ("Variable expression "
-                                ^ exp_to_string argexp
+                    then Error ("Variable expression " ^ exp_to_string argexp
                                 ^ "cannot be passed mutably")
                     else
                       check_mutability argsrest
@@ -396,8 +404,15 @@ and check_call syms tenv (fname, args) =
           in
           match check_mutability args with
           | Error err -> Error err
-          | Ok _ ->
-            Ok {e=ExpCall (fname, args_typed); decor=proc.rettype}
+          | Ok () ->
+            (* replace return type with specified version if any *)
+            (* But wait: how will we remember to cast it in codegen if it is
+               a generic return type? Probably compare it to the proc return type *)
+            let newrettype = specify_type tvarmap proc.rettype
+            in
+            debug_print ("#AN: specified return type: "
+                         ^ typetag_to_string newrettype);
+            Ok {e=ExpCall (fname, args_typed); decor=newrettype}
     )
 
 

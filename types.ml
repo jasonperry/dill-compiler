@@ -279,10 +279,39 @@ let subtype_match (subtag: typetag) (supertag: typetag) =
   (* Specific type is one of the types in a union. This doesn't apply anymore. *)
   (* || List.exists ((=) subtag) supertag.tclass.variants *)
 
+(** Merge two type-variable-to-type maps, reporting incompatibility errors *)
+let merge_tvarmaps tvm1 tvm2 = (* union-with? *)
+  StrMap.fold (fun k v acc ->
+      (* check each binding of tvm1 for duplicates.
+         Eliminate them; otherwise, add to tvm2 *)
+      match acc with
+      | Error e -> Error e
+      | Ok acc -> (
+          match StrMap.find_opt k acc with
+          | Some ty2 ->  (* has to match exactly *)
+            if not (types_equal ty2 v) then Error (ty2, v)
+            else (Ok acc)
+                      | None -> Ok (StrMap.add k v acc)
+        )
+    ) tvm1 (Ok tvm2)
+
+(** Fill in a typetag with more specific types from a map, if possible *)
+let rec specify_type tvarmap ttag =
+  match ttag with
+  | Typevar tvar -> (
+      match StrMap.find_opt tvar tvarmap with
+      | Some spectag -> spectag
+      | None -> ttag
+    )
+  | Namedtype tinfo ->
+    let newtargs = List.map (specify_type tvarmap) tinfo.typeargs in
+    Namedtype {tinfo with typeargs=newtargs}
+
 (** Match an argument type with a possibly more generic type.
-    Return the mapping of parameter type variables to types.
-    Those have to be checked for equality among funargs. *)
+    Return the mapping of parameter type variables to types.  *)
 let rec unify_match argtag paramtag =
+  debug_print ("#TY: attempting to unify type " ^ typetag_to_string argtag
+               ^ " with " ^ typetag_to_string paramtag);
   match (argtag, paramtag) with
   (* Anything unifies with just a variable. *)
   | (_, Typevar tv2) ->
@@ -292,7 +321,7 @@ let rec unify_match argtag paramtag =
     Error (argtag, paramtag)
   | (Namedtype tinfo1, Namedtype tinfo2) ->
     if not (tinfo1.modulename = tinfo2.modulename
-            && tinfo2.tclass.classname = tinfo2.tclass.classname)
+            && tinfo1.tclass.classname = tinfo2.tclass.classname)
     then Error (argtag, paramtag)
     else
       (* recursively match type arguments *)
@@ -309,18 +338,6 @@ let rec unify_match argtag paramtag =
             | Error e -> Error e (* bubble errors up *)
             | Ok accmap -> 
               let resmap = Result.get_ok resmap in
-              (* check bindings of current map (resmap) for duplicates.
-                 Eliminate them; otherwise, add to the acc *)
-              StrMap.fold (fun k v acc2 ->
-                  match acc2 with
-                  | Error e -> Error e
-                  | Ok acc2 -> (
-                      match StrMap.find_opt k acc2 with
-                      | Some ty2 ->  (* has to match exactly *)
-                        if not (types_equal ty2 v) then Error (ty2, v)
-                        else (Ok acc2)
-                      | None -> Ok (StrMap.add k v acc2)
-                    )
-                ) resmap (Ok accmap)
+              merge_tvarmaps resmap accmap
           ) (Ok (StrMap.empty)) reslist
       

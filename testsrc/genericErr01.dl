@@ -1,0 +1,21 @@
+** Generic with type variable mismatch
+
+module genericErr01 begin
+
+open stdio;
+
+proc (t,u) second(i: t, j: u) => u
+begin
+   return j;  (* j is type u, not t *)
+end second
+
+export proc main()
+begin
+   var x: Int = 42;
+   var y: Float = 43.0;
+   (* should give Int/Float type error *)
+   printInt(second(x, y)); 
+   return;
+end main
+
+end genericErr01
