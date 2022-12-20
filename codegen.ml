@@ -213,7 +213,8 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
 
 (** Use a type tag to generate the LLVM type from the base type. *)
 let ttag_to_llvmtype lltypes ty = match ty with
-  | Typevar _ -> failwith "Generic type codegen not supported yet"
+  | Typevar _ ->
+    voidptr_type
   | Namedtype tinfo -> (
       match Lltenv.find_lltype_opt (tinfo.modulename, tinfo.tclass.classname)
               lltypes with
@@ -613,8 +614,13 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       (* only load if primitive type? Oh, it breaks function signatures that 
        * expect value types... and causes other crashes.*)
       (* if is_primitive_type ex.decor then  *)
-      debug_print "ExpVar: varexp alloca created";
-      let the_val = build_load alloca (varname ^ "-expr") builder in
+      debug_print "#CG: ExpVar: varexp alloca created";
+      let the_val =
+        (* only load if it's a value type *)
+        if is_reference_type ex.decor then
+          alloca
+        else
+          build_load alloca (varname ^ "-expr") builder in
       (* determine if cast needed - also have to check nullable *)
       (* feeling like it's the wrong place for the cast *)
       (* let exptype = ttag_to_llvmtype lltypes ex.decor in
@@ -879,12 +885,28 @@ and gen_call the_module builder syms lltypes (fname, args) =
               )
             | _ -> failwith "BUG: non-var mutable argument in codegen"
           else (
-            debug_print "gen_call: generating argument expression";
+            debug_print "#CG gen_call: generating argument expression";
             let argval = gen_expr the_module builder syms lltypes argexpr in
-            (* Need to wrap value if passing into a union (nullable) type *)
-            if argexpr.decor = fparam.symtype then (
-              debug_print "gen_call: correct type argument value generated";
+            if types_equal argexpr.decor fparam.symtype then (
+              debug_print "#CG gen_call: exact match argument type";
               argval )
+            (* if arg type is generic. Can I do something simpler than unify
+               here ? *)
+            else if is_generic_type fparam.symtype then (
+              (* case of both generic, just different type variable *)
+              if is_generic_type argexpr.decor then argval
+              else (
+                if is_pointer_type (type_of argval) then (
+                  debug_print "#CG gen_call: passing pointer to generic";
+                  build_bitcast argval voidptr_type "genarg" builder
+                ) else (
+                  debug_print "#CG gen_call: storing value for generic arg";
+                  let argaddr =
+                    build_alloca (type_of argval) "argaddr" builder in
+                  let _ = build_store argval argaddr builder in 
+                  build_bitcast argaddr voidptr_type "genarg" builder
+                )))
+            (* Remaining case is union/nullable type; promote value *)
             else (
               debug_print "gen_call: promoting arg value";
               let nullabletype = ttag_to_llvmtype lltypes fparam.symtype in

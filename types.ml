@@ -132,6 +132,7 @@ let is_recursive_type = function
   | Typevar _ -> failwith ("Error: generic type not known if recursive")
   | Namedtype tinfo -> tinfo.tclass.rectype
 
+let is_reference_type tt = is_generic_type tt || is_recursive_type tt
 
 (** Fetch classname from a concrete type. Used for tenv lookup. *)
 let get_type_classname = function
