@@ -850,7 +850,25 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpCall (fname, args) ->
     let (callee, llargs) = 
       gen_call the_module builder syms lltypes (fname, args) in
-    build_call callee llargs "calltmp" builder
+    let retval = build_call callee llargs "calltmp" builder in
+    (* Need to potentially load/cast if function is generic.
+       Promotion to nullable taken care of in assignment, because
+       that's the only place that can happen? Or have I discovered
+       a missing case? *)
+    debug_print ("#CG: matching to return type " ^ typetag_to_string ex.decor);
+    let rettype = ttag_to_llvmtype lltypes ex.decor in
+    if rettype <> (type_of retval) then
+      if is_pointer_type (type_of retval) then
+        if is_pointer_type rettype then
+          build_bitcast retval rettype "retcast" builder
+        else
+          let retptr =
+            build_bitcast retval (pointer_type rettype) "retcast" builder in
+          build_load retptr "retval" builder
+      else
+        failwith "BUG: expected pointer (generic) type for return val"
+    (* but I still have to cast it to the lltype *)
+    else retval
 
   | ExpNullAssn (_, _, _, _) ->
     failwith "BUG: null assign found outside condition"
@@ -897,7 +915,7 @@ and gen_call the_module builder syms lltypes (fname, args) =
               if is_generic_type argexpr.decor then argval
               else (
                 if is_pointer_type (type_of argval) then (
-                  debug_print "#CG gen_call: passing pointer to generic";
+                  debug_print "#CG gen_call: casting pointer to generic arg";
                   build_bitcast argval voidptr_type "genarg" builder
                 ) else (
                   debug_print "#CG gen_call: storing value for generic arg";
@@ -1262,11 +1280,12 @@ let rec gen_stmt the_module builder lltypes
     debug_print "StmtCall: entering...";
     let (callee, llargs) = 
       gen_call the_module builder syms lltypes (fname, args) in
-    debug_print "StmtCall: generated arguments.";
+    debug_print "#CG StmtCall: generated argument llvalues.";
+    (* Call as a statement; return value ignored *)
     ignore (build_call callee llargs "" builder)
+      
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
-
-  | StmtBlock _ -> failwith "not implemented"
+  | StmtBlock _ -> failwith "nested block codegen not implemented"
 
 
 (** Generate code for a conditional expression, including possibly null assignment *)
