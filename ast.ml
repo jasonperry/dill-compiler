@@ -366,8 +366,10 @@ and case_to_string (matchexp, caseblocks, elseopt) =
 (* let interpret_params plist =  *)
 
 let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
-  (if pdecl.export then "export " else "")
-  ^ "proc " ^ pdecl.name ^ "("
+  (if pdecl.export then "export " else "") ^ "proc "
+  ^ (if (List.length pdecl.typeparams) > 0
+     then "(" ^ String.concat "," pdecl.typeparams ^ ") " else "")
+  ^ pdecl.name ^ "("
   ^ String.concat "," (
         List.map (fun (mut, varname, vartype) ->
             (if mut then "#" else "")

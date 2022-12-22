@@ -1,0 +1,21 @@
+** Generic with type variable redeclaration
+
+module genericErr01 begin
+
+open stdio;
+
+proc (t,t) second(i: t, j: t) => t
+begin
+   return j;  
+end second
+
+export proc main()
+begin
+   var x: Int = 42;
+   var y: Float = 43.0;
+   (* should give Int/Float type error *)
+   printInt(second(x, y)); 
+   return;
+end main
+
+end genericErr01

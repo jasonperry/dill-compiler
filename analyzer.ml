@@ -1232,8 +1232,9 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc typeExpr) procdecl)
              List.iter (fun param ->
                  (* print_endline ("Adding param symbol " ^ param.symname); *)
                  Symtable.addvar procscope param.symname param) paramentries;
-             Ok ({name=pdecl.name; typeparams=[]; params=checkedparams;
-                  rettype=rttag; export=pdecl.export; decor=procscope},
+             Ok ({name=pdecl.name; typeparams=pdecl.typeparams;
+                  params=checkedparams; rettype=rttag; export=pdecl.export;
+                  decor=procscope},
                  procentry)
            ))
 
