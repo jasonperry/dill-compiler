@@ -134,7 +134,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
             (* Now need to do proper field checking *)
             (* first, make sure var is array type if has index expr. *)
           if Option.is_some ixopt && not (is_array_type entry.symtype) then
-            Error {loc=ex.decor; value="Index expression on non-array type"
+            Error {loc=ex.decor; value="Index expression on non-array type "
                                        ^ typetag_to_string entry.symtype}
           else 
             (* first, check index expression if any *)

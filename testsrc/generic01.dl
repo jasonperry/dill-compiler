@@ -2,6 +2,8 @@
 
 module generic01 begin
 
+open stdio;
+   
 (* smart syntax highlighting would highlight the t as well (but a different
   color from the concrete types. *)
 proc (t) nth(arr: t[], n: Int) => t

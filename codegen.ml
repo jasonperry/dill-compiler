@@ -115,8 +115,9 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                   let basetype = match Lltenv.find_lltype_opt
                                          (mname, tname) lltypes with
                   | Some basetype -> basetype (* rectype is already pointed *)
-                  (* In case the field's lltype isn't generated yet, either recurse
-                     or just fetch the named lltype if it's a recursive type *)
+                  (* In case the field's lltype isn't generated yet, either
+                     recurse or just fetch the named lltype if it's a
+                     recursive type *)
                   | None ->
                     if tinfo.tclass.rectype then
                       let ftypename = mname ^ "::" ^ tname in
@@ -225,6 +226,7 @@ let ttag_to_llvmtype lltypes ty = match ty with
            are concretized? *) 
         (* But now that Option is a class, it is the basetype *)
         let ttag_with_null =
+          (* Option types are a 2-element struct of tag and object *)
           if is_option_type ty then
             struct_type context [| nulltag_type; basetype |]
           else basetype in
@@ -276,14 +278,16 @@ let build_gc_malloc eltType name the_module builder =
   match lookup_function "GC_malloc" the_module with
   | None -> failwith "BUG: GC_malloc llvm function not found"
   | Some llmalloc ->
-    let dataptr = build_call llmalloc [|size_of eltType|] "mallocbytes" builder in
+    let dataptr = build_call llmalloc [|size_of eltType|] "mallocbytes" builder
+    in
     build_bitcast dataptr (pointer_type eltType) name builder
   
 
 (** Generate an equality comparison. This could get complex. *)
 let rec gen_eqcomp val1 val2 valty lltypes builder =
   match valty with
-  | Typevar _ -> failwith "!BUG (codegen): can't compare generic types for equality"
+  | Typevar _ ->
+    failwith "!BUG (codegen): can't compare generic types for equality"
   | Namedtype _ -> 
     if is_struct_type valty then
       let fields = get_type_fields valty in
@@ -1155,9 +1159,9 @@ let rec gen_stmt the_module builder lltypes
            (* gen_expr the_module builder syms lltypes caseexp in *)
          (* maybe a gen_compare? *)
          gen_eqcomp matchval caseval matchexp.decor lltypes builder
-         (* what if it's an ExpCall? Have to see if the return value is nullable *)
+         (* what if it's an ExpCall? Have to see if return value is nullable *)
          (* expCall's decor is the return type, right? *)
-         (* think we don't need to worry about this as long as they're constexprs *)
+         (* don't need to worry about this as long as they're constexprs? *)
     in
     (* generate compare and block code, return the block pointers for jumps *)
     let gen_caseblock caseexp (caseblock: ('ed,'sd,'tt) stmt list) =

@@ -4,7 +4,7 @@ module generic02 begin
 
 open stdio;
 
-proc (t) second(i: t, j: t) => t
+proc (t, u) second(i: t, j: u) => u
 begin
    return j;
 end second
@@ -12,9 +12,8 @@ end second
 export proc main()
 begin
    var x: Int = 42;
-   var y: Int = 43;
-   (* call and return have to cast in codegen *)
-   printInt(second(x, y)); 
+   var y: Float = 43.0;
+   printFloat(second(x, y)); 
    return;
 end main
 
