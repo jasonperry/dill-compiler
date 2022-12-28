@@ -1367,8 +1367,17 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                   mut=fdecl.mut;
                   fieldtype = Namedtype tinfo
                   } in check_fields rest (finfo::acc)
-              | Ok (Typevar _) ->
-                 failwith "Generics in type declarations not supported yet."
+              | Ok (Typevar tv) -> (
+                match Symtable.findtvar_opt tv syms with
+                | None ->
+                   Error [{loc=fdecl.decor;
+                           value=("Undeclared type variable " ^ tv)}]
+                | Some _ ->
+                   let finfo = {
+                       fieldname=fdecl.fieldname; priv=fdecl.priv;
+                       mut=fdecl.mut; (* Generic fields can be reassigned, right? *)
+                       fieldtype = Typevar tv
+                     } in check_fields rest (finfo::acc))
        in 
        (match check_fields fields [] with
         | Error e -> Error e
