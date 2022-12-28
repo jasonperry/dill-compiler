@@ -138,9 +138,14 @@ openStmt:
   | OPEN error
     { raise (SyntaxError ($loc($2), "Invalid module name in import")) }
 
+(* Type declaration in modspec, may or may not have a body *)
 typedecl:
   | TYPE tname=IDENT_UC td=typedeclBody
-    { {td with typename=tname} }
+    tps=option(delimited(LPAREN, separated_nonempty_list(COMMA, IDENT_LC), RPAREN))
+    { {td with typename=tname;
+	       typeparams=(match tps with
+			   | Some tps -> tps
+			   | None -> [])} }
   | TYPE error
     { raise (SyntaxError ($loc, "Invalid type identifier")) }
 
@@ -149,12 +154,14 @@ typedeclBody:
   | SEMI
     { {typename="";
        kindinfo=Hidden;
+       typeparams=[];
        rectype=false;
        opaque=true;
        decor=$loc}
     }
   | IS rt=option(REC) tdi=typedefInfo SEMI
     { {typename="";
+       typeparams=[];
        rectype=(
 	 match rt with
 	 | None -> false
@@ -169,8 +176,11 @@ typedeclBody:
        decor=$loc}
     }
 
+(* Type definition in a module, must have a body *)
 typedef:
-  | op=option(OPAQUE) TYPE tname=IDENT_UC IS
+  | op=option(OPAQUE) TYPE tname=IDENT_UC
+    tps=option(delimited(LPAREN, separated_nonempty_list(COMMA, IDENT_LC), RPAREN))
+    IS
     rt=option(REC) tdi=typedefInfo SEMI
     { {typename=tname;
        rectype=(
@@ -181,7 +191,10 @@ typedef:
 			  raise (SyntaxError
 				   ($loc(rt), "Newtype can't be marked recursive"))
 		       | _ -> true)
-	 );
+       );
+       typeparams=(match tps with
+		   | Some tplist -> tplist
+		   | None -> []);
        kindinfo=tdi;
        opaque=Option.is_some(op);
        decor=$loc} }
@@ -396,7 +409,6 @@ typeExp:
 	decor=$loc } }
 	
 
-(* Expressions are what evaluates to a value. *)
 expr:
   | LPAREN ex=expr RPAREN
     { ex }

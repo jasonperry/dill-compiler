@@ -65,7 +65,7 @@ and 'ed typeExpr = {
 let get_texp_classname te = match te.texpkind with
   | Generic _ -> failwith "Error: get_texp_classname called on generic type"
   | Concrete cte -> cte.classname
-     
+
 
 type 'ed raw_expr = (* should really probably change to inline records *)
   | ExpConst of consttype
@@ -182,6 +182,7 @@ type ('ed, 'sd) typedef = {
   (* module name is added at higher context. *)
   typename: string;
   rectype: bool;
+  typeparams: string list;
   kindinfo: 'ed kindInfo;
   opaque: bool;
   decor: 'sd
@@ -239,6 +240,8 @@ and fieldDecl_to_string fd =
 
 and typedef_to_string tdef = 
   "type " ^ tdef.typename
+  ^ if List.length tdef.typeparams > 0 then
+      "(" ^ String.concat "," tdef.typeparams ^ ")" else ""
   ^ (match tdef.kindinfo with
       | Fields fields ->
         " is" ^ (if tdef.rectype then " rec" else "") ^ " struct\n   "

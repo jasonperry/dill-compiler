@@ -21,6 +21,9 @@ let reserved_words = (* Skip "open" and "import". Actually I don't use these *)
       "type"; "val"; "var"; "variant"; "while"
     ]
 let reserved_names = StrSet.of_list [ "null"; "true"; "false"; "val" ]
+(* Is it enough that these are in the tenv? But could have local types
+   with the same classname... Should I prevent the classname altogether? *)
+(* let reserved_classnames = StrSet.of_list [ "Array"; "Option" ] *)
 let reserved_procnames = StrSet.of_list [ "val" ]
 
 (** make the type expr result return only the tag for now. 

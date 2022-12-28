@@ -1,0 +1,24 @@
+** First example of generic datatype
+
+module generic03 begin
+
+** new syntax
+type NumThing(t) is struct
+   count: Int,
+   thing: t;
+
+** Do I want to allow implicit type variables? Not yet, I guess
+proc (t) showCount(th: NumThing(t))
+begin
+   printInt(th.count);
+end showCount
+
+export proc main()
+begin
+   var t1: NumThing(String) = {count=42, thing="Hello"};
+   var t2: NumThing(Float) = {count=43, thing=33.3333};
+   showCount(t1);
+   showCount(t2);
+end main
+
+end generic03
