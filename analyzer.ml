@@ -1286,21 +1286,40 @@ let check_globdecl syms tenv modname gstmt
            mut=is_mutable_type vty;
            addr=None
          };
-       (* List.iter (add_field_sym syms gstmt.varname true) vty.tclass.fields; *)
-       Ok {varname=gstmt.varname; typeexp=None; (* gstmt.typeexp; *)
+       Ok {varname=gstmt.varname; typeexp=None; (* removed gstmt.typeexp; *)
            init=e2opt; decor=syms}
   )
 
 
 (** Check a type definition, generating classData for the tenv. *)
-let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) = 
+let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
+  : (classData, _) result = 
   (* check for typename redeclaration *)
   match PairMap.find_opt ("", tdef.typename) tenv with
   | Some _ ->
      Error [{ loc=tdef.decor;
               value="Type redeclaration: " ^ tdef.typename }]
   | None -> (
-    match tdef.kindinfo with
+    (* Add type variables to symtable, catching repeats *)
+    let tvarres =
+      tdef.typeparams
+      |> List.fold_left (fun res tv ->
+             match res with
+             | Error err -> Error err
+             | Ok _ -> (
+               match Symtable.findtvar_opt tv syms with
+               | Some _ ->
+                  Error [{loc=tdef.decor;
+                          value=("Redeclared type variable " ^ tv)}]
+               | None ->
+                  Symtable.addtvar syms tv [];
+                  Ok ()))
+           (Ok ())
+    in
+    match tvarres with
+    | Error err -> Error err
+    | Ok _ -> (
+      match tdef.kindinfo with
       | Fields fields ->
         (* Check fields of a struct type declaration. Check for
            nonexistent types, field redeclaration.
@@ -1478,7 +1497,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef) =
         nparams = 0;
         kindData = Hidden
       }
-  )
+  ))
 
 
 (** From imported module specs, add types and global var/proc symbols. *)
