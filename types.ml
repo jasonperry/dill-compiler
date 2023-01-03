@@ -6,7 +6,7 @@ open Common (* using StrMap now *)
 type fieldInfo = {
     fieldname: string;
     priv: bool;
-    mut: bool;
+    mut: bool; (* This is just for the field being reassignable. *)
     fieldtype: typetag
   }
 

@@ -8,7 +8,8 @@ type NumThing(t) is struct
    thing: t;
 
 ** Do I want to allow implicit type variables? Not yet, I guess
-proc (t) showCount(th: NumThing(t))
+** TODO: it thought t was redeclared.
+proc (u) showCount(th: NumThing(u))
 begin
    printInt(th.count);
 end showCount
