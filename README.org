@@ -11,13 +11,16 @@ Goals and features include:
   default and are not reassignable.
 - Non-local mutation is made explicit; passing an object mutably is
   indicated at both the function definition and call site. Otherwise
-  objects have true ("deep") immutability.
+  true ("deep") immutability is enforced.
 - No implicit differences in behavior due to using values
-  vs. references; explicit mutability allows us to only deal with the
-  distinction when it matters. A ~ref~ can only be declared to something
-  mutable. Assignment of a mutable object to a ~var~ is always a copy,
-  but it must be stated explicitly for dynamically-sized types.
-- Struct and variant types, case pattern matching, recursive types
+  vs. references; explicit mutability reduces the number of places where
+  you have to think about the distinction. You can declare a local ~ref~
+  variable, but for function arguments the mutability distinction is
+  enough.  Assignment of a mutable object to a ~var~ is always a copy,
+  but you have to write an explicit ~copy()~ for dynamically-sized types.
+- Record (struct) types are primary. Current code has labeled variants,
+  but I'm switching that to /in-situ/ union types with case
+  splitting on the type. Recursive types.
 - All types are datatypes; there are no classes (containers for
   a type and methods), though method call syntax is planned. Method call
   syntax also distinguishes mutating and non-mutating functions.
@@ -30,7 +33,7 @@ Goals and features include:
   important. Semicolons as statement terminators. Making code easy to
   type and even read aloud are also goals.
 - Modules as the primary construct for code grouping and data
-  hiding. "Private" means private to a module; functions in a
+  hiding. ~private~ means private to a module; functions in a
   module can access private fields of datatypes in that module. All
   imports must be explicitly specified.
 - Separate compilation by means of auto-generated module
