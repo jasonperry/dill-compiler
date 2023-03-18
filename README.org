@@ -12,12 +12,11 @@ Goals and features include:
 - Non-local mutation is made explicit; passing an object mutably is
   indicated at both the function definition and call site. Otherwise
   objects have true ("deep") immutability.
-- No implicit differences in behavior due to using values vs. references (the 
-  explicit mutation helps with this.) 
-  Values and references are distinguished in code only when it matters; for 
-  example, a reference to part of a mutable object must be declared as a reference. 
-- All statically-sized immutable objects are values. Dynamically-sized objects 
-  are never implicitly copied.
+- No implicit differences in behavior due to using values
+  vs. references; explicit mutability allows us to only deal with the
+  distinction when it matters. A ~ref~ can only be declared to something
+  mutable. Assignment of a mutable object to a ~var~ is always a copy,
+  but it must be stated explicitly for dynamically-sized types.
 - Struct and variant types, case pattern matching, recursive types
 - All types are datatypes; there are no classes (containers for
   a type and methods), though method call syntax is planned. Method call
