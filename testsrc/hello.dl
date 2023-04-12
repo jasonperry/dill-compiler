@@ -1,9 +1,6 @@
-(* hello world as top-level code *)
-
+(* hello from the Dill language *)
 import stdio;
-
 proc main()
 begin
    stdio::printString("Hello World.\n");
-   (* return 0; *)
 end main

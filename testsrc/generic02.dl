@@ -13,7 +13,10 @@ export proc main()
 begin
    var x: Int = 42;
    var y: Float = 43.0;
-   printFloat(second(x, y)); 
+   printFloat(second(x, y));
+   printInt(second(y, x));
+   printInt(second(x,x));
+   printFloat(second(y,y));
    return;
 end main
 

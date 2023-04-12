@@ -1,6 +1,6 @@
 #!/bin/bash
 
-basedir=~/code/dill-compiler
+basedir=~/code/datlang
 incdir=$basedir/stdlib
 # outdir=$basedir/out    # if fresh clone, don't forget to ~mkdir out~
 

@@ -1391,7 +1391,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                    (* If either the field itself is mutable or its type is. *)
                    finfo.mut || is_mutable_type finfo.fieldtype) flist;
                rectype = tdef.rectype;
-               nparams = 0;
+               nparams = List.length tdef.typeparams;
                (* for generics: generate field info with same type
                   variables as outer *)
                kindData = Struct flist;
