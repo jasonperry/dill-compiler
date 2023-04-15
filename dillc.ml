@@ -12,6 +12,7 @@ type dillc_config = {
     parse_only : bool;
     typecheck_only : bool;
     emit_llvm : bool;
+    qbe_codegen: bool;
     optimize : bool;
     link : bool;
     print_ast : bool;
@@ -24,6 +25,7 @@ let default_config = {
     parse_only = false;
     typecheck_only = false;
     emit_llvm = false;
+    qbe_codegen = false;
     optimize = true;
     link = false; (* later to be true by default *)
     print_ast = false;
@@ -148,10 +150,14 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo, 'tt) dillmodule) =
      Ok (typed_mod, mod_tenv, topsyms)
 
 
-let codegen (_: dillc_config) tenv syms layout typedmod = 
-     let modcode = Codegen.gen_module tenv syms layout typedmod in
-     let header = Analyzer.create_module_spec typedmod in
-     modcode, header
+let codegen (config: dillc_config) tenv syms layout typedmod =
+  (* Unused value here, just to pull in the code. *)
+  let _ = if config.qbe_codegen then
+      Some (Codegen_qbe.gen_module tenv syms)
+    else None in
+  let modcode = Codegen.gen_module tenv syms layout typedmod in
+  let header = Analyzer.create_module_spec typedmod in
+  modcode, header
 
 
 let write_header srcdir header =

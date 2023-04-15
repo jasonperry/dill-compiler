@@ -25,6 +25,7 @@
     llvm.executionengine
     llvm.linker
     llvm.all_backends
+    qbe
     ;menhirLib
   )
   (modules :standard) ;\ codegen)
