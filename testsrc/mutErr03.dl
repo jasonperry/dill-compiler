@@ -1,29 +1,30 @@
 (* attempt to pass an immutable type as mutable *)
-module MutErr03 =
+module mutErr03 begin
 
-open Stdio;
+open stdio;
 
-type Complex = struct
+type Complex is struct
   i: Float,
   j: Float;
-end Complex
 
-proc swapij(#c: Complex) : Void =
+proc swapij(!c: Complex)
+begin
   var temp = c.i;
   c.i = c.j;
   c.j = temp;
   return;
 end swapij
 
-export proc main() : Void = 
+export proc main()
+begin
 
   var cpx: Complex = {i=2.0, j=1.111};
   printFloat(cpx.i);
   printFloat(cpx.j);
-  swapij(#cpx);
+  swapij(!cpx);
   printFloat(cpx.i);
   printFloat(cpx.j);
 
 end main
 
-end MutErr03
+end mutErr03

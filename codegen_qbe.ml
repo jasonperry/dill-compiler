@@ -14,4 +14,5 @@ let gen_expr _(*theModule*) _(*syms*) _(*lltypes*) (ex: typetag expr) =
 let res1 = Reg (Word, "res1")
 
 let gen_module _(*tenv*) _(* topsyms*) =
-  Qbe.new_module ()
+  let theModule = Qbe.new_module () in
+  theModule
