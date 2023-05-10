@@ -10,7 +10,7 @@
 %token UMINUS (* not lexed *)
 %token AMP PIPE CARAT TILDE
 %token EQ NE LT GT LE GE
-%token AND OR NOT
+%token AND OR BANG
 %token TRUE FALSE NULL VAL
 %token COLON DCOLON SEMI DOT COMMA HASH QMARK ARROW DARROW
 %token ASSIGN NULLASSIGN
@@ -35,7 +35,7 @@
 %left TIMES DIV MOD
 %nonassoc UMINUS
 %nonassoc TILDE
-%nonassoc NOT
+%nonassoc BANG
 
 %{
     (* open Common *) (* used to be for type variables *)
@@ -529,7 +529,7 @@ opExp:
     { ExpUnop (OpNeg, e) }
   | TILDE e=expr
     { ExpUnop (OpBitNot, e) }
-  | NOT e=expr
+  | BANG e=expr
     { ExpUnop (OpNot, e) }
 
 callExp:

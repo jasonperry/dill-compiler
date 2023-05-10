@@ -69,7 +69,7 @@ rule token = parse  (* funny that it's called parse *)
   | ">="    { GE }
   | "&&"    { AND }
   | "||"    { OR }
-  | '!'     { NOT }
+  | '!'     { BANG }
   | '#'     { HASH }
   | '?'     { QMARK }
   | '='	    { ASSIGN }
