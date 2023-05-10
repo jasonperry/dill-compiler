@@ -92,15 +92,18 @@ let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)
 
 
-(* Class definitions for built-in generic types. *)
+(* Class definitions for built-in generic types (option and array). *)
+(* Option is a variant of any other type an NullType *)
 let option_class = { classname="Option"; in_module="";
                      kindData=Variant [("val", Some (Typevar "t"));
                                         ("null", None)];
                      opaque=true; muttype=false; rectype=false; nparams=1; }
-(* Note that all array types are mutable. *)                   
+(* All array types are mutable. *)
+(* Do I have to put the second, generic field in for the data pointer now? *)
 let array_class = { classname="Array"; in_module="";
                     kindData=Struct ([{fieldname="length"; priv=false; mut=false;
                                        fieldtype=int_ttag}]);
+                    (* fieldname="_data" ?? or just handle specially in codegen? *)
                     opaque=true; muttype=true; rectype=false; nparams=1; }
 
 
@@ -226,11 +229,11 @@ let is_opaque_type = function
 
 
 let is_option_type = function
-  | Typevar _ -> false (* I guess *)
+  | Typevar _ -> false (* t? will have option_class type *)
   | Namedtype tinfo -> tinfo.tclass = option_class
 
 let is_array_type = function
-  | Typevar _ -> false (* I guess *)
+  | Typevar _ -> false (* t[] will have array_class type *)
   | Namedtype tinfo -> tinfo.tclass = array_class
 
 (** Helper to generate an option type of any single type. *)

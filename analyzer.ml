@@ -37,8 +37,15 @@ let rec check_typeExpr syms tenv texp : (typetag, string) result =
   match texp.texpkind with
   | Generic gv -> (
       match Symtable.findtvar_opt gv syms with
-      (* don't need the names of signatures implemented here? *)
-      | Some (_, _) -> Ok (Typevar gv)
+      | Some (_, _) ->
+        (* Array and Option are regular generic types, but with their
+           special syntax the generic variable comes first. *)
+        if texp.array then (
+          (* case for t?[], we don't allow t[]?  TODO: make it so in syntax. *)
+          if texp.nullable then Ok (array_type_of (option_type_of (Typevar gv)))
+          else Ok (array_type_of (Typevar gv)))
+        else if texp.nullable then Ok (option_type_of (Typevar gv))
+        else Ok (Typevar gv)
       | None -> Error ("Undeclared type variable " ^ gv)
     )
   | Concrete ctexp -> (
@@ -334,7 +341,7 @@ and match_params paramsyms (args: (bool * typetag expr) list) =
         (* Anything need to be kept here to inform code generation? *)
         match ((*subtype_match*) unify_match argexp.decor pentry.symtype) with
         | Error (argtag, paramtag) ->
-          Error ("Cannot unify type " ^ typetag_to_string argtag
+          Error ("Cannot unify formal type " ^ typetag_to_string argtag
                  ^ " with " ^ typetag_to_string paramtag
                  ^ " for parameter " ^ pentry.symname)
         | Ok tvarmap -> (* probably have to surround with a fold *)
@@ -376,6 +383,9 @@ and check_call syms tenv (fname, args) =
       else
         (* could construct these further down... *)
         let args_typed = List.combine (List.map fst args) (concat_ok args_res) in
+        debug_print ("#AN: actual parameter types for call: " ^
+                     String.concat ","
+                       (List.map (fun (_, (e: typetag expr)) -> typetag_to_string e.decor) args_typed));
         (* find the procedure entry (checking arg exprs first is eval order!) *)
         (* stitch the mutability tags back in for checking. *)
         match match_params proc.fparams args_typed with 
@@ -739,6 +749,8 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
       | Error msg -> Error [{loc=stm.decor; value=msg}]
       | Ok (e2opt, vty) -> 
         (* Everything is Ok, create symbol table structures. *)
+        debug_print ("#AN: Adding symbol '" ^ v ^ "' of type "
+                     ^ typetag_to_string vty);
         Symtable.addvar syms v
           {symname=v; symtype=vty; var=true;
            mut=is_mutable_type vty; addr=None};
