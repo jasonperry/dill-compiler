@@ -165,7 +165,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                 (* get type of expression apart from array *)
                 let headtype =
                   if Option.is_some ixopt then
-                    array_base_type entry.symtype
+                    array_element_type entry.symtype
                   else entry.symtype
                 in 
                 (* second, recursively check fields. return fields & type *)
@@ -195,7 +195,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                               match check_fields
                                       (* It's only the array type if no ix *)
                                       (if Option.is_none ixopt then fieldty
-                                       else array_base_type fieldty)
+                                       else array_element_type fieldty)
                                       rest with
                               | Ok (checked_fields, finalty) ->
                                 Ok ((fname, ixopt)::checked_fields, finalty)
@@ -230,7 +230,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                   {loc=ex.decor;
                    value="Unable to determine sequence type in this context"}
       | Some seqty ->
-        let eltty: typetag = array_base_type seqty in 
+        let eltty: typetag = array_element_type seqty in 
         let checked_elist =
           List.map (check_expr syms tenv ~thint:(Some eltty)) elist in
         (* parser ensures no empty list expressions *)

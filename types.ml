@@ -92,18 +92,22 @@ let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)
 
 
-(* Class definitions for built-in generic types (option and array). *)
-(* Option is a variant of any other type an NullType *)
+(* Class definitions for built-in generic types (option and array).
+   Give them an illegal name so they can't be used this way in code?
+   But then, we still need to make sure you can't define types Array
+   and Option. *)
+(* Option is a variant of any other type and NullType *)
 let option_class = { classname="Option"; in_module="";
                      kindData=Variant [("val", Some (Typevar "t"));
                                         ("null", None)];
                      opaque=true; muttype=false; rectype=false; nparams=1; }
+
 (* All array types are mutable. *)
-(* Do I have to put the second, generic field in for the data pointer now? *)
 let array_class = { classname="Array"; in_module="";
                     kindData=Struct ([{fieldname="length"; priv=false; mut=false;
                                        fieldtype=int_ttag}]);
-                    (* fieldname="_data" ?? or just handle specially in codegen? *)
+                    (* don't add a field name for the data, that's not relevant
+                       to the analysis stage. *)
                     opaque=true; muttype=true; rectype=false; nparams=1; }
 
 
@@ -229,11 +233,11 @@ let is_opaque_type = function
 
 
 let is_option_type = function
-  | Typevar _ -> false (* t? will have option_class type *)
+  | Typevar _ -> false 
   | Namedtype tinfo -> tinfo.tclass = option_class
 
 let is_array_type = function
-  | Typevar _ -> false (* t[] will have array_class type *)
+  | Typevar _ -> false 
   | Namedtype tinfo -> tinfo.tclass = array_class
 
 (** Helper to generate an option type of any single type. *)
@@ -241,7 +245,8 @@ let option_type_of innertype = gen_ttag option_class [innertype]
 
 let array_type_of innertype = gen_ttag array_class [innertype]
 
-let array_base_type = function
+(** Get the element type of an array *)
+let array_element_type = function
   | Typevar _ -> failwith "ERROR: attempt to get base type of non-array type"
   | Namedtype tinfo ->
     if tinfo.tclass <> array_class

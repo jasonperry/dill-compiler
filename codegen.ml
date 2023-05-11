@@ -213,34 +213,32 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
     )
 
 (** Use a type tag to generate the LLVM type from the base type. *)
-let ttag_to_llvmtype lltypes ty = match ty with
+let rec ttag_to_llvmtype lltypes ty = match ty with
   | Typevar _ ->
     voidptr_type
   | Namedtype tinfo -> (
-      match Lltenv.find_lltype_opt (tinfo.modulename, tinfo.tclass.classname)
-              lltypes with
-      | None -> failwith ("BUG: no lltype found for " ^ tinfo.modulename
-                          ^ "::" ^ tinfo.tclass.classname)
-      | Some basetype ->
-        (* Will I want to reconstruct it from the class if generic types
-           are concretized? *) 
-        (* But now that Option is a class, it is the basetype *)
-        let ttag_with_null =
-          (* Option types are a 2-element struct of tag and object *)
-          if is_option_type ty then
-            struct_type context [| nulltag_type; basetype |]
-          else basetype in
-        if is_array_type ty then
-          struct_type context
-            [| int_type; pointer_type (array_type ttag_with_null 0) |]
-        else
-          (* TODO: figure out what to do with type variables (recursive) *)
-          ttag_with_null
+      if is_array_type ty then
+        let elttype = ttag_to_llvmtype lltypes (array_element_type ty) in
+        struct_type context
+          (* get inner type from class params now! *)
+          [| int_type; pointer_type (array_type elttype 0) |]
+      else if is_option_type ty then
+        let basetype = ttag_to_llvmtype lltypes (option_base_type ty) in
+        struct_type context [| nulltag_type; basetype |]
+      else 
+        match Lltenv.find_lltype_opt (tinfo.modulename, tinfo.tclass.classname)
+                lltypes with
+        | None -> failwith ("BUG: no lltype found for " ^ tinfo.modulename
+                            ^ "::" ^ tinfo.tclass.classname)
+        | Some llty -> llty
+        (* TODO: other type variable cases, if any (recursive).
+           All other option types will use a pointer? Or will I be able
+           to make the size-passing trick work? *)
     )
 
 
 (** Wrap a value in an outer type. Used for assigning, passing or
-    returning a value for a nullable type *)
+    returning a value for a nullable (Option) type *)
 let promote_value the_val outertype builder =
   debug_print ("#CG: promote_value " ^ string_of_lltype (type_of the_val)
                ^ " to type " ^ string_of_lltype outertype);
@@ -546,6 +544,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
         match ixopt with
         | None -> (alloca, parentty)
         | Some ixexpr ->
+          debug_print "#CG: Got index expression in varexp";
           let ixval = gen_expr the_module builder syms lltypes ixexpr in
           (* get the value at index 1. alloca is the address of the struct. *)
           let datafield = build_struct_gep alloca 1 "datafield" builder in
@@ -561,7 +560,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           (* gep to the 0th element first to "follow the pointer" *)
           (build_gep dataptr [|(const_int int_type 0); ixval|]  
              "elementtptr" builder,
-           (array_base_type parentty))
+           (array_element_type parentty))
       in
       (* next, get the field offset if there is one. *)
       match flds with
