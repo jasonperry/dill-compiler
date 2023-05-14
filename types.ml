@@ -154,7 +154,8 @@ let get_type_class = function
   | Typevar _ -> failwith ("Error: get_type_class called on generic type")
   | Namedtype tinfo -> tinfo.tclass
 
-let set_type_class newclass = function
+(** Update the class of an existing typetag (for recursive types) *)
+let set_type_class ttag newclass = match ttag with
   | Typevar _ -> failwith ("Error: cannot set type class of generic type")
   | Namedtype tinfo ->
     tinfo.tclass <- newclass

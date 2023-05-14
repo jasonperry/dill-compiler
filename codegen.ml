@@ -873,7 +873,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
     (* but I still have to cast it to the lltype *)
     else retval
 
-  | ExpNullAssn (_, _, _, _) ->
+  | ExpNullAssn (_, _, _) ->
     failwith "BUG: null assign found outside condition"
 
 
@@ -1294,7 +1294,7 @@ let rec gen_stmt the_module builder lltypes
 (** Generate code for a conditional expression, including possibly null assignment *)
 and gen_cond the_module syms lltypes cond thenbb blocksyms builder =
   match cond.e with
-  | ExpNullAssn (isdecl, (((varname, _), _) as varexp), _, nullexp) ->
+  | ExpNullAssn (isdecl, (((varname, _), _) as varexp), nullexp) ->
     let condval = gen_expr the_module builder syms lltypes nullexp in
     let nulltag = build_extractvalue condval 0 "nulltag" builder in
     (* Need an icmp instruction because tag value isn't i1 anymore. *)
@@ -1466,7 +1466,7 @@ let gen_proc the_module builder lltypes proc =
 
 (** Generate LLVM code for an analyzed module. *)
 let gen_module tenv topsyms layout
-    (modtree: (typetag, 'a st_node, typetag) dillmodule) =
+    (modtree: (typetag, 'a st_node, _) dillmodule) =
   let the_module = create_module context (modtree.name ^ ".ll") in
   (* Llvm.set_target_triple ttriple the_module; *)
   Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) the_module;
