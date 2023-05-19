@@ -1,6 +1,7 @@
 ** First example of generic datatype
 
 module generic03 begin
+open stdio;
 
 ** new syntax
 type NumThing(t) is struct
@@ -16,10 +17,10 @@ end showCount
 
 export proc main()
 begin
-   var t1: NumThing(String) = {count=42, thing="Hello"};
-   var t2: NumThing(Float) = {count=43, thing=33.3333};
-   showCount(t1);
-   showCount(t2);
+   var nt1: NumThing(String) = {count=42, thing="Hello"};
+   var nt2: NumThing(Float) = {count=43, thing=33.3333};
+   showCount(nt1);
+   showCount(nt2);
 end main
 
 end generic03

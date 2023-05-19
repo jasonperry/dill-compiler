@@ -4,11 +4,11 @@ open Common (* using StrMap now *)
 
 (** Type information about a single record field. *)
 type fieldInfo = {
-    fieldname: string;
-    priv: bool;
-    mut: bool; (* This is just for the field being reassignable. *)
-    fieldtype: typetag
-  }
+  fieldname: string;
+  priv: bool;
+  mut: bool; (* This is just for the field being reassignable. *)
+  fieldtype: typetag
+}
 
 (** Data needed by the different kinds of types (fields, variants, etc.) *)
 and kindData =  (* will array and option be their own kind now? *)
@@ -20,18 +20,18 @@ and kindData =  (* will array and option be their own kind now? *)
 
 (** The specification for a class of types, built from a type declaration *)
 and classData = {
-    classname: string;
-    in_module: string; (* for extensions, classes need to "know" the original
-                        * module where they were defined. *)
-    opaque: bool;
-    muttype: bool;  (* true if any field or variant is mutable *)
-    rectype: bool;
-    (* When we do generics, need to link params to the field type variables. 
-       (possibly just by var name) *)
-    nparams: int;
-    (* params: typevar list; (* generic params. could it just be the number? *) *)
-    kindData: kindData
-  }
+  classname: string;
+  in_module: string; (* for extensions, classes need to "know" the original
+                      * module where they were defined. *)
+  opaque: bool;
+  muttype: bool;  (* true if any field or variant is mutable *)
+  rectype: bool;
+  (* We save the explicit params because they're linked to the field
+     type variables. *)
+  tparams: typevar list;
+  (* nparams: int; *)
+  kindData: kindData
+}
 
 (** Typetag is the in-place specification of a type. It's what's
     checked for a match with other types. *)
@@ -46,48 +46,50 @@ and typetag =
   | Namedtype of namedtypeinfo
 
       
-(** Generate a type for a typetag for a class (and later, specify generics)
-  * No, we don't specify, right? But need to generate variables. *)
-let gen_ttag (classdata: classData) argtypes (* concrete or names from context *) =
+(** Generate a typetag for a class, specifying generic parameters with
+    a concrete type or in-scope type variable. *)
+let gen_ttag (classdata: classData) (argtypes: typetag list) =
   (* later: substitute class types *)
-  if List.length argtypes <> classdata.nparams
-  then failwith "ERROR: attempt to generate type with wrong number of arguments"
+  if List.length argtypes <> List.length classdata.tparams
+  then (failwith
+          "BUG: attempt to generate typetag with wrong number of arguments")
   else 
     Namedtype {
       modulename = classdata.in_module;
       tclass = classdata;
-      typeargs = argtypes (* Is it right to copy these directly? *)
+      typeargs = argtypes (* TODO: fill in map. *)
     }
 
 
 (* Class definitions for built-in types, and tags for convenience. *)
 let null_class = { classname="NullType"; in_module = ""; kindData = Primitive;
-                   opaque=false; muttype=false; rectype=false; nparams=0; }
+                   opaque=false; muttype=false; rectype=false; tparams=[]; }
 let null_ttag = gen_ttag null_class []
 (* NOTE: void is not a type! Maybe it shouldn't be one in Dill, just have
  * procs that return nothing. *)
 let void_class =  { classname="Void"; in_module = ""; muttype=false;
-                    opaque=false; kindData=Primitive; rectype=false; nparams=0; }
+                    opaque=false; kindData=Primitive; rectype=false; tparams=[]; }
 let void_ttag = gen_ttag void_class []
 
 let int_class = { classname="Int"; in_module = ""; muttype=false; rectype=false;
-                  opaque=false; kindData=Primitive; nparams=0; }
+                  opaque=false; kindData=Primitive; tparams=[]; }
 let int_ttag = gen_ttag int_class []
 
 let float_class = { classname="Float"; in_module=""; muttype=false; rectype=false;
-                    nparams=0; opaque=false; kindData=Primitive; }
+                    tparams=[]; opaque=false; kindData=Primitive; }
 let float_ttag = gen_ttag float_class []
 
 let byte_class = { classname="Byte"; in_module=""; muttype=false; rectype=false;
-                   nparams=0; opaque=false; kindData=Primitive; }
+                   tparams=[]; opaque=false; kindData=Primitive; }
 let byte_ttag = gen_ttag byte_class []
 
 let bool_class = { classname="Bool"; in_module = ""; muttype=false; rectype=false;
-                   nparams=0; opaque=false; kindData=Primitive; }
+                   tparams=[]; opaque=false; kindData=Primitive; }
 let bool_ttag = gen_ttag bool_class []
 
-let string_class = { classname="String"; in_module=""; muttype=false; rectype=false;
-                     opaque=false; nparams=0; kindData=Primitive; }
+let string_class = { classname="String"; in_module=""; muttype=false;
+                     rectype=false; opaque=false; tparams=[];
+                     kindData=Primitive; }
 let string_ttag = gen_ttag string_class []
 (* whether the variable can be mutated is a feature of the symbol table. *)
 
@@ -100,15 +102,17 @@ let string_ttag = gen_ttag string_class []
 let option_class = { classname="Option"; in_module="";
                      kindData=Variant [("val", Some (Typevar "t"));
                                         ("null", None)];
-                     opaque=true; muttype=false; rectype=false; nparams=1; }
+                     opaque=true; muttype=false; rectype=false;
+                     tparams=["t"]; }
 
 (* All array types are mutable. *)
 let array_class = { classname="Array"; in_module="";
                     kindData=Struct ([{fieldname="length"; priv=false; mut=false;
                                        fieldtype=int_ttag}]);
                     (* don't add a field name for the data, that's not relevant
-                       to the analysis stage. *)
-                    opaque=true; muttype=true; rectype=false; nparams=1; }
+                       to the analysis stage. But /do/ add a generic type
+                       parameter. Not 100% sure this is the right way. *)
+                    opaque=true; muttype=true; rectype=false; tparams=["t"]; }
 
 
 (** Convert a type tag to printable format. *)
@@ -120,7 +124,7 @@ let rec typetag_to_string = function
       typetag_to_string (List.hd tinfo.typeargs) ^ "[]"
     else
       tinfo.modulename ^ "::" ^ tinfo.tclass.classname
-      ^ (if tinfo.tclass.nparams > 0 then 
+      ^ (if List.length tinfo.tclass.tparams > 0 then 
            "("
            ^ String.concat ","
              (List.map (fun pt -> typetag_to_string pt) tinfo.typeargs)
@@ -161,7 +165,7 @@ let set_type_class ttag newclass = match ttag with
     tinfo.tclass <- newclass
 
 (** helper to pull out the field assuming it's a struct type *)
-let get_type_fields = function
+let get_type_fields ttag = match ttag with
   | Typevar _ -> failwith ("ERROR: get_fields called on generic type")
   | Namedtype tinfo -> (
       match tinfo.tclass.kindData with

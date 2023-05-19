@@ -14,7 +14,7 @@ type TwoComplexes is struct
    foist: Complex,
    secint: Complex;
 
-proc bumpem(#tcc: TwoComplexes)
+proc bumpem($tcc: TwoComplexes)
 begin
    tcc.foist.i = tcc.foist.i + 1.5;
    tcc.secint.i = tcc.secint.i + 1.5;
@@ -30,7 +30,7 @@ begin
    printFloat(tc.foist.i);
    printFloat(tc.secint.i);
 
-   bumpem(#tc);
+   bumpem($tc);
 
    printFloat(tc.foist.i);   (* 3.5 *)
    printFloat(tc.secint.i);  (* 4.5 *)

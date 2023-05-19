@@ -54,15 +54,18 @@ let rec check_typeExpr syms tenv texp : (typetag, string) result =
       | None -> Error ("Unknown type " ^ typeExpr_to_string texp)
       | Some cdata ->
         (* Check that type argument lengths are the same. *)
-        if List.length ctexp.typeargs <> cdata.nparams then
+        if List.length ctexp.typeargs <> List.length cdata.tparams then
           Error ("Incorrect number of type arguments for " ^ cdata.classname
-                 ^ "; expected " ^ string_of_int cdata.nparams ^ ", found "
+                 ^ "; expected "
+                 ^ string_of_int (List.length cdata.tparams) ^ ", found "
                  ^ string_of_int (List.length ctexp.typeargs))
         else (
+          (* recurse to check the type arguments. *)
           let ress = List.map (check_typeExpr syms tenv) ctexp.typeargs in
           match List.filter Result.is_error ress with 
           | (Error err)::_ -> Error err (* only take first error *)
-          | _ -> 
+          | _ ->
+            (* substitute type arguments and produce the tag. *)
             let argtags = concat_ok ress in 
             let innerTtag = 
               Namedtype {modulename=cdata.in_module; (* redundant? *)
@@ -221,9 +224,9 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
           value="Type of record literal cannot be determined in this context"
         }
       | Some ttag ->
-        let res = check_recExpr syms tenv ttag ex in
-        debug_print "#AN: finished checking record expression";
-        res
+        debug_print ("#AN: checking record expression to match "
+                     ^ typetag_to_string ttag);
+        check_recExpr syms tenv ttag ex
     )
 
   | ExpSeq elist -> (
@@ -440,7 +443,7 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
     (* Need to do it here each time so we can remove them as they're matched. *)
     (* Definitely leave it as a list in the ClassInfo, for ordering. *)
     let fdict = List.fold_left (fun s (fi: fieldInfo) ->
-        StrMap.add fi.fieldname fi.fieldtype s)
+        StrMap.add fi.fieldname fi.fieldtype s) (* HERE? Need resolved generic *)
         StrMap.empty
         fields in
     (* check field types, recursively removing from the map. *)
@@ -470,8 +473,11 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
               | _ -> check_expr syms tenv ~thint:(Some ftype) fexp in
             match res with 
             | Error err -> Error err
-            | Ok eres ->
-              if subtype_match eres.decor ftype 
+            | Ok eres -> 
+              (* We don't want unification here, it's explicit data
+                 specification. But variables of generic type should
+                 work fine as-is. *)
+              if subtype_match eres.decor ftype
               then check_fields rest
                   (StrMap.remove fname accdict) ((fname,eres)::accfields)
               else Error {
@@ -700,7 +706,7 @@ type 'a stmt_result = ((typetag, 'a st_node, locinfo) stmt, string located list)
 (** factored out declaration typechecking code (used by globals also) *)
 let typecheck_decl syms tenv (varname, tyopt, initopt) =
   if StrSet.mem varname reserved_names then
-    Error ("Reserved value name " ^ varname ^ " cannot be a variable name")
+    Error ("Reserved word " ^ varname ^ " cannot be a variable name")
   else 
     (* Should I factor this logic into a try_add symtable method? *)
     match Symtable.findvar_opt varname syms with
@@ -713,7 +719,10 @@ let typecheck_decl syms tenv (varname, tyopt, initopt) =
         | Some dtyexp -> (
           match check_typeExpr syms tenv dtyexp with 
           | Error msg -> Error msg
-          | Ok ttag -> Ok (Some ttag) )
+          | Ok ttag ->
+            debug_print ("#AN: constructed decl typetag: "
+                         ^ typetag_to_string ttag);
+            Ok (Some ttag) )
       in
       match tyres with
       | Error msg -> Error msg
@@ -751,13 +760,13 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
   | StmtDecl (v, tyopt, initopt) -> (
       match typecheck_decl syms tenv (v, tyopt, initopt) with
       | Error msg -> Error [{loc=stm.decor; value=msg}]
-      | Ok (e2opt, vty) -> 
+      | Ok (e2opt, vartype) -> 
         (* Everything is Ok, create symbol table structures. *)
         debug_print ("#AN: Adding symbol '" ^ v ^ "' of type "
-                     ^ typetag_to_string vty);
+                     ^ typetag_to_string vartype);
         Symtable.addvar syms v
-          {symname=v; symtype=vty; var=true;
-           mut=is_mutable_type vty; addr=None};
+          {symname=v; symtype=vartype; var=true;
+           mut=is_mutable_type vartype; addr=None};
         if Option.is_none e2opt then
           syms.uninit <- StrSet.add v syms.uninit;
         Ok {st=StmtDecl (v, None, e2opt); decor=syms}
@@ -1295,14 +1304,14 @@ let check_globdecl syms tenv modname gstmt
     match typecheck_decl syms tenv
             (gstmt.varname, gstmt.typeexp, gstmt.init) with
     | Error msg -> Error [{loc=gstmt.decor; value=msg}]
-    | Ok (e2opt, vty) ->
+    | Ok (e2opt, vartype) ->
        (* add to symtable *)
        let varname = modname ^ "::" ^ gstmt.varname in
        Symtable.addvar syms gstmt.varname {
            symname=varname;
-           symtype=vty;
+           symtype=vartype;
            var=true;
-           mut=is_mutable_type vty;
+           mut=is_mutable_type vartype;
            addr=None
          };
        Ok {varname=gstmt.varname; typeexp=None; (* removed gstmt.typeexp; *)
@@ -1364,7 +1373,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                     classname = get_texp_classname fdecl.fieldtype; 
                     in_module = modname;
                     opaque=false; muttype=false; rectype=true;
-                    nparams=0; kindData=Hidden
+                    tparams=[]; kindData=Hidden
                   } in 
                   let ttag = gen_ttag dummyClass []
                   (* { (* should have a ttag_of_texpr function?
@@ -1412,7 +1421,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                    (* If either the field itself is mutable or its type is. *)
                    finfo.mut || is_mutable_type finfo.fieldtype) flist;
                rectype = tdef.rectype;
-               nparams = List.length tdef.typeparams;
+               tparams = tdef.typeparams;
                (* for generics: generate field info with same type
                   variables as outer *)
                kindData = Struct flist;
@@ -1443,7 +1452,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                         classname = get_texp_classname vtexp;
                         in_module = modname;
                         opaque=false; muttype=false; rectype=true;
-                        nparams=0; kindData=Hidden
+                        tparams=[]; kindData=Hidden
                       } in 
                       let ttag = gen_ttag dummyClass []
                         (* {
@@ -1479,7 +1488,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                              && is_mutable_type (Option.get (snd st))
                   ) variants;
               rectype = tdef.rectype;
-              nparams = 0;
+              tparams = [];
               kindData = Variant variants
             }
      )
@@ -1504,7 +1513,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
             muttype = cdata.muttype;
             rectype = cdata.rectype;
             opaque = cdata.opaque;
-            nparams = cdata.nparams;
+            tparams = cdata.tparams;
             (* construct a tag for the underlying type *)
             kindData = Newtype (
                 Namedtype {
@@ -1522,7 +1531,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
         muttype = true; (* Can't assume it's not mutable,
                            it's based on what's called *)
         rectype = false; (* doesn't matter, it's a pointer anyway?? *)
-        nparams = 0;
+        tparams = [];
         kindData = Hidden
       }
   ))

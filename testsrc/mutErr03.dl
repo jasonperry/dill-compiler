@@ -7,7 +7,7 @@ type Complex is struct
   i: Float,
   j: Float;
 
-proc swapij(!c: Complex)
+proc swapij($c: Complex)
 begin
   var temp = c.i;
   c.i = c.j;
