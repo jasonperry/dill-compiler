@@ -38,7 +38,8 @@ and classData = {
 and namedtypeinfo = {
   modulename: string;
   mutable tclass: classData; (* allow updating for recursive types *)
-  typeargs: typetag list; (* may or may not be resolved *)
+  typeargs: typetag list; (* can be concrete or generic *)
+  (* tvarmap: typetag StrMap.t (* map of type parameters to type args *) *)
 }
 
 and typetag = 
@@ -48,18 +49,34 @@ and typetag =
       
 (** Generate a typetag for a class, specifying generic parameters with
     a concrete type or in-scope type variable. *)
-let gen_ttag (classdata: classData) (argtypes: typetag list) =
-  (* later: substitute class types *)
-  if List.length argtypes <> List.length classdata.tparams
+let gen_ttag (classdata: classData) (typeargs: typetag list) =
+  if List.length typeargs <> List.length classdata.tparams
   then (failwith
           "BUG: attempt to generate typetag with wrong number of arguments")
   else 
     Namedtype {
       modulename = classdata.in_module;
       tclass = classdata;
-      typeargs = argtypes (* TODO: fill in map. *)
+      (* Build a map from the class's type parameters to type arguments. *)
+      (* tvarmap = List.fold_left2 (fun m k v -> StrMap.add k v m) StrMap.empty
+          classdata.tparams typeargs *)
+      typeargs = typeargs
     }
 
+(** Get the type tag assigned to a generic type parameter. *)
+let get_typearg ttag tvar =
+  (* can't believe this isn't in the standard library *)
+  let rec findi plist tvar ix = match plist with
+    | [] -> failwith ("[-] get_typetag: Type variable " ^ tvar ^ " not found")
+    | prm :: rest -> if prm = tvar then ix
+      else findi rest tvar (ix+1)
+  in
+  (* could switch it to just take a namedtypeinfo, but probably not *)
+  match ttag with
+  | Typevar _ -> failwith "[-] get_typetag: generic type has no arguments"
+  | Namedtype tinfo ->
+    let vindex = findi tinfo.tclass.tparams tvar 0 in
+    List.nth tinfo.typeargs vindex
 
 (* Class definitions for built-in types, and tags for convenience. *)
 let null_class = { classname="NullType"; in_module = ""; kindData = Primitive;
@@ -118,6 +135,8 @@ let array_class = { classname="Array"; in_module="";
 (** Convert a type tag to printable format. *)
 let rec typetag_to_string = function
   | Namedtype tinfo ->
+    (*let typeargs = List.map (fun tp ->
+       StrMap.find tp tinfo.tvarmap) tinfo.tclass.tparams in *)
     if tinfo.tclass = option_class then
       typetag_to_string (List.hd tinfo.typeargs) ^ "?"
     else if tinfo.tclass = array_class then
@@ -127,7 +146,7 @@ let rec typetag_to_string = function
       ^ (if List.length tinfo.tclass.tparams > 0 then 
            "("
            ^ String.concat ","
-             (List.map (fun pt -> typetag_to_string pt) tinfo.typeargs)
+             (List.map typetag_to_string tinfo.typeargs)
            ^ ")"
          else "")
   | Typevar t -> t
@@ -165,7 +184,7 @@ let set_type_class ttag newclass = match ttag with
     tinfo.tclass <- newclass
 
 (** helper to pull out the field assuming it's a struct type *)
-let get_type_fields ttag = match ttag with
+let get_struct_fields ttag = match ttag with
   | Typevar _ -> failwith ("ERROR: get_fields called on generic type")
   | Namedtype tinfo -> (
       match tinfo.tclass.kindData with
@@ -265,18 +284,22 @@ let option_base_type = function
     if tinfo.tclass <> option_class
     then failwith "ERROR: attempt to get base type of non-Option type"
     else
+      (* StrMap.find (List.hd tinfo.tclass.tparams) tinfo.tvarmap *)
       List.hd tinfo.typeargs
-
 
 (** Exact type comparison. Need this because we have recursively
     defined classes--can't equality-compare those. *)
 let rec types_equal (t1: typetag) (t2: typetag) =
   match (t1, t2) with
   | (Typevar tv1, Typevar tv2) -> tv1 = tv2
-  | (Namedtype tinfo1, Namedtype tinfo2) -> 
+  | (Namedtype tinfo1, Namedtype tinfo2) ->
+    (* let typeargs1 = List.map (fun tp ->
+        StrMap.find tp tinfo1.tvarmap) tinfo1.tclass.tparams in
+    let typeargs2 = List.map (fun tp ->
+        StrMap.find tp tinfo2.tvarmap) tinfo2.tclass.tparams in *)
     (tinfo1.modulename = tinfo2.modulename
      && tinfo1.tclass.classname = tinfo2.tclass.classname
-     (* Now we do recurse on the type variables. *)
+     (* Recursively compare generic type arguments. *)
      && List.for_all2 types_equal tinfo1.typeargs tinfo2.typeargs)
   | _ -> false
 

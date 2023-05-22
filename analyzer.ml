@@ -438,12 +438,16 @@ and check_call syms tenv (fname, args) =
 and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
   match rexp.e with
   | ExpRecord flist ->
-    let fields = get_type_fields ttag in
+    let fields = get_struct_fields ttag in
     (* make a map from the fields to their types. *)
     (* Need to do it here each time so we can remove them as they're matched. *)
     (* Definitely leave it as a list in the ClassInfo, for ordering. *)
-    let fdict = List.fold_left (fun s (fi: fieldInfo) ->
-        StrMap.add fi.fieldname fi.fieldtype s) (* HERE? Need resolved generic *)
+    let fdict = List.fold_left (fun tmap (fi: fieldInfo) ->
+        StrMap.add fi.fieldname
+          (match fi.fieldtype with
+           | Typevar tvar -> get_typearg ttag tvar (* in the parent ttag *)
+           | Namedtype _ -> fi.fieldtype (* TODO: may need to recurse *)
+          ) tmap) (* HERE? Need resolved generic *)
         StrMap.empty
         fields in
     (* check field types, recursively removing from the map. *)

@@ -1,0 +1,9 @@
+(* new enumerated type *)
+module enum01 begin
+
+type TcpStatus is enum
+   #waiting,
+   #established,
+   #zombie;
+
+end enum01

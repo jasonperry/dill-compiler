@@ -288,7 +288,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
     failwith "!BUG (codegen): can't compare generic types for equality"
   | Namedtype _ -> 
     if is_struct_type valty then
-      let fields = get_type_fields valty in
+      let fields = get_struct_fields valty in
     let rec checkloop i prevcmp =
       (* generate next field compare value, generate AND with previous *)
       (* later: optimize to not need to generate a const starting value *)
