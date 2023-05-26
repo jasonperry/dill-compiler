@@ -21,6 +21,8 @@ begin
    var nt2: NumThing(Float) = {count=43, thing=33.3333};
    showCount(nt1);
    showCount(nt2);
+   (* next trick *)
+   printFloat(nt2.thing);
 end main
 
 end generic03
