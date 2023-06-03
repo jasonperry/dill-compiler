@@ -1,0 +1,27 @@
+** Nested generic datatype
+
+module generic04 begin
+open stdio;
+
+** new syntax
+type NumThing(t) is struct
+   count: Int,
+   thing: t;
+
+** Do I want to allow implicit type variables? Not yet, I guess
+** TODO: it thought t was redeclared.
+proc (u) showCount(th: NumThing(u))
+begin
+   printInt(th.count);
+end showCount
+
+export proc main()
+begin
+   var nt1: NumThing(NumThing(Int)) = {count=42, thing={count=44, thing=678}};
+   ** var nt2: NumThing(Float) = {count=43, thing=33.3333};
+   showCount(nt1);
+   showCount(nt1.thing); (* broken in codegen, passes a pointer *)
+   (* printInt(nt1.thing.thing); *)
+end main
+
+end generic04

@@ -136,7 +136,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
 
   | ExpVar ((varstr, ixopt), fields) -> (
       (* let varstr = exp_to_string ex in *)
-      debug_print ("#AN: checking variable expression " ^ varstr);
+      debug_print ("#AN: checking variable expression " ^ exp_to_string ex);
       match Symtable.findvar_opt varstr syms with
       | None -> Error {loc=ex.decor; value="Undefined variable " ^ varstr}
       | Some (entry, _) -> (
@@ -191,8 +191,15 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                           Error {loc=ex.decor;
                                  value="Index expression on non-array type"
                                        ^ typetag_to_string finfo.fieldtype}
-                        else 
-                          let fieldty = finfo.fieldtype in
+                        else
+                          (* Look for a specified type if field is generic. *)
+                          let fieldty = 
+                            match finfo.fieldtype with
+                            | Typevar tvar -> get_typearg prevty tvar
+                            (* TODO: may need to recurse to fill in type
+                               variables all the way down. *)
+                            | Namedtype _ -> finfo.fieldtype 
+                          in 
                           match check_indexexp ixopt with
                           | Error err -> Error err
                           | Ok ixopt -> (
@@ -207,12 +214,13 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                               | Error err -> Error err
                             ))
                 in
-                debug_print ("#AN: var expression type " ^
-                             typetag_to_string headtype);
                 match check_fields headtype fields with
                 | Error err -> Error err
                 | Ok (checked_fields, expty) -> 
-                  Ok { e=ExpVar ((varstr, ixopt), checked_fields); decor=expty })
+                  debug_print ("#AN: var expression type: "
+                               ^ typetag_to_string expty);
+                  Ok { e=ExpVar ((varstr, ixopt), checked_fields);
+                       decor=expty })
         )
     )
 
@@ -346,9 +354,8 @@ and match_params paramsyms (args: (bool * typetag expr) list) =
         (* Anything need to be kept here to inform code generation? *)
         match ((*subtype_match*) unify_match argexp.decor pentry.symtype) with
         | Error (argtag, paramtag) ->
-          Error ("Cannot unify formal type " ^ typetag_to_string argtag
-                 ^ " with " ^ typetag_to_string paramtag
-                 ^ " for parameter " ^ pentry.symname)
+          Error ("Cannot unify argument type " ^ typetag_to_string argtag
+                 ^ " with parameter type " ^ typetag_to_string paramtag)
         | Ok tvarmap -> (* probably have to surround with a fold *)
           if pentry.mut <> argmut
         then Error ("Mutability flag mismatch for parameter " ^ pentry.symname)
@@ -439,11 +446,11 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
   match rexp.e with
   | ExpRecord flist ->
     let fields = get_struct_fields ttag in
-    (* make a map from the fields to their types. *)
-    (* Need to do it here each time so we can remove them as they're matched. *)
-    (* Definitely leave it as a list in the ClassInfo, for ordering. *)
+    (* make a map from the fields to their types, removing them as
+       they're matched. *)
     let fdict = List.fold_left (fun tmap (fi: fieldInfo) ->
         StrMap.add fi.fieldname
+          (* Look for a specified type if field is generic. *)
           (match fi.fieldtype with
            | Typevar tvar -> get_typearg ttag tvar (* in the parent ttag *)
            | Namedtype _ -> fi.fieldtype (* TODO: may need to recurse *)

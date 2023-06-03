@@ -592,6 +592,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
     (* top-level call *)
     get_field_alloca fields ixopt entry.symtype alloca
 
+
 (** Generate LLVM code for an expression *)
 and gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
@@ -627,8 +628,8 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       (* determine if cast needed - also have to check nullable *)
       (* feeling like it's the wrong place for the cast *)
       (* let exptype = ttag_to_llvmtype lltypes ex.decor in
-      if exptype <> type_of the_val then
-        build_bitcast the_val exptype "expvar-casted" builder
+         if exptype <> type_of the_val then
+         build_bitcast the_val exptype "expvar-casted" builder
          else *) the_val
     )
 
@@ -661,7 +662,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
           then fexpval
           (* UPD: no cast needed, but maybe a store later if I remove the pointer. *)
           (* else (
-            (* if a rectype, cast to i8* first, then check
+             (* if a rectype, cast to i8* first, then check
                for promotion to nullable *)
               let castedval = if fexp.decor.tclass.rectype then (
                 debug_print ("ExpRecord: casting field " ^ fname
@@ -678,11 +679,11 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
               let fieldaddr =
                 build_alloca (type_of fexpval) "fieldaddr" builder in
               let _ = build_store fexpval fieldaddr builder in 
-                  build_bitcast fieldaddr voidptr_type "fieldarg" builder
+              build_bitcast fieldaddr voidptr_type "fieldarg" builder
           )
           else (
-              debug_print ("ExpRecord: field value promotion needed");
-              promote_value (*castedval*) fexpval fieldtype builder )
+            debug_print ("ExpRecord: field value promotion needed");
+            promote_value (*castedval*) fexpval fieldtype builder )
         in
         debug_print ("ExpRecord: field value store: " ^ string_of_llvalue
                        (build_store finalval fieldaddr builder));
@@ -880,7 +881,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
           build_load retptr "retval" builder
       else
         failwith "BUG: expected pointer (generic) type for return val"
-    (* but I still have to cast it to the lltype *)
+        (* but I still have to cast it to the lltype *)
     else retval
 
   | ExpNullAssn (_, _, _) ->
@@ -894,69 +895,69 @@ and gen_call the_module builder syms lltypes (fname, args) =
   (* lookup assumes procedure names are unique, which is how I intended *)
   | None -> failwith "BUG: unknown function name in codegen"
   | Some llfunc ->
-     (* Construct llvm values for arguments (may need cast/store/promote) *) 
-     let llargs =
-       List.map2 (fun (mut, (argexpr: typetag expr)) fparam ->
-           (* if mutable, arg must be a varexp; pass the var's address. *)
-           if mut then
-             match argexpr.e with
-             | ExpVar _ -> (   (* (v, vlds) *)
+    (* Construct llvm values for arguments (may need cast/store/promote) *) 
+    let llargs =
+      List.map2 (fun (mut, (argexpr: typetag expr)) fparam ->
+          (* if mutable, arg must be a varexp; pass the var's address. *)
+          if mut then
+            match argexpr.e with
+            | ExpVar _ -> (   (* (v, vlds) *)
                 (* new idea: if it's already a pointer type just pass it?
                    How to get the lltype? *)
-               let varentry, _ =
-                 Symtable.findvar (exp_to_string argexpr) syms in
-               match varentry.addr with
-               | Some alloca ->
+                let varentry, _ =
+                  Symtable.findvar (exp_to_string argexpr) syms in
+                match varentry.addr with
+                | Some alloca ->
                   (* I think this is where I promote. *)
                   (* if varentry.symtype.nullable <> argexpr.decor.nullable then *)
                   if is_option_type argexpr.decor then
                     failwith "Not yet supporting mutable nullable args"
                   else 
                     alloca
-               | None -> failwith "BUG: alloca not found for mutable arg"
-             )
-             | _ -> failwith "BUG: non-var mutable argument in codegen"
-           else (
-             (* If not mutable, just generate the llvalue of the expression *)
-             debug_print "#CG gen_call 919: generating argument expression";
-             let argty = argexpr.decor in
-             let paramty = fparam.symtype in
-             let argval = gen_expr the_module builder syms lltypes argexpr in
-             (* Case 1: exact equal types or matching typeclass *)
-             if types_equal argty paramty
-                || not (is_generic_type argty)
-                   && not (is_generic_type paramty)
-                   && get_type_class argty = get_type_class paramty
-             then (
-               debug_print "#CG gen_call: exact or class match argument type";
-               argval
-             )
-             (* if arg type is generic. Can I do something simpler than unify
-                here ? *)
-             (* Maybe don't check if generic at all here, just pointers
-                and casting. *) 
-             else if is_generic_type fparam.symtype then (
-               (* case of both generic, just different type variable *)
-               if is_generic_type argexpr.decor then argval
-               else (
-                 if is_pointer_type (type_of argval) then (
-                   debug_print "#CG gen_call: casting pointer to generic arg";
-                   build_bitcast argval voidptr_type "genarg" builder
-                 ) else (
-                   debug_print "#CG gen_call: storing value for generic arg";
-                   let argaddr =
-                     build_alloca (type_of argval) "argaddr" builder in
-                   let _ = build_store argval argaddr builder in 
-                   build_bitcast argaddr voidptr_type "genarg" builder
-             )))
-             (* Remaining case is union/nullable type; promote value *)
-             else (
-               debug_print "#CG gen_call 944: promoting arg value";
-               let nullabletype = ttag_to_llvmtype lltypes fparam.symtype in
-               promote_value argval nullabletype builder ))
+                | None -> failwith "BUG: alloca not found for mutable arg"
+              )
+            | _ -> failwith "BUG: non-var mutable argument in codegen"
+          else (
+            (* If not mutable, just generate the llvalue of the expression *)
+            debug_print "#CG gen_call 919: generating argument expression";
+            let argty = argexpr.decor in
+            let paramty = fparam.symtype in
+            let argval = gen_expr the_module builder syms lltypes argexpr in
+            (* Case 1: exact equal types or matching typeclass *)
+            if types_equal argty paramty
+            || not (is_generic_type argty)
+               && not (is_generic_type paramty)
+               && get_type_class argty = get_type_class paramty
+            then (
+              debug_print "#CG gen_call: exact or class match argument type";
+              argval
+            )
+            (* Maybe don't check if generic at all here, just pointers
+               and casting. *)
+            (* Insufficient! type itself may not be generic but if it's an
+               instantiated generic it will still be a pointer. *)
+            else if is_generic_type fparam.symtype then (
+              (* case of both generic, just different type variable *)
+              if is_generic_type argexpr.decor then argval
+              else (
+                if is_pointer_type (type_of argval) then (
+                  debug_print "#CG gen_call: casting pointer to generic arg";
+                  build_bitcast argval voidptr_type "genarg" builder
+                ) else (
+                  debug_print "#CG gen_call: storing value for generic arg";
+                  let argaddr =
+                    build_alloca (type_of argval) "argaddr" builder in
+                  let _ = build_store argval argaddr builder in 
+                  build_bitcast argaddr voidptr_type "genarg" builder
+                )))
+            (* Remaining case is union/nullable type; promote value *)
+            else (
+              debug_print "#CG gen_call 944: promoting arg value";
+              let nullabletype = ttag_to_llvmtype lltypes fparam.symtype in
+              promote_value argval nullabletype builder ))
         ) args fentry.fparams
-       |> Array.of_list in
-     (llfunc, llargs) (* actual build is different if expr or stmt *)
+      |> Array.of_list in
+    (llfunc, llargs) (* actual build is different if expr or stmt *)
 
 
 (** Generate LLVM code for a statement *)
@@ -1410,7 +1411,7 @@ let gen_fdecls the_module lltypes fsyms =
           ) procentry.fparams
         |> Array.of_list in
       let llfunctype = function_type rettype paramtypes in
-      debug_print ("-- Declaring function " ^ procentry.procname
+      debug_print ("#CG: Declaring function " ^ procentry.procname
                    ^ ", of type " ^ string_of_lltype llfunctype);
       (* This is the qualified version (or not, if exported) *)
       (* let llfunc = ( *)

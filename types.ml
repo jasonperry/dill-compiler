@@ -78,6 +78,10 @@ let get_typearg ttag tvar =
     let vindex = findi tinfo.tclass.tparams tvar 0 in
     List.nth tinfo.typeargs vindex
 
+(* let get_spec_fieldtype finfo =
+  match finfo.fieldtype with
+   | Typevar tvar -> get_typearg  *)
+
 (* Class definitions for built-in types, and tags for convenience. *)
 let null_class = { classname="NullType"; in_module = ""; kindData = Primitive;
                    opaque=false; muttype=false; rectype=false; tparams=[]; }
