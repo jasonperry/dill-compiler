@@ -904,6 +904,7 @@ and gen_call the_module builder syms lltypes (fname, args) =
             | ExpVar _ -> (   (* (v, vlds) *)
                 (* new idea: if it's already a pointer type just pass it?
                    How to get the lltype? *)
+                (* Don't we need get_varexp_alloca here? Could have fields. *)
                 let varentry, _ =
                   Symtable.findvar (exp_to_string argexpr) syms in
                 match varentry.addr with
@@ -936,9 +937,9 @@ and gen_call the_module builder syms lltypes (fname, args) =
                and casting. *)
             (* Insufficient! type itself may not be generic but if it's an
                instantiated generic it will still be a pointer. *)
-            else if is_generic_type fparam.symtype then (
+            else if is_generic_type paramty then (
               (* case of both generic, just different type variable *)
-              if is_generic_type argexpr.decor then argval
+              if is_generic_type argty then argval
               else (
                 if is_pointer_type (type_of argval) then (
                   debug_print "#CG gen_call: casting pointer to generic arg";

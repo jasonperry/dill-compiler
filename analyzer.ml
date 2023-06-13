@@ -103,6 +103,33 @@ let rec is_const_expr = function
 (** Expression result type (remember that exprs have a type field) *)
 type expr_result = (typetag expr, string located) Stdlib.result
 
+let is_mutable_varexp syms ((vname, ixopt), flist) =
+  let varentry, _ =
+    Symtable.findvar vname syms in
+  if not (varentry.var && varentry.mut)
+  then false
+  else
+    let rec is_mut_loop partype = function
+      | [] -> true
+      | (fname, ixopt) :: rest ->
+        (* find field in partype and check if mut *)
+        (match get_ttag_field partype fname with
+         | None -> failwith "is_mutable_varexp: type doesn't have such a field"
+         | Some finfo -> 
+           if not finfo.mut then false
+           else let fieldtype =
+                  match ixopt with
+                  | Some _ -> array_element_type finfo.fieldtype
+                  | None -> finfo.fieldtype
+             in
+             is_mut_loop fieldtype rest)
+    in
+    let vartype = match ixopt with
+      | Some _ -> array_element_type varentry.symtype
+      | None -> varentry.symtype
+    in 
+    is_mut_loop vartype flist
+
 
 (** Check semantics of an expression, replacing decor with a type *)
 let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
@@ -404,21 +431,17 @@ and check_call syms tenv (fname, args) =
         | Error estr -> 
           Error ("Argument match failure for " ^ fname ^ ": " ^ estr)
         | Ok tvarmap -> 
-          (* trying putting mutability checking here, after all other checks. *)
+          (* do the mutability check after other checks. *)
           let rec check_mutability = function
             | (mut, argexp)::argsrest -> (
                 if not mut then check_mutability argsrest
                 (* If mutable, make sure it's a var reference and mutable *)
                 else match argexp.e with
-                  (* can we pass a field as a mutable reference? Yes, it could be
-                   * a mutable type itself. *)
-                  | ExpVar _ -> 
-                    let varentry, _ =
-                      (* FIX: exp_to_string won't work with array element refs. *)
-                      Symtable.findvar (exp_to_string argexp) syms in
-                    if not (varentry.var && varentry.mut)
-                    then Error ("Variable expression " ^ exp_to_string argexp
-                                ^ "cannot be passed mutably")
+                  | ExpVar varexpr -> 
+                    (* Make sure containing var is mutable *)
+                    if not (is_mutable_varexp syms varexpr) then
+                      Error ("Variable expression " ^ exp_to_string argexp
+                             ^ " cannot be passed mutably")
                     else
                       check_mutability argsrest
                   | _ ->

@@ -92,6 +92,7 @@ and 'ed var_expr = (string * 'ed expr option) * (string * 'ed expr option) list
 (** Decorated expression type *)
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
+let get_varexpr_var (ve: 'ed var_expr) = fst (fst ve)
 
 type ('ed, 'sd, 'l) raw_stmt = 
   | StmtDecl of string * 'l typeExpr option * 'ed expr option
