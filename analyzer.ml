@@ -103,6 +103,7 @@ let rec is_const_expr = function
 (** Expression result type (remember that exprs have a type field) *)
 type expr_result = (typetag expr, string located) Stdlib.result
 
+(** Deep check to see if a varexp is something mutable. *)
 let is_mutable_varexp syms ((vname, ixopt), flist) =
   let varentry, _ =
     Symtable.findvar vname syms in

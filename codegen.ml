@@ -34,7 +34,8 @@ end
 
 module TtagMap = Map.Make(TypeTag)
 
-(* dressed-up type environment to store lltype + field/tag offsets. *)
+(* type environment to store lltypes and field/tag offsets for named
+   classes. Entries built by add_lltype. Used a lot by ttag_to_lltype *)
 module Lltenv = struct
   (* fieldmap is used for both struct offsets and union tags. *)
   type fieldmap = (int * typetag) StrMap.t
@@ -213,17 +214,17 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
     )
 
 (** Use a type tag to generate the LLVM type from the base type. *)
-let rec ttag_to_llvmtype lltypes ty = match ty with
+let rec ttag_to_lltype lltypes ty = match ty with
   | Typevar _ ->
     voidptr_type
   | Namedtype tinfo -> (
       if is_array_type ty then
-        let elttype = ttag_to_llvmtype lltypes (array_element_type ty) in
+        let elttype = ttag_to_lltype lltypes (array_element_type ty) in
         struct_type context
           (* get inner type from class params now! *)
           [| int_type; pointer_type (array_type elttype 0) |]
       else if is_option_type ty then
-        let basetype = ttag_to_llvmtype lltypes (option_base_type ty) in
+        let basetype = ttag_to_lltype lltypes (option_base_type ty) in
         struct_type context [| nulltag_type; basetype |]
       else 
         match Lltenv.find_lltype_opt (tinfo.modulename, tinfo.tclass.classname)
@@ -379,7 +380,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
              match variant with 
              | (_, Some varty) ->
                 debug_print "Variant has attached value, generating val compare...";
-                let llvarty = ttag_to_llvmtype lltypes varty in
+                let llvarty = ttag_to_lltype lltypes varty in
                 (* generate the pointer to the variant's value *)
                 let gen_varval_ptr theval =
                   let varptr =
@@ -388,7 +389,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
                     else
                       (* Easiest way is just to store so we can cast a pointer *)
                       let valalloca =
-                        build_alloca (ttag_to_llvmtype lltypes valty)
+                        build_alloca (ttag_to_lltype lltypes valty)
                           "varstruct" builder in
                       ignore (build_store theval valalloca builder);
                       build_struct_gep valalloca 1 "varptr" builder
@@ -608,7 +609,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
   | ExpVal (e) ->
     (* val(exp) is the nullable wrapper, so promote to the null-tag container. *)
     let evalue = gen_expr the_module builder syms lltypes e in
-    let nullabletype = ttag_to_llvmtype lltypes ex.decor in 
+    let nullabletype = ttag_to_lltype lltypes ex.decor in 
     promote_value evalue nullabletype builder 
 
   | ExpVar (((varname, _), _) as varexp) -> (
@@ -618,7 +619,66 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       (* only load if primitive type? Oh, it breaks function signatures that 
        * expect value types... and causes other crashes.*)
       (* if is_primitive_type ex.decor then  *)
-      debug_print "#CG: ExpVar: varexp alloca created";
+      debug_print ("#CG: ExpVar: varexp alloca created for type "
+                   ^ typetag_to_string ex.decor ^ " with alloca "
+                   ^ string_of_llvalue alloca);
+      let explltype = ttag_to_lltype lltypes ex.decor in
+      let rec ptr_level llty =
+        if not (is_pointer_type llty) then 0
+        else 1 + ptr_level (element_type llty)
+      in
+      (* load and cast until we get value of expr type and point level. *)
+      (* but if I do all this then it will add unneeded stores when I
+         need to pass a pointer. Maybe I shouldn't worry about that. *)
+      (* related to vars being copies? can't just assign a pointer *)
+      (* yeah, way too early to put context-sensitive optimizations. *)
+      let rec load_and_cast alloca expty =
+        if type_of alloca = expty then alloca
+        (* more than one point away: load *)
+        else (
+          debug_print ("#CG ExpVar: need to cast/load alloca type "
+                       ^ string_of_lltype (type_of alloca)
+                       ^ " to " ^ string_of_lltype (expty));
+          let ind_allo, ind_exp =
+            ptr_level (type_of alloca), ptr_level expty in
+          if ind_allo = ind_exp then
+            build_bitcast alloca expty (varname ^ "-exp-cast") builder
+          else if ind_allo > ind_exp + 1 then
+            load_and_cast (build_load alloca (varname ^ "-exp-load") builder)
+              expty
+          else if ind_allo < ind_exp then
+            failwith "VarExp alloca has less indirection than type?!"
+          else (* one point away: cast and load *) (
+            debug_print "#CG: one point away: cast and load";
+            (* TODO: don't emit cast if it's a noop *)
+            let casted = build_bitcast alloca (pointer_type expty)
+                (varname ^ "-exp-cast") builder in
+            build_load casted (varname ^ "-exp-load") builder
+          )
+        )
+      in  
+      let res = load_and_cast alloca explltype in
+      (debug_print "#CG: finished generating VarExp"; res)
+    )
+      (* let alloca =
+        (* idea 2. if indirection of alloca is greater, load once
+           and hope for the best (then cast) *)
+        (* Since generic fields are always just a pointer we won't
+           get any deeper indirection, right? *)
+        (* if type_of alloca <> (* pointer_type *) explltype *)
+        (* could just say > 1? *)
+        if ptr_level (type_of alloca) > ptr_level explltype + 1
+        then build_load alloca (varname ^ "-ind") builder
+        else alloca in
+      let alloca =
+        if 
+        then (
+          debug_print ("#CG ExpVar: Casting alloca type "
+                       ^ string_of_lltype (type_of alloca) ^ " to "
+                       ^ string_of_lltype (pointer_type explltype));
+          build_bitcast alloca (pointer_type explltype) "allocast" builder
+        )
+        else alloca in
       let the_val =
         (* only load if it's a value type *)
         if is_reference_type ex.decor then
@@ -627,13 +687,14 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
           build_load alloca (varname ^ "-expr") builder in
       (* determine if cast needed - also have to check nullable *)
       (* feeling like it's the wrong place for the cast *)
-      (* let exptype = ttag_to_llvmtype lltypes ex.decor in
+      (* let exptype = ttag_to_lltype lltypes ex.decor in
          if exptype <> type_of the_val then
          build_bitcast the_val exptype "expvar-casted" builder
          else *) the_val
-    )
+         ) *)
 
   | ExpRecord fieldlist ->
+    (* Get the LLVM struct type from the lltenv *)
     let typekey = (get_type_modulename ex.decor,
                    get_type_classname ex.decor) in
     let llty = Lltenv.find_lltype typekey lltypes in
@@ -645,50 +706,46 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       else 
         build_alloca llty "recaddr" builder in
     List.iter (fun (fname, fexp) ->
-        (* have to use the map from fields to nums *)
+        (* have to use the map from field names to numbers *)
         let fexpval = gen_expr the_module builder syms lltypes fexp in
-        let fieldaddr =
+        (* get the pointer to the field from the allocated struct *)
+        let fieldptr =
           build_struct_gep recaddr
             (fst (Lltenv.find_field typekey fname lltypes))
-            "fieldaddr" builder in
+            "fieldptr" builder in
         (* check if null promotion is needed; the field lltype might be an opaque
            pointer, so use the typename to fetch the actual type from the lltenv *)
-        let fieldtype = element_type (type_of fieldaddr) in
-        debug_print ("ExpRecord: field and expr types: "
+        let fieldtype = element_type (type_of fieldptr) in
+        debug_print ("#CG ExpRecord: field and expr types: "
                      ^ string_of_lltype fieldtype ^ ", "
                      ^ string_of_lltype (type_of fexpval));
         let finalval =
           if fieldtype = type_of fexpval
           then fexpval
-          (* UPD: no cast needed, but maybe a store later if I remove the pointer. *)
-          (* else (
-             (* if a rectype, cast to i8* first, then check
-               for promotion to nullable *)
-              let castedval = if fexp.decor.tclass.rectype then (
-                debug_print ("ExpRecord: casting field " ^ fname
-                             ^ " to opaque pointer type");
-                build_bitcast fexpval voidptr_type "reccast" builder )
-               else fexpval in 
-               if fieldtype = type_of castedval 
-               then castedval *)
-          (* case for generic field (or other pointer case?) *)
           else if is_pointer_type fieldtype then (
+            (* generic (pointer) field and value is pointer - just cast
+               to the void pointer *)
             if is_pointer_type (type_of fexpval) then
               build_bitcast fexpval voidptr_type "genfield" builder
-            else
+            else (
+              (* generic field type and value is value - store *)
+              debug_print ("#CG ExpRecord: need store for generic field");
               let fieldaddr =
                 build_alloca (type_of fexpval) "fieldaddr" builder in
-              let _ = build_store fexpval fieldaddr builder in 
-              build_bitcast fieldaddr voidptr_type "fieldarg" builder
-          )
+              let _ = build_store fexpval fieldaddr builder in
+              (* cast to the generic pointer *)   
+              build_bitcast fieldaddr voidptr_type "fieldarg" builder 
+            ))
+          (* need a better way to determine when to promote? *)
           else (
-            debug_print ("ExpRecord: field value promotion needed");
+            debug_print ("#CG ExpRecord: field value promotion needed");
             promote_value (*castedval*) fexpval fieldtype builder )
         in
         debug_print ("ExpRecord: field value store: " ^ string_of_llvalue
-                       (build_store finalval fieldaddr builder));
+                       (build_store finalval fieldptr builder));
       ) fieldlist;
     (* recursive types return the pointer, otherwise the value *)
+    (* I think for consistency: all rectype expressions are pointers. *)
     if is_recursive_type ex.decor then
       recaddr
     else 
@@ -715,7 +772,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         (if typesize = 1 || subty = void_ttag
          then [| varianttag_type |]
          else
-           let llsubty = ttag_to_llvmtype lltypes subty in
+           let llsubty = ttag_to_lltype lltypes subty in
            [| varianttag_type; llsubty |]
         ) in
     debug_print ("  variant subtype struct: " ^ string_of_lltype structsubty);
@@ -737,7 +794,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
          let eval1 = gen_expr the_module builder syms lltypes e in
          debug_print "finished codegen for variant field";
          if not (types_equal e.decor subty) then
-           let nullabletype = ttag_to_llvmtype lltypes subty in 
+           let nullabletype = ttag_to_lltype lltypes subty in 
            promote_value eval1 nullabletype builder
          else eval1 in
        let valaddr = build_struct_gep structaddr 1 "varVal" builder in
@@ -760,7 +817,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
   (* castedaddr *)
 
   | ExpSeq elist ->
-    let eltType = ttag_to_llvmtype lltypes (List.hd elist).decor in
+    let eltType = ttag_to_lltype lltypes (List.hd elist).decor in
     debug_print ("eltType: " ^ typetag_to_string ((List.hd elist).decor));
     debug_print ("eltType: " ^ string_of_lltype eltType);
     (* alloca for the raw array data. why is it including the  *)
@@ -774,7 +831,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         debug_print(string_of_llvalue (build_store v ep builder));
       ) elist;
     (* create the struct *)
-    let structalloca = build_alloca (ttag_to_llvmtype lltypes ex.decor)
+    let structalloca = build_alloca (ttag_to_lltype lltypes ex.decor)
         "array_struct" builder in
     let lenptr = build_struct_gep structalloca 0 "lenptr" builder in
     let dataptr = build_struct_gep structalloca 1 "dataptr" builder in
@@ -870,7 +927,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
        that's the only place that can happen? Or have I discovered
        a missing case? *)
     debug_print ("#CG: matching to return type " ^ typetag_to_string ex.decor);
-    let rettype = ttag_to_llvmtype lltypes ex.decor in
+    let rettype = ttag_to_lltype lltypes ex.decor in
     if rettype <> (type_of retval) then
       if is_pointer_type (type_of retval) then
         if is_pointer_type rettype then
@@ -890,21 +947,22 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
 
 (** Generate LLVM for a function call (used in both expr and stmt) *)
 and gen_call the_module builder syms lltypes (fname, args) =
+  (* 1. Look up function in symtable (names should be unique) *)
   let (fentry, _) = Symtable.findproc fname syms in
   match lookup_function fentry.procname the_module with
-  (* lookup assumes procedure names are unique, which is how I intended *)
   | None -> failwith "BUG: unknown function name in codegen"
   | Some llfunc ->
-    (* Construct llvm values for arguments (may need cast/store/promote) *) 
+    (* 2. Construct llvm values for arguments (may cast/store/promote) *)
+    (* TODO: get lltypes of params also, for casting *)
     let llargs =
       List.map2 (fun (mut, (argexpr: typetag expr)) fparam ->
-          (* if mutable, arg must be a varexp; pass the var's address. *)
+          (* TODO: Just eval the argexpr and then determine if
+             load/store needed? *) 
+          (* 2.a: if mutable, arg must be a varexp; pass the var's address. *)
           if mut then
             match argexpr.e with
             | ExpVar _ -> (   (* (v, vlds) *)
-                (* new idea: if it's already a pointer type just pass it?
-                   How to get the lltype? *)
-                (* Don't we need get_varexp_alloca here? Could have fields. *)
+                (* Incomplete--needs to handle field/array expressions. *)
                 let varentry, _ =
                   Symtable.findvar (exp_to_string argexpr) syms in
                 match varentry.addr with
@@ -917,26 +975,41 @@ and gen_call the_module builder syms lltypes (fname, args) =
                     alloca
                 | None -> failwith "BUG: alloca not found for mutable arg"
               )
-            | _ -> failwith "BUG: non-var mutable argument in codegen"
+            | _ -> failwith "BUG: non-var mut argument found in codegen"
           else (
-            (* If not mutable, just generate the llvalue of the expression *)
-            debug_print "#CG gen_call 919: generating argument expression";
+            (* 2.b: If not mutable, just get the llvalue of the expression *)
+            debug_print
+              "#CG gen_call: generating immutable argument expression";
             let argty = argexpr.decor in
             let paramty = fparam.symtype in
             let argval = gen_expr the_module builder syms lltypes argexpr in
-            (* Case 1: exact equal types or matching typeclass *)
+            (* 2.b.1: exact equal types or matching typeclass *)
             if types_equal argty paramty
             || not (is_generic_type argty)
                && not (is_generic_type paramty)
                && get_type_class argty = get_type_class paramty
             then (
-              debug_print "#CG gen_call: exact or class match argument type";
-              argval
+              debug_print ("#CG gen_call: exact or class match argument type"
+                           ^ typetag_to_string argty ^ ","
+                           ^ typetag_to_string paramty);
+              (* Could still be lltype mismatch (AFAIK just due to
+                 instantiated generic as argument. But test *)
+              if is_pointer_value argval
+              && not (is_pointer_type (ttag_to_lltype lltypes paramty))
+                 (* else if is_generic_type argty then ( *)
+              then (
+                debug_print "#CG gen_call: generic-to-concrete arg pass";
+                let argptr = build_bitcast argval
+                    (pointer_type (ttag_to_lltype lltypes paramty))
+                    "argptr" builder in 
+                build_load argptr "argval" builder
+              )
+              else 
+                argval
             )
             (* Maybe don't check if generic at all here, just pointers
                and casting. *)
-            (* Insufficient! type itself may not be generic but if it's an
-               instantiated generic it will still be a pointer. *)
+            (* 2.b.1: parameter type is generic. *)
             else if is_generic_type paramty then (
               (* case of both generic, just different type variable *)
               if is_generic_type argty then argval
@@ -953,8 +1026,8 @@ and gen_call the_module builder syms lltypes (fname, args) =
                 )))
             (* Remaining case is union/nullable type; promote value *)
             else (
-              debug_print "#CG gen_call 944: promoting arg value";
-              let nullabletype = ttag_to_llvmtype lltypes fparam.symtype in
+              debug_print "#CG gen_call: promoting arg value to nullable";
+              let nullabletype = ttag_to_lltype lltypes fparam.symtype in
               promote_value argval nullabletype builder ))
         ) args fentry.fparams
       |> Array.of_list in
@@ -971,7 +1044,7 @@ let rec gen_stmt the_module builder lltypes
      * But we don't care in codegen, right, it's all correct? *)
     (* print_string ("looking up " ^ varname ^ " for decl codegen\n"); *)
     let (entry, _) = Symtable.findvar varname syms in
-    let allocatype = ttag_to_llvmtype lltypes entry.symtype in
+    let allocatype = ttag_to_lltype lltypes entry.symtype in
     debug_print("StmtDecl: allocatype for decl of " ^ varname ^ ": "
                 ^ string_of_lltype allocatype);
     (* Make a separate builder to insert the alloca at top of the function *)
@@ -1008,7 +1081,7 @@ let rec gen_stmt the_module builder lltypes
     else (
       (* will have to handle pointer types too for record type? yes. *)
       debug_print "StmtAssign: null promotion seemingly required";
-      let nullabletype = ttag_to_llvmtype lltypes vetype in 
+      let nullabletype = ttag_to_lltype lltypes vetype in 
       let promotedval = promote_value expval nullabletype builder in
       ignore (build_store promotedval alloca builder) )
   )
@@ -1029,7 +1102,7 @@ let rec gen_stmt the_module builder lltypes
           else (
             debug_print ("StmtReturn: Promoting return value "
                          ^ Llvm.string_of_llvalue ev);
-            let supertype = ttag_to_llvmtype lltypes rettype in 
+            let supertype = ttag_to_lltype lltypes rettype in 
             promote_value ev supertype builder  )
         in
         let retval =
@@ -1204,7 +1277,7 @@ let rec gen_stmt the_module builder lltypes
          | ExpVar ((varname, _), _) -> 
             let fieldmap = Option.get fieldmap in
             let casetype = snd (StrMap.find vname fieldmap) in
-            let caselltype = ttag_to_llvmtype lltypes casetype in
+            let caselltype = ttag_to_lltype lltypes casetype in
             (* trying with no new alloca, just cast and return the pointer. *)
             (* let alloca = build_alloca caselltype varname builder in
             Symtable.set_addr blocksyms varname alloca; *)
@@ -1227,7 +1300,7 @@ let rec gen_stmt the_module builder lltypes
        )
        | ExpVal({e=ExpVar((valvar, _), _); decor=_}) ->
           (* let valtype = {matchexp.decor with nullable=false} in
-          let vallltype = ttag_to_llvmtype lltypes valtype in  *)
+          let vallltype = ttag_to_lltype lltypes valtype in  *)
           (* let alloca = build_alloca vallltype valvar builder in 
           Symtable.set_addr blocksyms valvar alloca; *)
           (* let varstructty =
@@ -1383,16 +1456,16 @@ let gen_global_decl the_module lltypes (gdecl: ('ed,'sd,'tt) globalstmt) =
 let gen_fdecls the_module lltypes fsyms =
   StrMap.iter (fun _ procentry ->  (* don't need map keys *)
       let rettype =
-        let rawRetType = ttag_to_llvmtype lltypes procentry.rettype in
+        let rawRetType = ttag_to_lltype lltypes procentry.rettype in
         if is_opaque_type procentry.rettype then (
-          debug_print ("-- Generating opaque return type for "
+          debug_print ("#CG gen_fdecls: Generating opaque return type for "
                        ^ string_of_lltype rawRetType);
           voidptr_type
         )
         else rawRetType in
       let paramtypes =
         List.map (fun entry ->
-            let ptype = ttag_to_llvmtype lltypes entry.symtype in
+            let ptype = ttag_to_lltype lltypes entry.symtype in
             (* if entry.symtype.tclass.opaque then
                voidptr_type *)
             (* if is_primitive_type entry.symtype then ptype
@@ -1412,7 +1485,7 @@ let gen_fdecls the_module lltypes fsyms =
           ) procentry.fparams
         |> Array.of_list in
       let llfunctype = function_type rettype paramtypes in
-      debug_print ("#CG: Declaring function " ^ procentry.procname
+      debug_print ("#CG gen_fdecls: Declaring function " ^ procentry.procname
                    ^ ", of type " ^ string_of_lltype llfunctype);
       (* This is the qualified version (or not, if exported) *)
       (* let llfunc = ( *)
@@ -1451,7 +1524,7 @@ let gen_proc the_module builder lltypes proc =
                 && (get_type_class paramentry.symtype).kindData <> Hidden then ( 
                debug_print ("-- Casting opaque argument " ^ varname ^ " to concrete type");
                build_bitcast (param llfunc i)
-                 (pointer_type (ttag_to_llvmtype lltypes paramentry.symtype))
+                 (pointer_type (ttag_to_lltype lltypes paramentry.symtype))
                  varname entrybuilder
              )
              else param llfunc i
@@ -1481,7 +1554,7 @@ let gen_proc the_module builder lltypes proc =
            if is_opaque_type fentry.rettype then
              (* WAT! It works if I call it twice? *)
              const_null (return_type (return_type (type_of llfunc)))
-           else const_null  (ttag_to_llvmtype lltypes fentry.rettype) in
+           else const_null  (ttag_to_lltype lltypes fentry.rettype) in
          ignore (build_ret dummyRetval builder);
            (* ignore (build_ret (default_value fentry.rettype) builder); *)
          Llvm_analysis.assert_valid_function llfunc
@@ -1511,7 +1584,7 @@ let gen_module tenv topsyms layout
   (* 2. Generate decls from the symtable for imported global variables. *)
   StrMap.iter (fun localname gsym ->
       let gvalue = declare_global
-                     (ttag_to_llvmtype lltypes gsym.symtype)
+                     (ttag_to_lltype lltypes gsym.symtype)
                      gsym.symname
                      the_module in
       set_externally_initialized true gvalue;

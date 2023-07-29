@@ -20,8 +20,8 @@ begin
    var nt1: NumThing(NumThing(Int)) = {count=42, thing={count=44, thing=678}};
    ** var nt2: NumThing(Float) = {count=43, thing=33.3333};
    showCount(nt1);
-   showCount(nt1.thing); (* broken in codegen, passes a pointer *)
-   (* printInt(nt1.thing.thing); *)
+   showCount(nt1.thing);
+   printInt(nt1.thing.thing); (* get_type_classname called on generic type *)
 end main
 
 end generic04
