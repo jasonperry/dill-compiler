@@ -19,16 +19,17 @@ export proc main()
 begin
    var nt1: NumThing(String) = {count=42, thing="Hello"};
    var nt2: NumThing(Float) = {count=43, thing=33.3333};
-   (* showCount(nt1);
-   showCount(nt2); *)
+
    (* Here the argument is a pointer because it's a generic field,
       but the parameter is a plain float. Codegen needs cast and load. *)
-   (*printFloat(nt2.thing);
-   printString(nt1.thing); *)
+   printFloat(nt2.thing);
+   printString(nt1.thing);
    var doublit : Float = nt2.thing * 2.0;
    printFloat(doublit);
-   printFloat(nt2.thing);
 
+   (* Passing two types of generic structs. *)
+   showCount(nt1);
+   showCount(nt2);
 end main
 
 end generic03

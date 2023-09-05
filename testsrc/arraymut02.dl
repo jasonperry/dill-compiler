@@ -1,4 +1,5 @@
 (* test of array-as-a-record-field mutability *)
+(* broken 2023-09-03 *)
 
 open stdio;
 

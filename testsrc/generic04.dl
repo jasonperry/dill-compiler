@@ -21,6 +21,10 @@ begin
    ** var nt2: NumThing(Float) = {count=43, thing=33.3333};
    showCount(nt1);
    showCount(nt1.thing);
+   ** try making a var out of the nested one. Works.
+   var innerThing: NumThing(Int) = nt1.thing;
+   showCount(innerThing);
+   (* Here's the test *)
    printInt(nt1.thing.thing); (* get_type_classname called on generic type *)
 end main
 

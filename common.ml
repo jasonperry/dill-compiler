@@ -6,6 +6,17 @@ let debug_print s =
   if !_debug then print_endline s
   else ()
 
+(** Utility function to find index of an item in a list *)
+let listIndex_opt es e =
+  let rec loop es i =
+    match es with
+    | [] -> None
+    | elt::rest ->
+      if elt = e then (Some i)
+      else loop rest (i+1)
+  in
+  loop es 0
+
 (** in-place type variables for generics, with signature impl requirements *)
 type typevar = string (* {
     varname: string;

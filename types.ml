@@ -348,6 +348,19 @@ let rec specify_type tvarmap ttag =
     let newtargs = List.map (specify_type tvarmap) tinfo.typeargs in
     Namedtype {tinfo with typeargs=newtargs}
 
+(** Look for value of a type variable within a typetag. *)
+let specify_typevar ttag tv =
+  match ttag with
+  | Typevar _ -> Typevar tv (* tag itself is generic, no luck *)
+  | Namedtype tinfo -> (
+      (* index finding utility is in common.ml *)
+      match listIndex_opt tinfo.tclass.tparams tv with
+      | None -> Typevar tv
+      | Some i ->
+        (* typeargs should be in correspondence with params *)
+        List.nth tinfo.typeargs i
+    )
+
 (** Match an argument type with a possibly more generic type.
     Return the mapping of parameter type variables to types.  *)
 let rec unify_match argtag paramtag =

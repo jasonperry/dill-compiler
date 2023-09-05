@@ -529,7 +529,8 @@ let gen_bounds_check ixval arraysize the_module builder =
       position_at_end contblock builder
     )
 
-(** Find the target address of a varexp from symtable entry and fields *)
+(** Find the target address of a varexp from symtable entry and
+    field type information *)
 let rec get_varexp_alloca the_module builder varexp syms lltypes =
   let ((varname, ixopt), fields) = varexp in
   let (entry, _) =  Symtable.findvar varname syms in
@@ -539,8 +540,11 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
   | Some alloca ->
     (* traverse indices and record fields to generate the final alloca. *)
     let rec get_field_alloca flds ixopt (parentty: typetag) alloca =
-      (* index expression [] first; strip off array type after indexing *)
-      debug_print ("get_varexp_alloca: " ^ string_of_llvalue alloca);
+      debug_print ("#CG: get_field_alloca parent type: "
+                    ^ typetag_to_string parentty);
+      debug_print ("get_field_alloca: " ^ string_of_llvalue alloca);
+      (* first, determine if array index expression [], then index and
+         strip off array type *)
       let (alloca, newty) =
         match ixopt with
         | None -> (alloca, parentty)
@@ -569,6 +573,8 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
       | (fld, ixopt)::rest -> 
         (* Get just the class of parent type so we can find its field info.
            Analysis determined it's not a nullable. *)
+        (* Would we ever need to get the alloca for a generic (just
+           the pointer)? *)
         let ptypekey = (get_type_modulename parentty,
                         get_type_classname parentty) in
         (* If array length, it has no further fields, we're done. *)
@@ -577,6 +583,8 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           (build_struct_gep alloca 0 "length" builder, int_ttag)
         else (
           (* check if dereference needed first, for recursive type. *)
+          (* May need to generalize this for generic types too,
+             possible load-and-cast? *)
           let alloca = if is_recursive_type parentty
             then 
               build_load alloca "rectype-deref" builder
@@ -586,7 +594,14 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           debug_print ("get_varexp_alloca: generating struct gep for " ^ fld
                        ^ " for type " ^ string_of_lltype (type_of alloca));
           let alloca = build_struct_gep alloca offset "field" builder in
-          (*  Propagate field's typetag to next iteration *)
+          (*  Get more specific type for field if possible; it becomes the
+              parent type for the next iteration *)
+          let fieldtype = (* fieldtype, alloca = *)
+            match fieldtype with
+            | Namedtype _ -> fieldtype
+            | Typevar tv -> specify_typevar parentty tv (* match *)
+            (* should cast and load here? alloca = load (casted alloca) *)
+          in 
           debug_print "get_varexp_alloca: recursing";
           get_field_alloca rest ixopt fieldtype alloca )
     in
@@ -616,12 +631,10 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       (* gets complicated with arrays and fields; call out to helper function *)
       let (alloca, _) =
         get_varexp_alloca the_module builder varexp syms lltypes in
-      (* only load if primitive type? Oh, it breaks function signatures that 
-       * expect value types... and causes other crashes.*)
-      (* if is_primitive_type ex.decor then  *)
       debug_print ("#CG: ExpVar: varexp alloca created for type "
                    ^ typetag_to_string ex.decor ^ " with alloca "
                    ^ string_of_llvalue alloca);
+      (* Get lltype of expression to see if conversions are needed. *)
       let explltype = ttag_to_lltype lltypes ex.decor in
       let rec ptr_level llty =
         if not (is_pointer_type llty) then 0
@@ -639,9 +652,11 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
           debug_print ("#CG ExpVar: need to cast/load alloca type "
                        ^ string_of_lltype (type_of alloca)
                        ^ " to " ^ string_of_lltype (expty));
+          (* case match on indirection levels *)
           let ind_allo, ind_exp =
             ptr_level (type_of alloca), ptr_level expty in
           if ind_allo = ind_exp then
+            (* same indirection level, just cast *)
             build_bitcast alloca expty (varname ^ "-exp-cast") builder
           else if ind_allo > ind_exp + 1 then
             load_and_cast (build_load alloca (varname ^ "-exp-load") builder)
@@ -660,38 +675,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       let res = load_and_cast alloca explltype in
       (debug_print "#CG: finished generating VarExp"; res)
     )
-      (* let alloca =
-        (* idea 2. if indirection of alloca is greater, load once
-           and hope for the best (then cast) *)
-        (* Since generic fields are always just a pointer we won't
-           get any deeper indirection, right? *)
-        (* if type_of alloca <> (* pointer_type *) explltype *)
-        (* could just say > 1? *)
-        if ptr_level (type_of alloca) > ptr_level explltype + 1
-        then build_load alloca (varname ^ "-ind") builder
-        else alloca in
-      let alloca =
-        if 
-        then (
-          debug_print ("#CG ExpVar: Casting alloca type "
-                       ^ string_of_lltype (type_of alloca) ^ " to "
-                       ^ string_of_lltype (pointer_type explltype));
-          build_bitcast alloca (pointer_type explltype) "allocast" builder
-        )
-        else alloca in
-      let the_val =
-        (* only load if it's a value type *)
-        if is_reference_type ex.decor then
-          alloca
-        else
-          build_load alloca (varname ^ "-expr") builder in
-      (* determine if cast needed - also have to check nullable *)
-      (* feeling like it's the wrong place for the cast *)
-      (* let exptype = ttag_to_lltype lltypes ex.decor in
-         if exptype <> type_of the_val then
-         build_bitcast the_val exptype "expvar-casted" builder
-         else *) the_val
-         ) *)
+  (* prior code to deal with refs was here *)
 
   | ExpRecord fieldlist ->
     (* Get the LLVM struct type from the lltenv *)
