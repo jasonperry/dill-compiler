@@ -86,21 +86,27 @@ rule token = parse  (* funny that it's called parse *)
   | "then"  { THEN }
   | "elsif" { ELSIF }
   | "else"  { ELSE }
-  | "endif" { ENDIF }
-  | "is"    { IS }
-  | "begin" { BEGIN }
-  | "end"   { END }
+  (*| "endif" { ENDIF } *)
+  | "/if" { ENDIF }
+  (*  | "is"    { IS } *)
+  (* | "begin" { BEGIN }
+     | "end"   { END } *)
   | "while" { WHILE }
   | "loop"  { LOOP }
-  | "endwhile" { ENDWHILE }
+  (*| "endwhile" { ENDWHILE } *)
+  | "/while" { ENDWHILE }
   | "case"    { CASE }
   | "of"      { OF }
-  | "endcase" { ENDCASE }
+  (*  | "endcase" { ENDCASE } *)
+  | "/case" { ENDCASE }
   | "proc"    { PROC }
+  | "/proc"   { ENDPROC }
   | "return"  { RETURN }
   | "nop"     { NOP }
   | "module"  { MODULE }
+  | "/module" { ENDMODULE }
   | "modspec" { MODSPEC }
+  | "/modspec" { ENDMODSPEC }
   | "import"  { IMPORT }
   | "as"      { AS }
   | "open"    { OPEN }

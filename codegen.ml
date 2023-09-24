@@ -599,8 +599,9 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           let fieldtype = (* fieldtype, alloca = *)
             match fieldtype with
             | Namedtype _ -> fieldtype
-            | Typevar tv -> specify_typevar parentty tv (* match *)
-            (* should cast and load here? alloca = load (casted alloca) *)
+            | Typevar tv ->
+              specify_typevar parentty tv (* match *)
+            (* should also cast and load here? alloca = load (casted alloca) *)
           in 
           debug_print "get_varexp_alloca: recursing";
           get_field_alloca rest ixopt fieldtype alloca )

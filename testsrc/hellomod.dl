@@ -1,14 +1,13 @@
 (* hello world as module *)
-module hello begin
+module hello =
 
 import stdio;
 
 (* export *)
-export proc main()
-begin
+export proc main() = 
    stdio::printInt(43);
    stdio::printString("Hello World.\n");
    (* return 0; *)
-end main
+/proc
 
-end hello
+/module
