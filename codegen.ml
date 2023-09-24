@@ -1370,7 +1370,7 @@ let rec gen_stmt the_module builder lltypes
     ignore (build_call callee llargs "" builder)
       
   | StmtCall _ -> failwith "BUG: StmtCall without CallExpr"
-  | StmtBlock _ -> failwith "nested block codegen not implemented"
+(*  | StmtBlock _ -> failwith "nested block codegen not implemented" *)
 
 
 (** Generate code for a conditional expression, including possibly null assignment *)

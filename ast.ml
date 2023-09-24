@@ -110,7 +110,7 @@ type ('ed, 'sd, 'l) raw_stmt =
                 * ('ed expr * ('ed,'sd,'l) stmt list) list (* case blocks *)
                 * ('ed,'sd,'l) stmt list option (* else block *)
   | StmtCall of 'ed expr  (* call used as statement, must return void *)
-  | StmtBlock of ('ed,'sd,'l) stmt list
+(*  | StmtBlock of ('ed,'sd,'l) stmt list *)
 
 (** Decorated statement type *)
 and ('ed, 'sd, 'l) stmt = { st: ('ed,'sd,'l) raw_stmt; decor: 'sd }
@@ -338,8 +338,8 @@ let rec stmt_to_string st =
       | StmtWhile (cond, body) ->
          "while (" ^ exp_to_string cond ^ ") loop\n"
          ^ block_to_string body
-         ^ "endloop\n"
-      | StmtBlock sl -> "begin\n" ^ block_to_string sl ^ "end\n"
+         ^ "/while\n"
+(*| StmtBlock sl -> "begin\n" ^ block_to_string sl ^ "end\n" *)
 
 and block_to_string sl = 
   List.fold_left (fun prev st -> prev ^ stmt_to_string st) "" sl
@@ -356,7 +356,7 @@ and if_to_string (e, tb, eifs, els) =
   ^ (match els with
      | Some sb -> "else \n" ^ block_to_string sb
      | None -> "")
-  ^ "endif\n"
+  ^ "/if\n"
 
 and case_to_string (matchexp, caseblocks, elseopt) =
   "case " ^ exp_to_string matchexp ^ "\n"
@@ -367,7 +367,7 @@ and case_to_string (matchexp, caseblocks, elseopt) =
   ^ (match elseopt with
      | Some eblock -> "  else \n" ^ block_to_string eblock
      | None -> "")
-  ^ "\nendcase\n"
+  ^ "\n /case\n"
 
 (* let interpret_params plist =  *)
 
@@ -384,12 +384,12 @@ let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
 
 let proc_to_string (proc: ('ed, 'sd, 'tt) proc) =
   (* a little ugly, but maybe I will use the pdecl later. *)
-  procdecl_to_string proc.decl ^ "\nbegin\n"
+  procdecl_to_string proc.decl ^ " = \n"
   ^ block_to_string proc.body
-  ^ "\nend " ^ proc.decl.name ^ "\n"
+  ^ "/proc\n" (* "\nend " ^ proc.decl.name ^ "\n" *)
 
 let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
-  "module " ^ dmod.name ^ " begin \n"
+  "module " ^ dmod.name ^ " = \n"
   (* TODO: imports *)
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
@@ -403,11 +403,11 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
       ) "" dmod.globals
   ^ List.fold_left (fun s p -> s ^ proc_to_string p) "" dmod.procs
   (* ^ block_to_string dmod.initblock *)
-  ^ "end " ^ dmod.name ^ "\n"
+  ^ "/module\n" (* "end " ^ dmod.name ^ "\n" *)
 
 (** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
-  "modspec " ^ mspec.name ^ " begin \n"
+  "modspec " ^ mspec.name ^ " = \n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
         fun s (gdecl: ('sd, 'l) globaldecl) ->
@@ -416,5 +416,5 @@ let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
       "" mspec.globals
   ^ List.fold_left
       (fun s pd -> s ^ procdecl_to_string pd ^ ";\n") "" mspec.procdecls
-  ^ "end " ^ mspec.name ^ "\n"
+  ^ "/modspec\n" (*"end " ^ mspec.name ^ "\n"*) 
   

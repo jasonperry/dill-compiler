@@ -1130,12 +1130,12 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
       | _ -> failwith "BUG: Call statement with non-call expression"
     )
 
-  | StmtBlock stlist ->
+(*  | StmtBlock stlist ->
     let blockscope = Symtable.new_scope syms in
     match check_stmt_seq blockscope tenv stlist with
     | Error errs -> Error errs
     | Ok newstmts -> Ok {st=StmtBlock newstmts; decor=blockscope}
-
+*)
 
 (** Check a list of statements. Adds test for unreachable code. *)
 and check_stmt_seq syms tenv sseq =
@@ -1173,7 +1173,7 @@ let rec block_returns stlist =
     match stmt.st with
     | StmtReturn _ -> true
     | StmtDecl _ | StmtAssign _ | StmtNop | StmtCall _ -> block_returns rest
-    | StmtBlock slist -> block_returns slist || block_returns rest
+    (* | StmtBlock slist -> block_returns slist || block_returns rest *)
     | StmtIf (_, thenblk, elsifs, elsblock) -> (
       (* If all paths return, then OK, else must return after. *)
       match elsblock with

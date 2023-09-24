@@ -1,9 +1,8 @@
-module collatz begin
+module collatz =
 
 open stdio;
 
-proc collatz(n: Int) => Int
-begin
+proc collatz(n: Int) => Int =
    var i = n;
    var count = 0;
    (* printInt(i); *)
@@ -15,13 +14,13 @@ begin
          if i < 0 then
 	         printString("Overflow");
 	         return -1;
-	      endif
-      endif
+	      /if
+      /if
       count = count + 1;
       (* printInt(i); *)
-   endwhile
+   /while
    return count; 
-end collatz
+/proc
 
 (* (* It's a "library" now. *)
 begin
@@ -31,4 +30,4 @@ printInt(collatz(6171)); (* 261 steps *)
 
 end
 *)
-end collatz
+/module
