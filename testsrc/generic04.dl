@@ -1,22 +1,20 @@
 ** Nested generic datatype
 
-module generic04 begin
+module generic04 is
 open stdio;
 
-** new syntax
 type NumThing(t) is struct
    count: Int,
    thing: t;
 
 ** Do I want to allow implicit type variables? Not yet, I guess
 ** TODO: it thought t was redeclared.
-proc (u) showCount(th: NumThing(u))
-begin
+proc (u) showCount(th: NumThing(u)) =
    printInt(th.count);
-end showCount
+/proc
 
 export proc main()
-begin
+is
    var nt1: NumThing(NumThing(Int)) = {count=42, thing={count=44, thing=678}};
    ** var nt2: NumThing(Float) = {count=43, thing=33.3333};
    showCount(nt1);
@@ -25,7 +23,7 @@ begin
    var innerThing: NumThing(Int) = nt1.thing;
    showCount(innerThing);
    (* Here's the test *)
-   printInt(nt1.thing.thing); (* get_type_classname called on generic type *)
-end main
+   ** printInt(nt1.thing.thing); 
+/proc
 
-end generic04
+/module

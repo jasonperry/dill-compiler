@@ -2,7 +2,7 @@
 
 open stdio;
 
-proc main() => Int
+proc main() => Int 
 begin
   var a: Int[] = initIntArray(10, 367);
   printInt(a.length);

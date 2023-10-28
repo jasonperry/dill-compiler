@@ -1,6 +1,6 @@
 ** First example of datatype with a generic field
 
-module generic03 begin
+module generic03 is
 open stdio;
 
 ** new syntax
@@ -10,13 +10,11 @@ type NumThing(t) is struct
 
 ** Do I want to allow implicit type variables? Not yet, I guess
 ** TODO: it thought t was redeclared.
-proc (u) showCount(th: NumThing(u))
-begin
+proc (u) showCount(th: NumThing(u)) is 
    printInt(th.count);
-end showCount
+/proc
 
-export proc main()
-begin
+export proc main() is
    var nt1: NumThing(String) = {count=42, thing="Hello"};
    var nt2: NumThing(Float) = {count=43, thing=33.3333};
 
@@ -30,6 +28,6 @@ begin
    (* Passing two types of generic structs. *)
    showCount(nt1);
    showCount(nt2);
-end main
+/proc
 
-end generic03
+/module

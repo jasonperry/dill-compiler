@@ -1,21 +1,19 @@
-(* first test of a generic parameter *)
+(* test of a generic array function parameter *)
 
-module generic01 begin
+module generic01 =
 
 open stdio;
    
 (* smart syntax highlighting would highlight the t as well (but a different
   color from the concrete types. *)
-proc (t) nth(arr: t[], n: Int) => t
-begin
+proc (t) nth(arr: t[], n: Int) => t =
    (* too complicated for a first example? an array is a type *)
    return arr[n];
-end nth
+/proc
 
-export proc main()
-begin
+export proc main() =
    var things: Float[] = [3.4, 4.2, 2.2, 9.9];
    printFloat(nth(things, 3));
-end main
+/proc
 
-end generic01
+/module

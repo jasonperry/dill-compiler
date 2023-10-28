@@ -1,20 +1,19 @@
 (* self-recursive function *)
-module funrec begin
+module funrec =
 
 open stdio;
 
-proc fac(n: Int) => Int
-begin
+proc fac(n: Int) => Int =
+
   if (n == 0) then
     return 1;
   else
     return n * fac(n-1);
-  endif
-end fac
+  /if
+/proc
 
-export proc main()
-begin
-  printInt(fac(6));
-end main
+export proc main() =
+  printInt(fac(20)); (* largest without underflow *)
+/proc
 
-end funrec
+/module

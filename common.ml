@@ -18,6 +18,7 @@ let listIndex_opt es e =
   loop es 0
 
 (** in-place type variables for generics, with signature impl requirements *)
+(* wait, should this go in types.ml? *)
 type typevar = string (* {
     varname: string;
     impls: string list (* probably should be a set later. *)

@@ -1,16 +1,14 @@
 ** Actually simpler example than generic01
 
-module generic02 begin
+module generic02 = 
 
 open stdio;
 
-proc (t, u) second(i: t, j: u) => u
-begin
+proc (t, u) second(i: t, j: u) => u = 
    return j;
-end second
+/proc
 
-export proc main()
-begin
+export proc main() = 
    var x: Int = 42;
    var y: Float = 43.0;
    printFloat(second(x, y));
@@ -18,6 +16,6 @@ begin
    printInt(second(x,x));
    printFloat(second(y,y));
    return;
-end main
+/proc
 
-end generic02
+/module

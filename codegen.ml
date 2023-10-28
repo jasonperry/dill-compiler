@@ -34,8 +34,8 @@ end
 
 module TtagMap = Map.Make(TypeTag)
 
-(* type environment to store lltypes and field/tag offsets for named
-   classes. Entries built by add_lltype. Used a lot by ttag_to_lltype *)
+(** type environment to store lltypes and field/tag offsets for named
+    classes. Entries built by add_lltype. Used a lot by ttag_to_lltype *)
 module Lltenv = struct
   (* fieldmap is used for both struct offsets and union tags. *)
   type fieldmap = (int * typetag) StrMap.t
@@ -543,7 +543,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
       debug_print ("#CG: get_field_alloca parent type: "
                     ^ typetag_to_string parentty);
       debug_print ("get_field_alloca: " ^ string_of_llvalue alloca);
-      (* first, determine if array index expression [], then index and
+      (* 1. determine if array index expression [], then load and
          strip off array type *)
       let (alloca, newty) =
         match ixopt with
@@ -567,7 +567,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
              "elementtptr" builder,
            (array_element_type parentty))
       in
-      (* next, get the field offset if there is one. *)
+      (* 2. get the field offset if there is one. *)
       match flds with
       | [] -> (alloca, newty)
       | (fld, ixopt)::rest -> 
@@ -577,12 +577,13 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
            the pointer)? *)
         let ptypekey = (get_type_modulename parentty,
                         get_type_classname parentty) in
-        (* If array length, it has no further fields, we're done. *)
+        (* If it's the built-in array.length, it has no further fields,
+           we're done. *)
         (* the test for = "length" should be redundant. *)
         if (is_array_type parentty) && fld = "length" then
           (build_struct_gep alloca 0 "length" builder, int_ttag)
         else (
-          (* check if dereference needed first, for recursive type. *)
+          (* check if pointer load needed first, for recursive type. *)
           (* May need to generalize this for generic types too,
              possible load-and-cast? *)
           let alloca = if is_recursive_type parentty
@@ -594,16 +595,28 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
           debug_print ("get_varexp_alloca: generating struct gep for " ^ fld
                        ^ " for type " ^ string_of_lltype (type_of alloca));
           let alloca = build_struct_gep alloca offset "field" builder in
-          (*  Get more specific type for field if possible; it becomes the
+          (*  Get more specific type for field if generic; it becomes the
               parent type for the next iteration *)
-          let fieldtype = (* fieldtype, alloca = *)
+          let fieldtype, alloca = 
             match fieldtype with
-            | Namedtype _ -> fieldtype
+            | Namedtype _ -> (fieldtype, alloca)
             | Typevar tv ->
-              specify_typevar parentty tv (* match *)
-            (* should also cast and load here? alloca = load (casted alloca) *)
+              let fieldtype = specify_typevar parentty tv in
+              debug_print ("- Specified field type to "
+                           ^ typetag_to_string fieldtype);
+              let alloca = if is_reference_type fieldtype then
+                build_bitcast alloca (ttag_to_lltype lltypes fieldtype)
+                  "spec_cast" builder 
+                else alloca
+                  (* build_bitcast alloca
+                    (pointer_type (ttag_to_lltype lltypes fieldtype))
+                     "spec_cast" builder *)
+              in 
+              (fieldtype, alloca) (* match *)
+              (* should also cast and load here? Because generic fields are
+                 pointers. alloca = load (casted alloca) *)
           in 
-          debug_print "get_varexp_alloca: recursing";
+          debug_print "#CG get_varexp_alloca: recursing";
           get_field_alloca rest ixopt fieldtype alloca )
     in
     (* top-level call *)

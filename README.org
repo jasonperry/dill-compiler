@@ -2,48 +2,34 @@
 I want to write and read imperative code. It's meant to be
 type- and memory-safe, with a good orthogonal set of type-based
 abstractions, with as close to zero runtime overhead as possible. The
-most interesting feature is how it makes mutability explicit and simplifies
-management of the value/reference distinction. 
+most interesting feature is how it makes mutability visible and simplifies management of the value/reference distinction. 
 Goals and features include:
-- "Imperative locally, functional-first globally"; being an imperative
-  language, local variables are reassignable. But datatypes are
-  immutable by default, and procedure arguments are passed immutably by
-  default and are not reassignable.
+- "Imperative locally, immutable-first globally"; local variables are reassignable, but datatypes are immutable by default, and procedure arguments are passed immutably by default and are not reassignable.
 - Non-local mutation is made explicit; passing an object mutably is
   indicated at both the function definition and call site. Otherwise
-  true ("deep") immutability is enforced.
+  "deep" immutability is enforced.
 - No implicit differences in behavior due to using values
   vs. references; explicit mutability reduces the number of places where
   you have to think about the distinction. You can declare a local ~ref~
   variable, but for function arguments the mutability distinction is
   enough.  Assignment of a mutable object to a ~var~ is always a copy,
   but you have to write an explicit ~copy()~ for dynamically-sized types.
-- Record (struct) types are primary. Current code has labeled variants,
-  but I'm switching that to /in-situ/ union types with case
-  splitting on the type. Recursive types.
+- Record (struct) types are primary. Current code has labeled variants, but I'm switching that to union types with case  splitting on the type. Recursive types.
 - All types are datatypes; there are no classes (containers for
-  a type and methods), though method call syntax is planned. Method call
-  syntax also distinguishes mutating and non-mutating functions.
+  a type and methods), though method call syntax is planned. Method call syntax also distinguishes mutating and non-mutating functions.
 - Null-safety with explicit nullable (option) types; syntax
   and value promotion convenience features
-- Syntax: keywords are used to delineate blocks; curly braces are only
-  for record expressions. Keywords should "do work" of clarifying
-  structure, e.g. ~endif~ and not just ~end~. We try to be more
-  concise than Pascal/Ada syntax, but readability is more
-  important. Semicolons as statement terminators. Making code easy to
-  type and even read aloud are also goals.
+- Syntax: no curly braces, no significant whitespace. Blocks are  opened by a keyword or equal sign, closed by a slashed keyword:  ~/if~, ~/while~. Avoid being as verbose as Pascal/Ada, but  readability and consistency are more important. Semicolons as  statement terminators. Making code easy to type and even read aloud are also goals.
 - Modules as the primary construct for code grouping and data
   hiding. ~private~ means private to a module; functions in a
   module can access private fields of datatypes in that module. All
   imports must be explicitly specified.
 - Separate compilation by means of auto-generated module
-  specifications. This is strictly a compiler feature---module specs are
-  not part of the language definition proper. What a module exposes is
-  completely specified by its source.
+  specifications. This is strictly a compiler feature---module specs are not part of the language definition proper. What a module exposes is completely specified by its source.
 - In progress: generics, with constraints by means of module signatures (the
   modular equivalent of interfaces). Module imports explicitly specify
   which signature implementations you're using.
-- Possibly: coroutines, probably stackless. 
+- Planned: coroutines, probably stackless. 
 
 We'll see how far I get. The backend is LLVM with the Boehm garbage
 collector, currently targeting only x86-64.

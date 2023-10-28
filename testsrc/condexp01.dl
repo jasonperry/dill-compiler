@@ -1,15 +1,21 @@
 (* Is this superseded by null**.dl? *)
+(* conditional assignment to non-option from nullable value *)
 
-proc main()
-begin
+proc main() = 
+
   var x: Int;
 
-  if (x ?= 42) then
+  var z: Int? = 43;
+
+  ** if x ?= 42 then  (* wants nullable rvalue. *)
+  if (x ?= z) then
     x = 33;
-  endif
+  /if
 
-  if (var y: Int ?= 33) then
+  var y: Int;
+  ** if (var y: Int ?= 33) then
+  if (y ?= 33) then
     y = 42;
-  endif
+  /if
 
-end main
+/proc

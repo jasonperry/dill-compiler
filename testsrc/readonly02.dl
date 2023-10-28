@@ -1,0 +1,39 @@
+(* example that shouldn't return writable ref *)
+
+(* all mutable types are reference types? *)
+type MutCpx = struct
+   mut i: Float,
+   mut j: Float;
+
+(* What if I just don't ever return a writable ref? Will that be too unusable? *)
+(* Yeah, look how useful getting a ref is. *)
+
+proc tryToMutateFromRef(a: MutCpx[]) =
+   ref theOne = findGreaterThan(a, 1.1);
+   theOne.i = 4.6;  (* shouldn't be allowed *)
+/proc
+   
+(* This proc has read-only access to its argument, but if the caller can
+   write it, it should return a writable element reference. *)
+proc findGreaterThan(a: MutCpx[], x: Float) => MutCpx =
+   var i: Int = 0;
+   while i < a.length loop
+      if a[i].i > x then
+         (* readonly should be transitive,
+         * based on caller's owning of a. Mark a as "parent" here,
+         * then at call time transfer ro status of a to result. *)
+         return a[i]; 
+      /if
+      i = i + 1;   
+   /while   
+   return l[0];  (* whatever *)
+/proc
+
+proc main() =
+   var theArray: MutCpx[] = { {i=1.0, j=2.0}, {i=2.0, j=3.0} };
+   (* it's a small type, copying is fine?  Shallow vs. deep copy? *)
+   (* not a readonly ref because it owns the array. *)
+   ref result = findGreaterThan(theArray, 1.5); (* roref & mutref? *)
+   result.i - = result.i = 1;
+   (* print out the array and it's changed? *)
+/proc

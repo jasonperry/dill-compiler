@@ -6,12 +6,12 @@ open Stdio;
 type Complex = struct
   mut i: Float,
   mut j: Float;
-end Complex
+/type
 
-type Complex = struct
+type Complex = struct (* redeclaration *)
   mut i: Float,
   mut j: Float;
-end Complex
+/type
 
 export proc main() : Void = 
 
@@ -19,6 +19,6 @@ export proc main() : Void =
   printFloat(cpx.i);
   printFloat(cpx.j);
 
-end main
+/proc
 
-end StructErr06
+/module

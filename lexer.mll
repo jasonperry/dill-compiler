@@ -88,7 +88,7 @@ rule token = parse  (* funny that it's called parse *)
   | "else"  { ELSE }
   (*| "endif" { ENDIF } *)
   | "/if" { ENDIF }
-  (*  | "is"    { IS } *)
+  | "is"    { IS } 
   (* | "begin" { BEGIN }
      | "end"   { END } *)
   | "while" { WHILE }
