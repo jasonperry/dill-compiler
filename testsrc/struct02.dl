@@ -3,17 +3,15 @@
 
 open stdio;
 
-type Complex is struct
+type Complex is record
   i: Float,
   j: Float;
 
-type Cplx is struct
+type Cplx is record
    f: Int,
    j: Int;
 
-proc main()
-begin
-
+proc main() is
   var cpx: Complex; (*  = {i=2.0, j=1.111};*)
   cpx = {i=4.0, j=-1.53};
   (* cpx.j = 3.3; *) (* assignment to immutable field not allowed *)
@@ -21,6 +19,6 @@ begin
   printFloat(cpx.i);
   printFloat(cpx.j);
 
-end main
+/proc
 
 (* end struct02 *)

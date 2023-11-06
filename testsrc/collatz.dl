@@ -1,8 +1,8 @@
-module collatz =
+module collatz is
 
 open stdio;
 
-proc collatz(n: Int) => Int =
+proc collatz(n: Int) => Int is
    var i = n;
    var count = 0;
    (* printInt(i); *)

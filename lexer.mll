@@ -116,7 +116,7 @@ rule token = parse  (* funny that it's called parse *)
   | "type"    { TYPE }
   | "rec"     { REC }
   | "opaque"  { OPAQUE }
-  | "struct"  { STRUCT }
+  | "record"  { STRUCT }
   | "variant" { VARIANT }
   | "mut"     { MUT }
   | "true"    { TRUE }    (* these also represent values *)

@@ -1,22 +1,21 @@
 (* mutable struct initialized with individual field assignments. *)
-module struct00 begin
+module struct00 is
 
 open stdio;
 
-type Complex is struct
+type Complex is record
   mut i: Float,
   mut j: Float;
 
 
 export proc main() 
-begin
-
-  var cpx: Complex;
+is
+  var cpx: Complex; (* NO LONGER WORKS due to non-separate symbols. *)
   cpx.i = 4.0;
   cpx.j = -1.53;
   printFloat(cpx.i);
   printFloat(cpx.j);
 
-end main
+/proc
 
-end struct00
+/module

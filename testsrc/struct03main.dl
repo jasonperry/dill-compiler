@@ -1,11 +1,11 @@
 (* driver for Struct03, testing type imports *)
 
-open struct03;
+import struct03;
 open stdio;
 
 proc main ()
-begin
-   var cpx: Complex = {i=2.0, j=1.111};
+is
+   var cpx: struct03::Complex = {i=2.0, j=1.111};
    printFloat(cpx.i);
    printFloat(cpx.j);
-end main
+/proc

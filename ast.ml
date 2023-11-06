@@ -247,7 +247,7 @@ and typedef_to_string tdef =
       "(" ^ String.concat "," tdef.typeparams ^ ")" else ""
   ^ (match tdef.kindinfo with
       | Fields fields ->
-        " is" ^ (if tdef.rectype then " rec" else "") ^ " struct\n   "
+        " is" ^ (if tdef.rectype then " rec" else "") ^ " record\n   "
         ^ String.concat ",\n   " (List.map fieldDecl_to_string fields)
       | Variants variants ->
         " is" ^ (if tdef.rectype then " rec" else "") ^ " variant\n   "
@@ -384,12 +384,12 @@ let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
 
 let proc_to_string (proc: ('ed, 'sd, 'tt) proc) =
   (* a little ugly, but maybe I will use the pdecl later. *)
-  procdecl_to_string proc.decl ^ " = \n"
+  procdecl_to_string proc.decl ^ " is \n"
   ^ block_to_string proc.body
   ^ "/proc\n" (* "\nend " ^ proc.decl.name ^ "\n" *)
 
 let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
-  "module " ^ dmod.name ^ " = \n"
+  "module " ^ dmod.name ^ " is \n"
   (* TODO: imports *)
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
@@ -407,7 +407,7 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
 
 (** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
-  "modspec " ^ mspec.name ^ " = \n"
+  "modspec " ^ mspec.name ^ " is \n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
         fun s (gdecl: ('sd, 'l) globaldecl) ->

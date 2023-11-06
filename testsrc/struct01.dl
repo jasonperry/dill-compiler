@@ -1,21 +1,21 @@
 (* Struct initialized at declaration. *)
-module struct01 begin
+module struct01 is
 
 open stdio;
 
-type Complex is struct
+type Complex is record
   i: Float,
   j: Float;
 
 
 export proc main()
-begin
+is
 
   var cpx: Complex = {i=2.0, j=1.111};
   (* cpx = {i=4.0, j=-1.53}; *)
   printFloat(cpx.i);
   printFloat(cpx.j);
 
-end main
+/proc
 
-end struct01
+/module

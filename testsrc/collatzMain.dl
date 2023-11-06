@@ -1,14 +1,13 @@
-module import01 begin
+module import01 is
 
 import collatz;
 open stdio;
 
 export proc main()
-begin
+is
 
   (* printInt(collatz::collatz(6171)); (* 261 steps *) *)
   printInt(collatz::collatz(837799)); (* 524 steps, overflows int32 *)  
   (* printInt(collatz::collatz(596310)); *)
-end main
-
-end import01
+/proc
+/module  

@@ -1,9 +1,9 @@
 (* library-only struct definition *)
 
-module struct03 begin
+module struct03 is
 
-type Complex is struct
+type Complex is record
   i: Float,
   j: Float;
 
-end struct03
+/module
