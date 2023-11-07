@@ -3,15 +3,15 @@
 open stdio;
 
 proc main() => Int
-begin
-  var a: Int[] = [8,7,6,5,4]; (* { func(i) => 8-i } *)
-  a = [145,33,44,15,43];
-  a[2] = 14;
-  var i: Int = 0;
-  while i < a.length loop
-    a[i] = a[i] + 1;
-    printInt(a[i]);
-    i = i + 1;
-  endwhile
-  return 0;
-end main
+is
+   var a: Int[] = [8,7,6,5,4]; (* { func(i) => 8-i } *)
+   a = [145,33,44,15,43];
+   a[2] = 14;
+   var i: Int = 0;
+   while i < a.length loop
+      a[i] = a[i] + 1;
+      printInt(a[i]);
+      i = i + 1;
+   /while
+   return 0;
+/proc

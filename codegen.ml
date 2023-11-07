@@ -66,7 +66,7 @@ module Lltenv = struct
     StrMap.find fieldname fmap
 end
 
-(** Process a classData to generate a new llvm base type *)
+(** Process a classData to generate a new llvm base type for the map *)
 let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
     (types: classData PairMap.t) (lltypes: Lltenv.t) layout (cdata: classData) =
   match Lltenv.find_opt (cdata.in_module, cdata.classname) lltypes with
@@ -653,47 +653,11 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       debug_print ("#CG: ExpVar: varexp alloca created for type "
                    ^ typetag_to_string ex.decor ^ " with alloca "
                    ^ string_of_llvalue alloca);
-      (* Get lltype of expression to see if conversions are needed. *)
-      (*let explltype = ttag_to_lltype lltypes ex.decor in
-      let rec ptr_level llty =
-        if not (is_pointer_type llty) then 0
-        else 1 + ptr_level (element_type llty)
-      in
-      (* load and cast until we get value of expr type and point level. *)
-      (* but if I do all this then it will add unneeded stores when I
-         need to pass a pointer. Maybe I shouldn't worry about that. *)
-      (* related to vars being copies? can't just assign a pointer *)
-      (* yeah, way too early to put context-sensitive optimizations. *)
-      let rec load_and_cast alloca expty =
-        if type_of alloca = expty then alloca
-        (* more than one point away: load *)
-        else (
-          debug_print ("#CG ExpVar: need to cast/load alloca type "
-                       ^ string_of_lltype (type_of alloca)
-                       ^ " to " ^ string_of_lltype (expty));
-          (* case match on indirection levels *)
-          let ind_allo, ind_exp =
-            ptr_level (type_of alloca), ptr_level expty in
-          if ind_allo = ind_exp then
-            (* same indirection level, just cast *)
-            build_bitcast alloca expty (varname ^ "-exp-cast") builder
-          else if ind_allo > ind_exp + 1 then
-            load_and_cast (build_load alloca (varname ^ "-exp-load") builder)
-              expty
-          else if ind_allo < ind_exp then
-            failwith "VarExp alloca has less indirection than type?!"
-          else (* one point away: cast and load *) (
-            debug_print "#CG: one point away: cast and load";
-            (* TODO: don't emit cast if it's a noop *)
-            let casted = build_bitcast alloca (pointer_type expty)
-                (varname ^ "-exp-cast") builder in
-            build_load casted (varname ^ "-exp-load") builder
-          )
-        )
-        in  *)
       let res =
-        (* load_and_cast alloca explltype in *)
-        build_load alloca (varname ^ "-exp-load") builder in
+        (* should not load if of generic type! generic02.dl *)
+        if not (is_generic_type ex.decor) then 
+          build_load alloca (varname ^ "-exp-load") builder 
+        else alloca in
       (debug_print "#CG: finished generating VarExp"; res)
     )
   (* prior code to deal with refs was here *)

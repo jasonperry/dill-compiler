@@ -11,10 +11,12 @@ proc (t, u) second(i: t, j: u) => u is
 export proc main() is
    var x: Int = 42;
    var y: Float = 43.0;
+   var z = second(x, y);
+   printFloat(z);
    printFloat(second(x, y));
    printInt(second(y, x));
    printInt(second(x,x));
-   printFloat(second(y,y));
+   printFloat(second(y,y)); 
    return;
 /proc
 
