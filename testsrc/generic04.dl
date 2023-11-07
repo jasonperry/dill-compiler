@@ -3,13 +3,13 @@
 module generic04 is
 open stdio;
 
-type NumThing(t) is struct
+type NumThing(t) is record
    count: Int,
    thing: t;
 
 ** Do I want to allow implicit type variables? Not yet, I guess
 ** TODO: it thought t was redeclared.
-proc (u) showCount(th: NumThing(u)) =
+proc (u) showCount(th: NumThing(u)) is
    printInt(th.count);
 /proc
 
@@ -23,7 +23,8 @@ is
    var innerThing: NumThing(Int) = nt1.thing;
    showCount(innerThing);
    (* Here's the test *)
-   ** printInt(nt1.thing.thing); 
+   printInt(nt1.thing.thing);
+   printInt(innerThing.thing);
 /proc
 
 /module
