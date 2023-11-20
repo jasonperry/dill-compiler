@@ -1,5 +1,9 @@
 
-var w: bool = True;
-var x: int;
+proc main() is
+
+var w: Bool = true;
+var x: Int;
 var y = 4.5;
-var z;
+var z;  (* syntax error: need type or initializer *)
+
+/proc

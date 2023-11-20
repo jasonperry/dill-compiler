@@ -1,13 +1,14 @@
 (*  transitive readonly function *)
 
 (* all mutable types are reference types? *)
-type MutCpx = struct
+type MutCpx is record
    mut i: Float,
    mut j: Float;
 
 (* This proc has read-only access to its argument, but if the caller can
    write it, it should return a writable element reference. *)
-proc findGreaterThan(a: MutCpx[], x: Float) => MutCpx =
+proc findGreaterThan(a: MutCpx[], x: Float) => MutCpx
+is
    var i: Int = 0;
    while i < a.length loop
       if a[i].i > x then
@@ -21,7 +22,8 @@ proc findGreaterThan(a: MutCpx[], x: Float) => MutCpx =
    return l[0];  (* whatever *)
 /proc
 
-proc main() =
+proc main() 
+is
    var theArray: MutCpx[] = { {i=1.0, j=2.0}, {i=2.0, j=3.0} };
    (* it's a small type, copying is fine?  Shallow vs. deep copy? *)
    (* not a readonly ref because it owns the array. *)

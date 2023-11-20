@@ -3,10 +3,10 @@
 import stdio;
 
 proc main()
-begin
+is
    var a: Int[] = [19,18,17,16];
    stdio::printInt(a.length);
    stdio::printInt(a[3]);
    stdio::printInt(a[4]); ** should cause error
    stdio::printString("Shouldn't get here.");
-end main
+/proc

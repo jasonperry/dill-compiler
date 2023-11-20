@@ -1,19 +1,19 @@
 (* if/else test, else block exists, no elsifs *)
-module if01 begin
+module if01 is
 
 open stdio;
 
 export proc main()
-begin
+is
    var x = 10;
-   if (x == 11) then
+   if x == 11 then
       x = x + 1;
    else
      x = x - 1;
-   endif
+   /if
 
    printInt(x);  (* 9 *)
 
-end main
+/proc
 
-end if01
+/module

@@ -1,14 +1,15 @@
 (* typename format error *)
 
-module thisname begin
+module thisname is
 
-type lowertype is struct
+(* type name should be uppercase *)
+type lowertype is record
    x: Int,
    y: Float;
    
 proc double(x: Float) => Float
-begin
+is
    return x * 2;
-end double
+/proc
 
-end thisname
+/module

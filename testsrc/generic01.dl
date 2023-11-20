@@ -1,21 +1,20 @@
-(* test of a generic array function parameter *)
+(* simplest generic test *)
 
 module generic01 is
 
 open stdio;
-   
-(* smart syntax highlighting would highlight the t as well (but a different
-  color from the concrete types. *)
-proc (t) nth(arr: t[], n: Int) => t
+
+proc (t) id(x: t) => t
 is
-   (* too complicated for a first example? an array is a type *)
-   return arr[n];
+   return x;
 /proc
 
 export proc main()
 is
-   var things: Float[] = [3.4, 4.2, 2.2, 9.9];
-   printFloat(nth(things, 3));
+   var n = 42;
+   var s = "hello";
+   printString(id(s));
+   printInt(id(n));
 /proc
 
 /module

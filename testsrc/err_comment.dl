@@ -1,9 +1,12 @@
-var x: int = 100;
-var y: bool = False;
+
+proc main() is
+
+var x: Int = 100;
+var y: Bool = false;
 
 if (x > 30) then
-  y = True;
-endif
+  y = true;
+/if
 
 if (x < 50 && y) then
   y = !y;
@@ -11,5 +14,6 @@ if (x < 50 && y) then
 elsif (!(x == 2)) then  (* Not going to terminate this :)
   x = x + 3;
   x = x % 23;
-endif
+  /if
 
+  /proc

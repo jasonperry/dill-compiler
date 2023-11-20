@@ -1,0 +1,7 @@
+(* type error in assignment *)
+
+proc main()
+is
+   var x: Int = 42;
+   x = 42.3;
+/proc

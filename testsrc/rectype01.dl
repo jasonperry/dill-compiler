@@ -1,34 +1,36 @@
 (* first example of recursive data type *)
-module rectype01 begin
+module rectype01 is
 
 open stdio;
    
-type FloatList is rec struct
+type FloatList is rec record
    value: Float,
    next: FloatList?;  (* record-with-pointer, not pointer-to-record *)
 
 export proc main()
-begin
+is
    var fl1: FloatList;
    (* have to promote to a nullable record, get a pointer and cast it to i8* *)
    fl1 = { value=1.44, next=null };
    printFloat(fl1.value); (* requires dereference *)
 
    var fl2: FloatList = { value=2.0, next=fl1 }; 
-
-   if var innerRec ?= fl2.next then
+   (* woops, did I remove decls in if statements? *)
+   var innerRec: FloatList;
+   if innerRec ?= fl2.next then
       printFloat(innerRec.value);
-   endif
+   /if
    
    var fl3: FloatList = { value=3.0, next={value=4.0, next=null}};
 
    var fl4: FloatList? = fl3.next; 
 
-   if var innerRec2 ?= fl3.next then
+   var innerRec2: FloatList;
+   if innerRec2 ?= fl3.next then
       printFloat(innerRec2.value);
-   endif 
+   /if
    
-end main
+/proc
+/module
 
-end rectype01
 
