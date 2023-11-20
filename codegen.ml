@@ -147,6 +147,7 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                       struct_type context [| nulltag_type; basetype |]
                     else basetype in
                   let fieldlltype =
+                    (* Create array type for the field if needed. *)
                     if is_array_type fty then
                       struct_type context
                         [| int_type; pointer_type (array_type ty1 0) |]
@@ -213,11 +214,12 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
           failwith ("BUG: missing codegen for class type " ^ cdata.classname)
     )
 
-(** Use a type tag to generate the LLVM type from the base type. *)
+(** Use a type tag to generate the LLVM type, adding to the base type. *)
 let rec ttag_to_lltype lltypes ty = match ty with
   | Typevar _ ->
     voidptr_type
   | Namedtype tinfo -> (
+      (* For arrays, create struct of size and storage pointer *)
       if is_array_type ty then
         let elttype = ttag_to_lltype lltypes (array_element_type ty) in
         struct_type context

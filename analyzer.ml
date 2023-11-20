@@ -1395,7 +1395,8 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                 fi.fieldname = fdecl.fieldname) acc then
               Error [{ loc=fdecl.decor;
                        value="Field redeclaration " ^ fdecl.fieldname }]
-            else 
+            else
+              (* see if class exists ourselves, add dummy to tenv? *)
               match check_typeExpr syms tenv fdecl.fieldtype with
               | Error e ->
                 if not tdef.rectype then
@@ -1403,22 +1404,23 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                 else (
                   (* construct typetag and finfo for forward-defined field. *)
                   debug_print ("#AN: Creating placeholder for recursive field "
-                               ^ fdecl.fieldname);
+                               ^ "'" ^ fdecl.fieldname ^ "'");
                   let dummyClass = {
                     classname = get_texp_classname fdecl.fieldtype; 
                     in_module = modname;
                     opaque=false; muttype=false; rectype=true;
                     tparams=[]; kindData=Hidden
-                  } in 
-                  let ttag = gen_ttag dummyClass []
-                  (* { (* should have a ttag_of_texpr function?
-                          I guess in "unparsing" code. *)
-                    modulename = modname;
-                    typename = fdecl.fieldtype.classname;
-                    tclass = dummyClass;
-                    array = fdecl.fieldtype.array;
-                    paramtypes = [];
-                                nullable = fdecl.fieldtype.nullable;} *)
+                  } in
+                  (* gen_ttag insufficient, may be nullable *)
+                  let ttag = (* gen_ttag dummyClass [] *)
+                    { (* should have a ttag_of_texpr function?
+                          that's what check_texpr should do *)
+                      modulename = modname;
+                      typename = fdecl.fieldtype.classname;
+                      tclass = dummyClass;
+                      array = fdecl.fieldtype.array;
+                      paramtypes = [];
+                      nullable = fdecl.fieldtype.nullable;}
                   in
                   let finfo = {
                     fieldname=fdecl.fieldname; priv=fdecl.priv;
@@ -1710,7 +1712,7 @@ let check_module syms (tenv: typeenv) ispecs
       match typesres with
       | Error e -> Error e
       | Ok (tenv, newclasses) ->
-        debug_print ("checking " ^ string_of_int (List.length newclasses)
+        debug_print ("#AN: checking " ^ string_of_int (List.length newclasses)
                      ^ " typeclasses for recursive updates");
         (* update recursive type fields with completed classData *)
         List.iter (
