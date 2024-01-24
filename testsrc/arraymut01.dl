@@ -3,15 +3,15 @@
 open stdio;
 
 proc arrayMut(#a: Float[])
-begin
+is
   a[1] = 4.4;
-end arrayMut
+/proc
 
 proc main()
-begin
+is
   var mya: Float[] = [1.1, 2.2, 3.3];
   arrayMut(#mya);
   printFloat(mya[0]);
   printFloat(mya[1]);
   printFloat(mya[2]);
-end main
+/proc

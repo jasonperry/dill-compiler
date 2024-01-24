@@ -1,10 +1,10 @@
 (* first nullable types test *)
-module null01 begin
+module null01 is
 
 open stdio;
 
 export proc main() => Int
-begin
+is
   var maybeInt: Int?;
   maybeInt = null;
   maybeInt = 5;     (* test both kinds of store *)
@@ -19,20 +19,19 @@ begin
   var intRes : Int = 43;
 
   if maybeInt then
-    printInt(1);
+     printInt(1);
   else
-    printInt(0);
-  endif
+     printInt(0);
+  /if
 
   var maybe3: Int? = null;
   if maybe2 then
-    printString("not null");
+     printString("not null");
   else
-    printString("null");
-  endif
+     printString("null");
+  /if
 
   return 0;
 
-end main
-
-end null01
+/proc
+/module

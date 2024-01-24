@@ -3,20 +3,20 @@
 
 open stdio;
 
-type ArrField is struct
+type ArrField is record
     x: Int,
     mut y: Float[];
 
 proc arrayMut(#af: ArrField)
-begin
-  af.y[1] = 4.4;
-end arrayMut
+is
+  af.y[1] = 4.4; ** store fails
+/proc
 
 proc main()
-begin
-  var myaf: ArrField = { x=42, y=[2.3, 3.1] };
-  arrayMut(#myaf);
-  printInt(myaf.x);
-  printFloat(myaf.y[0]);
-  printFloat(myaf.y[1]);
-end main
+is
+   var myaf: ArrField = { x=42, y=[2.3, 3.1] };
+   arrayMut(#myaf);
+   printInt(myaf.x);
+   printFloat(myaf.y[0]);
+   printFloat(myaf.y[1]);
+/proc

@@ -1,10 +1,10 @@
 (* nullable type with conditional assignment *)
-module null02 begin
+module null02 is
 
 open stdio;
 
 export proc main()
-begin
+is
   var maybeInt: Int?;
   maybeInt = null;
   maybeInt = 5;
@@ -19,12 +19,13 @@ begin
   if intRes ?= maybeInt then
     printInt(intRes); 
   (* ?printInt(maybeInt) (* just a whim *) *)
-  endif
+  /if
 
-  (* try again with a declaration *)
-  if var res2 ?= maybeInt then
+  (* try again with a declaration - feature temporarily removed... *)
+  var res2: Int;
+  if (* var *) res2 ?= maybeInt then
     printInt(res2);
-  endif
+  /if
 
   var maybeFloat: Float?;
   maybeFloat = 5.5;
@@ -33,8 +34,8 @@ begin
     printFloat(f);
   else
     printString("maybeFloat is null");
-  endif
+  /if
 
-end main
+/proc
 
-end null02
+/module

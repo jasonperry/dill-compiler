@@ -1412,7 +1412,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                     tparams=[]; kindData=Hidden
                   } in
                   (* gen_ttag insufficient, may be nullable *)
-                  let ttag = (* gen_ttag dummyClass [] *)
+                  let ttag = gen_ttag dummyClass [] (*
                     { (* should have a ttag_of_texpr function?
                           that's what check_texpr should do *)
                       modulename = modname;
@@ -1420,7 +1420,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                       tclass = dummyClass;
                       array = fdecl.fieldtype.array;
                       paramtypes = [];
-                      nullable = fdecl.fieldtype.nullable;}
+                      nullable = fdecl.fieldtype.nullable;} *)
                   in
                   let finfo = {
                     fieldname=fdecl.fieldname; priv=fdecl.priv;

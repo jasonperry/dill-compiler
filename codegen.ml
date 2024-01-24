@@ -535,6 +535,7 @@ let gen_bounds_check ixval arraysize the_module builder =
     field type information *)
 let rec get_varexp_alloca the_module builder varexp syms lltypes =
   let ((varname, ixopt), fields) = varexp in
+  debug_print ("#CG: get_varexp_alloca for varexp under var " ^ varname);
   let (entry, _) =  Symtable.findvar varname syms in
   match entry.addr with 
   | None -> failwith ("BUG: get_varexp_alloca: alloca address not present for "
@@ -542,22 +543,22 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
   | Some alloca ->
     (* traverse indices and record fields to generate the final alloca. *)
     let rec get_field_alloca flds ixopt (parentty: typetag) alloca =
-      debug_print ("#CG: get_field_alloca parent type: "
+      debug_print ("#CG: get_field_alloca with parent type: "
                     ^ typetag_to_string parentty);
-      debug_print ("get_field_alloca: " ^ string_of_llvalue alloca);
       (* 1. determine if array index expression [], then load and
          strip off array type *)
-      let (alloca, newty) =
+      let (alloca, parentty) = (* newty) = *)
         match ixopt with
         | None -> (alloca, parentty)
         | Some ixexpr ->
-          debug_print "#CG: Got index expression in varexp";
+          debug_print ("#CG: Got index expression "
+                       ^ exp_to_string ixexpr ^ " in varexp");
           let ixval = gen_expr the_module builder syms lltypes ixexpr in
-          (* get the value at index 1. alloca is the address of the struct. *)
-          let datafield = build_struct_gep alloca 1 "datafield" builder in
-          debug_print (string_of_llvalue datafield);
+          (* get the array at index 1. alloca is the address of the struct. *)
+          let arraydata = build_struct_gep alloca 1 "arraydata" builder in
+          debug_print (string_of_llvalue arraydata);
           (* have to load to get the actual pointer to the llvm array *)
-          let dataptr = build_load datafield "dataptr" builder in
+          let dataptr = build_load arraydata "dataptr" builder in
           (* Load the array size to do the bounds check. *)
           let arraysize = build_load
               (build_struct_gep alloca 0 "sizeptr" builder)
@@ -571,8 +572,10 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
       in
       (* 2. get the field offset if there is one. *)
       match flds with
-      | [] -> (alloca, newty)
+      | [] -> (alloca, parentty)
       | (fld, ixopt)::rest -> 
+        debug_print ("#CG: computing field offset in type: "
+                     ^ typetag_to_string parentty);
         (* Get just the class of parent type so we can find its field info.
            Analysis determined it's not a nullable. *)
         (* Would we ever need to get the alloca for a generic (just
