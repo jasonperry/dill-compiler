@@ -8,8 +8,8 @@ type NumThing(t) is record
    thing: t;
 
 ** Do I want to allow implicit type variables? Not yet, I guess
-** TODO: it thought t was redeclared.
-proc (u) showCount(th: NumThing(u)) is
+** FIXME: it thinks t is redeclared. putting tvar in wrong nesting?
+proc (t) showCount(th: NumThing(t)) is
    printInt(th.count);
 /proc
 

@@ -66,16 +66,19 @@ module Lltenv = struct
     StrMap.find fieldname fmap
 end
 
-(** Process a classData to generate a new llvm base type for the map *)
-let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
-    (types: classData PairMap.t) (lltypes: Lltenv.t) layout (cdata: classData) =
-  match Lltenv.find_opt (cdata.in_module, cdata.classname) lltypes with
+(** Process a classData to generate a new llvm base type for lltenv *)
+let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
+    (types: classData PairMap.t) (lltypes: Lltenv.t) layout (cdata: classData)
+    =
+    match Lltenv.find_opt (cdata.in_module, cdata.classname) lltypes with
+    (* Should this case be an error? *)
   | Some (lltype, fieldmap) -> (lltype, fieldmap)
   | None -> (
       debug_print ("generating lltype for " ^ cdata.classname);
       match (cdata.in_module, cdata.classname) with
       (* need special case for primitive types. Should handle this with some
        * data structure, so it's consistent among modules *)
+      (* These are only hit when we recurse, so maybe we shouldn't? *)
       | ("", "Void") -> void_type, StrMap.empty
       | ("", "Int") -> int_type, StrMap.empty
       | ("", "Float") -> float_type, StrMap.empty
@@ -85,7 +88,7 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
       | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
       | _ ->
         (* Process non-primitive type.
-           First, create named struct lltype to fill in later *)
+           1. create named struct lltype to fill in later *)
         let context = module_context the_module in
         (* guess we always use the qualified type name in llvm *)
         let typename = cdata.in_module ^ "::" ^ cdata.classname in
@@ -104,18 +107,21 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
           | Variant vts -> vts
           | _ -> []
         in 
-        (* Second, generate list of (name, lltype, offset, type) for fields *)
+        (* 2. generate list of (name, lltype, offset, type) for fields *)
         let ftypeinfo = fielddata |>
           List.mapi (fun i (fieldname, ftyopt) ->
               match ftyopt with
-                (* None only for variant types? *)
+                (* Field has no typetag only for variant types *)
               | None -> (fieldname, void_type, i, void_ttag)
               | Some (Typevar tv) -> (fieldname, voidptr_type, i, Typevar tv)
               | Some (Namedtype tinfo as fty) ->
                   let mname, tname = tinfo.modulename, tinfo.tclass.classname in
                   let basetype = match Lltenv.find_lltype_opt
                                          (mname, tname) lltypes with
-                  | Some basetype -> basetype (* rectype is already pointed *)
+                  | Some basetype ->
+                    debug_print ("#CG add_lltype: existing type for field "
+                                  ^ string_of_lltype basetype);
+                    basetype
                   (* In case the field's lltype isn't generated yet, either
                      recurse or just fetch the named lltype if it's a
                      recursive type *)
@@ -141,34 +147,37 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
                              (PairMap.find ("", tname) types))
                   in
                   (* check for non-base types and add them if needed. *)
-                  (* currently allows an array of nullable but no nullable arrays *)
+                  (* currently allows array of nullable but no nullable array *)
                   let ty1 =
                     if is_option_type fty then
                       struct_type context [| nulltag_type; basetype |]
                     else basetype in
                   let fieldlltype =
                     (* Create array type for the field if needed. *)
+                    (* FIXME: not reached because Array is now a class.
+                       Other array types created in ttag_to_lltype *)
                     if is_array_type fty then
                       struct_type context
                         [| int_type; pointer_type (array_type ty1 0) |]
                     else ty1 in
                   (fieldname, fieldlltype, i, fty))
-            in
-        (* Create the mapping from field names to offset and type. *)
+        in
+        (* 3. Create the mapping from field names to offset and type. *)
         (* do we still need the high-level type? maybe for lookup info. *)
         let fieldmap =
           List.fold_left (fun fomap (fname, _, i, ftype) ->
               StrMap.add fname (i, ftype) fomap
             ) StrMap.empty ftypeinfo in
         match cdata.kindData with 
-        (* generate the llvm named struct type, record case *)
+        (* 4. generate the llvm named struct type *)
         (* Fields have already been generated, but may want to split it out
            into a more sensible separate function for each kind. *)
         | Struct _ ->
           struct_set_body llstructtype
             (List.map (fun (_, lty, _, _) -> lty) ftypeinfo
-             |> Array.of_list) false; (* "false" means don't use packed structs. *)
-          debug_print ("generated struct type body: " ^ string_of_lltype llstructtype);
+             |> Array.of_list) false; (* false: don't use packed structs. *)
+          debug_print ("generated struct type body: "
+                       ^ string_of_lltype llstructtype);
           if cdata.rectype then
             (* recursive types are reference types *)
             (pointer_type llstructtype, fieldmap)
@@ -204,6 +213,7 @@ let rec add_lltype the_module  (* returns (classdata, fieldmap, Lltenv.t) *)
             (pointer_type llstructtype, fieldmap)
           else
             (llstructtype, fieldmap)
+        (* FIXME: these cases should go above, I think. *)
         | Hidden ->
           (* Unknown implementation, must be treated as void pointer *)
           (voidptr_type, StrMap.empty)
@@ -551,12 +561,11 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
         match ixopt with
         | None -> (alloca, parentty)
         | Some ixexpr ->
-          debug_print ("#CG: Got index expression "
-                       ^ exp_to_string ixexpr ^ " in varexp");
+          debug_print ("#CG: computing index expression into "
+                        ^ string_of_llvalue alloca);
           let ixval = gen_expr the_module builder syms lltypes ixexpr in
           (* get the array at index 1. alloca is the address of the struct. *)
           let arraydata = build_struct_gep alloca 1 "arraydata" builder in
-          debug_print (string_of_llvalue arraydata);
           (* have to load to get the actual pointer to the llvm array *)
           let dataptr = build_load arraydata "dataptr" builder in
           (* Load the array size to do the bounds check. *)
@@ -1549,7 +1558,8 @@ let gen_module tenv topsyms layout
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)
-        let (lltype, fieldmap) = add_lltype the_module tenv lltenv layout cdata in
+        let (lltype, fieldmap) = add_lltype the_module tenv lltenv layout cdata
+        in
         debug_print (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
             ^ " to lltenv, lltype: " ^ string_of_lltype lltype);

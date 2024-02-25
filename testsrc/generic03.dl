@@ -3,7 +3,6 @@
 module generic03 is
 open stdio;
 
-** new syntax
 type NumThing(t) is record
    count: Int,
    thing: t;

@@ -1,4 +1,4 @@
-** Actually simpler example than generic01
+** simplest generic with two type variables.
 
 module generic02 is
 
