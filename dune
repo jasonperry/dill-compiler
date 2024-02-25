@@ -16,19 +16,22 @@
 
 (executable
   (name dillc)
-  (libraries
-    ctypes.foreign
-    llvm
-    llvm.analysis
-    llvm.scalar_opts
-    llvm.target
-    llvm.executionengine
-    llvm.linker
-    llvm.all_backends
-    qbe
+ (libraries
+   sedlex
+   sedlex.ppx  ;; underscore in examples?
+   ctypes.foreign
+   llvm
+   llvm.analysis
+   llvm.scalar_opts
+   llvm.target
+   llvm.executionengine
+   llvm.linker
+   llvm.all_backends
+   qbe
     ;menhirLib
-  )
-  (modules :standard) ;\ codegen)
+ )
+ (modules :standard) ;\ codegen)
+ (preprocess (pps sedlex.ppx))
 )
 
 ;; possible other libraries (from dune version of Kaleidoscope)
