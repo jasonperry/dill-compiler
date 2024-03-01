@@ -14,8 +14,8 @@
 ; (deps parser.messages parser.mly)
 ; (action (with-stdout-to %{targets} (run menhir --compile-errors %{deps}))))
 
-(executable
-  (name dillc)
+(executables
+  (names dillc rdparser)
  (libraries
    sedlex
    sedlex.ppx  ;; underscore in examples?
@@ -35,12 +35,6 @@
 )
 
 ;; possible other libraries (from dune version of Kaleidoscope)
-;   ctypes.foreign
-;   llvm
-;   llvm.analysis
-;   llvm.executionengine
-;   llvm.target
-;   llvm.scalar_opts
 ;   menhirLib)
    
 ;; test setups from calc demo
