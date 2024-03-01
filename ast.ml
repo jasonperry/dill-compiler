@@ -34,13 +34,6 @@ type binary_op =
   | OpAnd
   | OpOr
 
-(** position info to decorate the AST with. TODO: don't put it here. *)
-type locinfo = Lexing.position * Lexing.position
-
-(** This is still used for error messages. And importStmt! *)
-type 'a located =
-  { loc: Lexing.position * Lexing.position; value: 'a }
-
 type 'l classTypeExpr = {
   modname: string;
   classname: string;

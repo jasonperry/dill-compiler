@@ -38,7 +38,7 @@
 %nonassoc BANG
 
 %{
-    (* open Common *) (* used to be for type variables *)
+    open Common (* error and location types here now *)
     open Ast
 	 (* let mod_name = ref "" (* ONE inherited attribute, okay? *) *)
     open Syntax

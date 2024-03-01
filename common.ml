@@ -45,6 +45,41 @@ let print_typekeys (tmap: 'a PairMap.t) =
   |> List.iter (fun ((modalias, tname), _) ->
          print_endline (modalias ^ " :: " ^ tname))
 
+(** position info to decorate the AST with. TODO: don't put it here. *)
+type locinfo = Lexing.position * Lexing.position
+
+(** This is still used for error messages. And importStmt! *)
+type 'a located =
+  { loc: Lexing.position * Lexing.position; value: 'a }
+
+(** Format two Lexing.location objects as a string showing the range. *)
+(* Maybe put this in a common thing too. *)
+let format_loc (spos: Lexing.position) (epos: Lexing.position) =
+  if spos.pos_lnum = epos.pos_lnum then
+    Format.sprintf "%d:%d-%d"
+      spos.pos_lnum
+      (spos.pos_cnum - spos.pos_bol)
+      (epos.pos_cnum - epos.pos_bol)
+  else 
+    Format.sprintf "%d:%d-%d:%d"
+      spos.pos_lnum
+      (spos.pos_cnum - spos.pos_bol)
+      epos.pos_lnum
+      (epos.pos_cnum - epos.pos_bol)
+
+
+(** Generate string buffer showing a sequence of errors. *)
+(* Is this only used here at the top level? Should it go in common? *)
+let format_errors filename (elist: typevar located list) =
+  let format1 {loc; value} =
+    (* TODO: distinguish between error and warning. *)
+    "Error: " ^ filename ^ " " ^ format_loc (fst loc) (snd loc)
+    ^ ":\n    " ^ value
+  in
+  (* errors append at beginning, so need to reverse the list. *)
+  let errstrs = List.rev_map format1 elist in
+  String.concat "\n" errstrs ^ "\n"
+
 (* List.concat_map doesn't exist until OCaml 4.10 *)
 let concat_map f l = List.concat (List.map f l)
 

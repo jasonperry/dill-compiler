@@ -32,34 +32,6 @@ let default_config = {
     print_symtable = false;
   }
 
-(** Format two Lexing.location objects as a string showing the range. *)
-(* Maybe put this in a common thing too. *)
-let format_loc (spos: Lexing.position) (epos: Lexing.position) =
-  if spos.pos_lnum = epos.pos_lnum then
-    Format.sprintf "%d:%d-%d"
-      spos.pos_lnum
-      (spos.pos_cnum - spos.pos_bol)
-      (epos.pos_cnum - epos.pos_bol)
-  else 
-    Format.sprintf "%d:%d-%d:%d"
-      spos.pos_lnum
-      (spos.pos_cnum - spos.pos_bol)
-      epos.pos_lnum
-      (epos.pos_cnum - epos.pos_bol)
-
-
-(** Generate string buffer showing a sequence of errors. *)
-(* Is this only used here at the top level? Should it go in common? *)
-let format_errors filename elist =
-  let format1 {loc; value} =
-    (* TODO: distinguish between error and warning. *)
-    "Error: " ^ filename ^ " " ^ format_loc (fst loc) (snd loc)
-    ^ ":\n    " ^ value
-  in
-  (* errors append at beginning, so need to reverse the list. *)
-  let errstrs = List.rev_map format1 elist in
-  String.concat "\n" errstrs ^ "\n"
-
 
 let handle_parse_errors filename buf = function
   | Lexer.Error msg ->
