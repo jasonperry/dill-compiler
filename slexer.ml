@@ -2,7 +2,13 @@
 
 open Sedlexing  (* new_line, loc stuff that parser will use *)
 exception Error of string (* TODO: unified lex/parse SyntaxError type *)
-exception SyntaxError of { msg: string; loc: Lexing.position * Lexing.position }
+(* Lexing.position has the filename too *)
+(* Not in common.ml for now, Other modules might have different error
+   types. Or, should I make a unified error type? *)
+exception SyntaxError of {
+    msg: string;
+    loc: Lexing.position * Lexing.position
+  }
 (* Idea: parameterize the module by encoding *)
 module Enc = Sedlexing.Utf8
 
@@ -61,7 +67,7 @@ let string_of_ucarray arr =
 let string_of_lexeme buf =
   string_of_ucarray (lexeme buf)
 
-let rec tparse buf =
+let rec tparse (buf: Sedlexing.lexbuf) =
   match%sedlex buf with
     | whitespace ->
       tparse buf
@@ -71,8 +77,11 @@ let rec tparse buf =
       comment 0 buf
     | iconst -> ICONST (Int64.of_string (string_of_ucarray (lexeme buf)))
     (* | any (* as c *) ->  (* sedlex doesn't know this syntax, boo *) *)
-    | _ -> raise (Error ("Unexpected character: " ^ Enc.lexeme buf))
-        (* (Printf.sprintf "Unexpected character: %c"
+    | _ -> raise (SyntaxError {
+        msg=("Unexpected character: " ^ Enc.lexeme buf);
+        loc=lexing_positions buf
+      })
+       (* (Printf.sprintf "Unexpected character: %c"
                            (Uchar.to_char (lexeme_char buf 0)))) *)
 
 and comment depth buf =

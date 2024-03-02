@@ -70,7 +70,7 @@ let format_loc (spos: Lexing.position) (epos: Lexing.position) =
 
 (** Generate string buffer showing a sequence of errors. *)
 (* Is this only used here at the top level? Should it go in common? *)
-let format_errors filename (elist: typevar located list) =
+let format_errors filename (elist: string located list) =
   let format1 {loc; value} =
     (* TODO: distinguish between error and warning. *)
     "Error: " ^ filename ^ " " ^ format_loc (fst loc) (snd loc)
