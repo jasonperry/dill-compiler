@@ -26,8 +26,14 @@ let ident_uc =
   [%sedlex.regexp? ('A'..'Z'), Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
 let symbol = [%sedlex.regexp? '#', ident_lc]
 (* TODO: hex constants *)
-
-(* final type should have loc in it. *)
+let hexbyte = [%sedlex.regexp? "\\x",
+                             Rep (('0'..'9' | 'a'..'f' | 'A'..'F'), 2)]
+(* ASCII printable except ' and \ (for char literals) *)
+(* Possibly double quote should be escaped too. *)
+(* let char_noesc = Sedlex_utils.Cset.of_list
+    [ (20, 38); (40, 91); (93, 126) ] *)
+let char_noesc = [%sedlex.regexp? (20 .. 38 | 40 .. 91 | 93 .. 126)]
+  
 type ttype =
   | ICONST of Int64.t
   | FCONST of float
@@ -64,8 +70,9 @@ type token = {
 let string_of_ucarray arr =
   String.of_seq (Array.to_seq (Array.map Uchar.to_char arr))
 
-let string_of_lexeme buf =
-  string_of_ucarray (lexeme buf)
+let syntax_error msg buf =
+  SyntaxError { msg=msg;
+                loc=lexing_positions buf }
 
 let rec tparse (buf: Sedlexing.lexbuf) =
   match%sedlex buf with
@@ -75,14 +82,18 @@ let rec tparse (buf: Sedlexing.lexbuf) =
       new_line buf; tparse buf
     | "(*" ->
       comment 0 buf
+    | '\'' ->
+      byte [] buf
+    (* | "\"" ->
+       string (Buffer.create 80) buf *)
     | iconst -> ICONST (Int64.of_string (string_of_ucarray (lexeme buf)))
+    | eof -> EOF
     (* | any (* as c *) ->  (* sedlex doesn't know this syntax, boo *) *)
-    | _ -> raise (SyntaxError {
-        msg=("Unexpected character: " ^ Enc.lexeme buf);
-        loc=lexing_positions buf
-      })
-       (* (Printf.sprintf "Unexpected character: %c"
-                           (Uchar.to_char (lexeme_char buf 0)))) *)
+    (* Lexeme will be empty unless I match an actual regex. *)
+    | any ->
+      raise (syntax_error ("Unexpected character: "
+                           ^ Enc.lexeme buf) buf) 
+    | _ -> failwith "Unreachable: slexer.tparse"
 
 and comment depth buf =
   match%sedlex buf with
@@ -90,9 +101,37 @@ and comment depth buf =
   | "*)" ->
     if depth = 0 then tparse buf else comment (depth-1) buf
   | newline -> new_line buf; comment depth buf
-  | eof -> raise (Error "Unterminated comment at EOF")
-  | _ -> comment depth buf
+  | eof -> raise (syntax_error "Unterminated comment at EOF" buf)
+  | any -> comment depth buf (* unicode in comments too, yay! *)
+  | _ -> failwith "Unreachable: slexer.comment"
 
-(* Wait...will buf be different after? *)
+and byte (acc: char list) buf =
+  match%sedlex buf with
+  | '\'' ->
+    if List.length acc == 0 then
+      raise (syntax_error "Byte constant cannot be empty" buf)
+    else if List.length acc > 1 then
+      (* could match just the single-char expressions,
+         but this is more informative? *)
+      raise (syntax_error "Too many characters in byte constant" buf)
+    else
+      BYTECONST (List.hd acc)
+  | "\\n" -> byte ('\n'::acc) buf
+  | "\\t" -> byte ('\t'::acc) buf
+  | "\\r" -> byte ('\r'::acc) buf
+  | "\\b" -> byte ('\b'::acc) buf  (* backspace *)
+  | "\\\\" -> byte ('\\'::acc) buf
+  | hexbyte ->
+    (* Get it as a string and Ocaml will return [0] as the char. *)
+    byte ((Enc.lexeme buf).[0]::acc) buf
+  | "\\", any ->
+    raise (syntax_error ("Illegal backslash escape in byte: "
+                         ^ Enc.lexeme buf) buf)
+  | char_noesc -> byte ((Enc.lexeme buf).[0]::acc) buf
+  | any ->
+    raise (syntax_error ("Illegal byte constant: " ^ Enc.lexeme buf) buf)
+  | _ -> failwith "Unreachable: slexer.byte"
+    
+(* Wait...will buf be different after? what if I get pos first? *)
 let token buf = 
   { ttype=tparse buf; loc=lexing_positions buf }
