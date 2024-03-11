@@ -16,9 +16,11 @@ module Enc = Sedlexing.Utf8
 let newline = [%sedlex.regexp? Opt '\r', '\n']
 let whitespace = [%sedlex.regexp? (' ' | '\t')]
 let digit = [%sedlex.regexp? '0'..'9']
-let iconst = [%sedlex.regexp? Plus digit] 
+let hexdigit = [%sedlex.regexp? ('0'..'9' | 'a'..'f' | 'A'..'F')]
+let iconst = [%sedlex.regexp? Opt '-', Plus digit]
+let hexconst = [%sedlex.regexp? "0x", Plus hexdigit]
 let expon = [%sedlex.regexp? Opt ('e' | 'E'), Opt ('-' | '+'), Plus digit] 
-let fconst = [%sedlex.regexp? Plus digit, '.', Star digit, Opt expon]
+let fconst = [%sedlex.regexp? Opt '-', Plus digit, '.', Star digit, Opt expon]
 let ident_lc =
   [%sedlex.regexp? ('a'..'z' | '_'),
                  Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
@@ -26,14 +28,13 @@ let ident_uc =
   [%sedlex.regexp? ('A'..'Z'), Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
 let symbol = [%sedlex.regexp? '#', ident_lc]
 (* TODO: hex constants *)
-let hexbyte = [%sedlex.regexp? "\\x",
-                             Rep (('0'..'9' | 'a'..'f' | 'A'..'F'), 2)]
+let hexbyte = [%sedlex.regexp? "\\x", Rep (hexdigit, 2)]
 (* ASCII printable except ' and \ (for char literals) *)
-(* Possibly double quote should be escaped too. *)
-(* let char_noesc = Sedlex_utils.Cset.of_list
-    [ (20, 38); (40, 91); (93, 126) ] *)
+(* leaving out double quote (34), '"' works in ocaml. *)
 let char_noesc = [%sedlex.regexp? (20 .. 38 | 40 .. 91 | 93 .. 126)]
-  
+(* Any unicode except ' and \ for string literals. May not be needed. *)
+let str_noesc = [%sedlex.regexp? Sub (any, Chars "\"\\")]
+
 type ttype =
   | ICONST of Int64.t
   | FCONST of float
@@ -84,9 +85,14 @@ let rec tparse (buf: Sedlexing.lexbuf) =
       comment 0 buf
     | '\'' ->
       byte [] buf
-    (* | "\"" ->
-       string (Buffer.create 80) buf *)
-    | iconst -> ICONST (Int64.of_string (string_of_ucarray (lexeme buf)))
+    | "\"" ->
+       string (Buffer.create 80) buf
+    | iconst -> ICONST (Int64.of_string (Enc.lexeme buf))
+    | hexconst -> ICONST (Int64.of_string (Enc.lexeme buf))
+    | fconst -> FCONST (Float.of_string (Enc.lexeme buf))
+    (* keywords go between here *)
+    | ident_lc -> IDENT_LC (Enc.lexeme buf)
+    | ident_uc -> IDENT_UC (Enc.lexeme buf)
     | eof -> EOF
     (* | any (* as c *) ->  (* sedlex doesn't know this syntax, boo *) *)
     (* Lexeme will be empty unless I match an actual regex. *)
@@ -105,6 +111,31 @@ and comment depth buf =
   | any -> comment depth buf (* unicode in comments too, yay! *)
   | _ -> failwith "Unreachable: slexer.comment"
 
+and string acc buf = 
+  match%sedlex buf with
+  | '"' -> STRCONST (Buffer.contents acc)
+  | "\\\"" -> Buffer.add_char acc '\"'; string acc buf
+  | "\\n" -> Buffer.add_char acc '\n'; string acc buf 
+  | "\\r" -> Buffer.add_char acc '\r'; string acc buf 
+  | "\\t" -> Buffer.add_char acc '\t'; string acc buf 
+  | "\\b" -> Buffer.add_char acc '\b'; string acc buf
+  | "\\\\" -> Buffer.add_char acc '\\'; string acc buf
+  | hexbyte ->
+    let bytechar =
+      char_of_int (int_of_string ("0x" ^ String.sub (Enc.lexeme buf) 2 2)) in
+    Buffer.add_char acc bytechar; string acc buf      
+  | "\\", any ->
+    raise (syntax_error ("Illegal backslash escape in string: "
+                         ^ Enc.lexeme buf) buf)
+  | '\n' -> raise (syntax_error "Unterminated string constant at newline" buf)
+  | eof -> raise (syntax_error "Unterminated string constant at EOF" buf)
+  | str_noesc -> Buffer.add_string acc (Enc.lexeme buf);
+    string acc buf
+  (* Probably this cannot be reached either. *)
+  | any -> raise (syntax_error ("Illegal character in string: "
+                                ^ Enc.lexeme buf) buf)
+  | _ -> failwith "Unreachable: slexer.string"
+
 and byte (acc: char list) buf =
   match%sedlex buf with
   | '\'' ->
@@ -122,8 +153,9 @@ and byte (acc: char list) buf =
   | "\\b" -> byte ('\b'::acc) buf  (* backspace *)
   | "\\\\" -> byte ('\\'::acc) buf
   | hexbyte ->
-    (* Get it as a string and Ocaml will return [0] as the char. *)
-    byte ((Enc.lexeme buf).[0]::acc) buf
+    let bytechar =
+      char_of_int (int_of_string ("0x" ^ String.sub (Enc.lexeme buf) 2 2)) in
+    byte (bytechar::acc) buf
   | "\\", any ->
     raise (syntax_error ("Illegal backslash escape in byte: "
                          ^ Enc.lexeme buf) buf)
