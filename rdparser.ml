@@ -15,16 +15,20 @@ type tbuf = {
 let _refill_tbuf tbuf =
   let rec tloop i =
     if i == tbuf.lookahead then ()
+    else if !(tbuf.lpos) < tbuf.lookahead then (
+      (* If not at end, copy from back of buffer. *)
+      Array.set tbuf.lbuf i tbuf.lbuf.(!(tbuf.lpos));
+      tbuf.lpos := !(tbuf.lpos) + 1;
+      tloop (i+1))
     else
+      (* Otherwise pull from the lexer. *)
       let nexttok = Slexer.token tbuf.lexbuf in
       Array.set tbuf.lbuf i nexttok;
       if nexttok.ttype = EOF then () (* leave old tokens *)
       else tloop (i+1)
-  in 
-  if !(tbuf.lpos) < tbuf.lookahead
-  then failwith "All tokens must be consumed to call _refill_buf "
-  else
-    tloop 0; tbuf.lpos := 0
+  in
+  if !(tbuf.lpos) = 0 then ()  (* no-op case *)
+  else tloop 0; tbuf.lpos := 0
 
 (** Initialize token buffer with specified lookahead size. *)
 let init_tbuf lexbuf lookahead =
@@ -50,8 +54,7 @@ let consume tbuf ttype =
 
 (** Return current token in buffer without moving the pointer. *)
 let peek tbuf =
-  (* Note that this can only do a single lookahead, regardless
-     of buffer size, unless it "stretches" the buffer. *)
+  (* For lookahead 1, this is all we have to check. *)
   if !(tbuf.lpos) = tbuf.lookahead then _refill_tbuf tbuf;
   tbuf.lbuf.(!(tbuf.lpos))
 
@@ -98,5 +101,5 @@ let _ =
   (* to figure out: why no double-backslash on the \x *)
   let lexbuf = Sedlexing.Utf8.from_channel stdin in
   (* from_string "42 '\\n' 'w' 'เ' (* เมืองจึงวิปริตเป็นนัก *) '\x41' 44 f" in *)
-  let tbuf = init_tbuf lexbuf 20 in
+  let tbuf = init_tbuf lexbuf 10 in
   any_tokens tbuf
