@@ -26,8 +26,8 @@ let ident_lc =
                  Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
 let ident_uc =
   [%sedlex.regexp? ('A'..'Z'), Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
+let ident_sym = [%sedlex.regexp? '#', ident_lc]
 let symbol = [%sedlex.regexp? '#', ident_lc]
-(* TODO: hex constants *)
 let hexbyte = [%sedlex.regexp? "\\x", Rep (hexdigit, 2)]
 (* ASCII printable except ' and \ (for char literals) *)
 (* leaving out double quote (34), '"' works in ocaml. *)
@@ -44,22 +44,23 @@ type ttype =
   | IDENT_UC of string
   | LPAREN | RPAREN | LBRACE | RBRACE | LSQRB | RSQRB
   | PLUS | MINUS | TIMES | DIV | MOD
-  | UMINUS (* not lexed *)
+  (* | UMINUS (* not lexed *) *)
   | AMP | PIPE | CARAT | TILDE (* bitwise operators *)
   | EQ | NE | LT | GT | LE | GE
-  | AND | OR | BANG
+  | AND | OR | NOT (* Which ones overloadable? Maybe not these. *)
   | TRUE | FALSE | NULL (* | VAL *)
-  | COLON | DCOLON | SEMI | DOT | COMMA | HASH | QMARK | ARROW | DARROW
+  | COLON | DCOLON | SEMI | DOT | COMMA (* | HASH | QMARK *) | ARROW | DARROW
   | ASSIGN | NULLASSIGN
-  | VAR | REF (* | LET ? *)
-  | IS
-  | IF | THEN | ELSIF | ELSE | ENDIF
+  | VAR | REF | IMMREF
+  | NOP
+  | IF | THEN | ELSIF | ELSE | ENDIF 
   | WHILE | LOOP | ENDWHILE
   | CASE | OF | ENDCASE
-  | PROC | ENDPROC | RETURN | NOP
+  | IS
+  | PROC | ENDPROC | RETURN
   | MODULE | ENDMODULE | MODSPEC | ENDMODSPEC
-  | IMPORT | AS | OPEN
-  | TYPE | OPAQUE | REC | STRUCT | VARIANT | MUT (* | ENUM *)
+  | IMPORT | AS | OPEN | EXPORT | PRIVATE
+  | TYPE | OPAQUE | REC | RECORD | VARIANT | MUT (* | ENUM *)
   | EOF
   
 type token = {
@@ -90,12 +91,75 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | iconst -> ICONST (Int64.of_string (Enc.lexeme buf))
     | hexconst -> ICONST (Int64.of_string (Enc.lexeme buf))
     | fconst -> FCONST (Float.of_string (Enc.lexeme buf))
-    (* keywords go between here *)
+    | '(' -> LPAREN
+    | ')' -> RPAREN
+    | '{' -> LBRACE
+    | '}' -> RBRACE
+    | '[' -> LSQRB
+    | ']' -> RSQRB
+    | '+' -> PLUS
+    | '-' -> MINUS
+    | '*' -> TIMES
+    | '/' -> DIV
+    | '%' -> MOD
+    | '^' -> CARAT (* overloadable, maybe *)
+    | '|' -> PIPE
+    | '&' -> AMP
+    | '~' -> TILDE (* bitwise not *)
+    | "==" -> EQ
+    | "!=" -> NE
+    | '<' -> LT
+    | "<=" -> LE
+    | ">=" -> GT
+    | "&&" -> AND
+    | "||" -> OR
+    | '!' -> NOT
+    (* | '#' -> HASH
+       | '?' -> QMARK *) (* Must be attached to something else. *)
+    | '=' -> ASSIGN
+    | "?=" -> NULLASSIGN
+    | "->" -> ARROW
+    | "=>" -> DARROW
+    | ',' -> COMMA
+    | '.' -> DOT
+    | ';' -> SEMI
+    | "::" -> DCOLON (* actually this should be attached too. *)
+    | ':' -> COLON
+    | "var" -> VAR
+    | "ref^" -> IMMREF
+    | "ref" -> REF
+    | "nop" -> NOP
+    | "if" -> IF
+    | "then" -> THEN
+    | "elsif" -> ELSIF
+    | "else" -> ELSE
+    | "/if" -> ENDIF
+    | "while" -> WHILE
+    | "loop" -> LOOP
+    | "/while" -> ENDWHILE
+    | "case" -> CASE
+    | "of" -> OF
+    | "/case" -> ENDCASE
+    | "is" -> IS
+    | "module" -> MODULE
+    | "/module" -> ENDMODULE
+    | "modspec" -> MODSPEC
+    | "/modspec" -> ENDMODSPEC (* Should put these in separate parser? *)
+    | "import" -> IMPORT
+    | "as" -> AS
+    | "open" -> OPEN
+    | "export" -> EXPORT
+    | "private" -> PRIVATE
+    | "type" -> TYPE
+    | "rec" -> REC
+    | "opaque" -> OPAQUE
+    | "mut" -> MUT
+    | "record" -> RECORD
+    | "variant" -> VARIANT
     | ident_lc -> IDENT_LC (Enc.lexeme buf)
     | ident_uc -> IDENT_UC (Enc.lexeme buf)
     | eof -> EOF
-    (* | any (* as c *) ->  (* sedlex doesn't know this syntax, boo *) *)
-    (* Lexeme will be empty unless I match an actual regex. *)
+    (* Lexeme will be empty unless we match an actual regex. *)
     | any ->
       raise (syntax_error ("Unexpected character: "
                            ^ Enc.lexeme buf) buf) 
