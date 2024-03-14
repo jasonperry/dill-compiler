@@ -191,7 +191,7 @@ type ('sd, 'l) typedef = {
 (** Import statements occur separately, so no need to include in 
  * the stmt type. Only decoration is location, so just do it directly *)
 type importStmt =
-  | Using of string * string option
+  | Import of string * string option
   | Open of string
 
 type ('ed, 'sd, 'l) dillmodule = {
@@ -381,9 +381,18 @@ let proc_to_string (proc: ('ed, 'sd, 'tt) proc) =
   ^ block_to_string proc.body
   ^ "/proc\n" (* "\nend " ^ proc.decl.name ^ "\n" *)
 
+let import_to_string istmt =
+  match istmt.value with
+  | Import (mname, Some alias) ->
+    "import " ^ mname ^ " as " ^ alias ^ ";\n"
+  | Import (mname, None) ->
+    "import " ^ mname ^ ";\n"
+  | Open mname ->
+    "open " ^ mname ^ ";\n"
+          
 let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
   "module " ^ dmod.name ^ " is \n"
-  (* TODO: imports *)
+  ^ String.concat "" (List.map import_to_string dmod.imports)
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
         fun s gstmt ->

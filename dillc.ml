@@ -90,7 +90,7 @@ let rec open_from_paths plist filename =
 let load_imports cconfig (modmap: ('ed,'sd,'tt) module_spec StrMap.t) istmts =
   let rec load_import mmap istmt =
     let modname = match istmt.value with
-      | Using (mn, _) -> mn
+      | Import (mn, _) -> mn
       | Open mn -> mn in
     if StrMap.mem modname mmap then mmap (* already there *)
     else

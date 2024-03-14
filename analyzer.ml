@@ -1654,7 +1654,7 @@ let add_imports syms tenv specs istmts =
       | istmt::rest -> (
         (* get the module names to be used in the symtable and tenv. *)
         let (modname, modalias) = match istmt.value with
-          | Using (modname, aliasopt) -> (
+          | Import (modname, aliasopt) -> (
             match aliasopt with
             | Some alias -> (modname, alias)
             | None -> (modname, modname) )
@@ -1839,8 +1839,8 @@ let create_module_spec (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
     imports = 
       List.map (fun (istmt: importStmt located) -> {
             value = (match istmt.value with
-                | Using (mn, alias) -> Using (mn, alias)
-                | Open mn -> Using (mn, None));
+                | Import (mn, alias) -> Import (mn, alias)
+                | Open mn -> Import (mn, None)); (* wait, why not Open? *)
             loc=istmt.loc
           }) the_mod.imports;
     (* TODO: Make sure all names fully qualified in the spec file.

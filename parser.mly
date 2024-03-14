@@ -130,8 +130,8 @@ includeStmt:
     { {value=is; loc=$loc} }
 
 importStmt:
-  | IMPORT mn=moduleName SEMI  { Using (mn, None) }
-  | IMPORT mn=moduleName AS alias=moduleName SEMI { Using (mn, Some alias) }
+  | IMPORT mn=moduleName SEMI  { Import (mn, None) }
+  | IMPORT mn=moduleName AS alias=moduleName SEMI { Import (mn, Some alias) }
 
 openStmt:
   | OPEN mn=moduleName SEMI { Open mn }

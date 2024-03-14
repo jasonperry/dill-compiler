@@ -62,11 +62,38 @@ type ttype =
   | IMPORT | AS | OPEN | EXPORT | PRIVATE
   | TYPE | OPAQUE | REC | RECORD | VARIANT | MUT (* | ENUM *)
   | EOF
-  
+
 type token = {
   ttype: ttype;
   loc: Lexing.position * Lexing.position
 }
+
+(* Map and function for unparsing and error messages. *)
+module Ttype =
+  struct
+    type t = ttype
+    let compare = Stdlib.compare
+  end
+
+module TokenMap = Map.Make(Ttype)
+let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
+    (fun m (k,v) -> TokenMap.add k v m) TokenMap.empty [
+    (LPAREN, "("); (RPAREN, ")"); (LBRACE, "{"); (RBRACE, "}");
+    (LSQRB, "["); (RSQRB, "]"); (PLUS, "+"); (MINUS, "-");
+  ]
+
+(* Used to write less code for error messages. *)
+let string_of_ttype = function
+  | ICONST n -> Int64.to_string n
+  | FCONST x -> string_of_float x
+  | STRCONST s -> "\"" ^ String.escaped s ^ "\""
+  | BYTECONST c -> "'" ^ Char.escaped c ^ "'"
+  | IDENT_UC s -> s
+  | IDENT_LC s -> s
+  | t -> TokenMap.find t ttype_strings
+
+(* will we need this? *)
+let string_of_token token = string_of_ttype token.ttype
 
 (* do I have to write my own to_string for the buf? *)
 let string_of_ucarray arr =
@@ -140,6 +167,9 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "case" -> CASE
     | "of" -> OF
     | "/case" -> ENDCASE
+    | "proc" -> PROC
+    | "/proc" -> ENDPROC
+    | "return" -> RETURN
     | "is" -> IS
     | "module" -> MODULE
     | "/module" -> ENDMODULE

@@ -1,17 +1,17 @@
-module globals01 begin
+module globals01 is
 
 open stdio;
 
 var x: Int = 16;
 var y = 4.0;
 
-export proc main() => Void
-begin
+export proc main()
+is
   x = 14;
   (* y = 2.2; *)
   printFloat(y);
   var pp = x + 33;  (* should be 47, not 49 *)
   printInt(pp);
-end main
+/proc
 
-end globals01
+/module
