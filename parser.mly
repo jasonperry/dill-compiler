@@ -23,7 +23,7 @@
 %token MODULE ENDMODULE MODSPEC ENDMODSPEC
 %token IMPORT AS OPEN 
 %token PRIVATE EXPORT
-%token TYPE OPAQUE REC STRUCT VARIANT MUT
+%token TYPE ENDTYPE OPAQUE REC STRUCT VARIANT MUT
 %token EOF
 
 (* ordering of these indicates precedence, low to high *)
@@ -183,7 +183,7 @@ typedef:
   | op=option(OPAQUE) TYPE tname=IDENT_UC
     tps=option(delimited(LPAREN, separated_nonempty_list(COMMA, IDENT_LC), RPAREN))
     IS
-    rt=option(REC) tdi=typedefInfo SEMI
+    rt=option(REC) tdi=typedefInfo ENDTYPE
     { {typename=tname;
        rectype=(
 	 match rt with
@@ -204,11 +204,11 @@ typedef:
     { raise (SyntaxError ($loc($3), "Invalid type identifier")) }
 
 typedefInfo:
-  | STRUCT fl=fieldList
+  | STRUCT fl=fieldList SEMI
     { Fields fl }
-  | VARIANT vl=variantList
+  | VARIANT vl=variantList SEMI
     { Variants vl }
-  | ty=typeExp
+  | ty=typeExp SEMI
     { Newtype ty }
 
 fieldList:

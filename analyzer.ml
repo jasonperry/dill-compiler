@@ -1204,17 +1204,19 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl)
   : ((('a st_node, 'loc) procdecl * 'a st_procentry), 'er) result =
   (* Helper function to construct error result *)
   let errout msg = Error [{loc=pdecl.decor; value=msg}] in
-  (* 0. Make sure procedure name isn't a reserved word. *)
+  (* 0. Initial correctness checks *)
   if StrSet.mem pdecl.name reserved_procnames then
     errout ("Reserved name " ^ pdecl.name ^ " cannot be a procedure name")
-  else 
-    (* 1. check procedure name for redeclaration *)
+  else if modname = "" && pdecl.export then
+    errout ("\"export\" qualifier is redundant for top-level module")
+  else
+    (* 1. check procedure name for redeclaration. Is scope check needed? *)
     match Symtable.findproc_opt pdecl.name syms with
     | Some (_, scope) when syms.scopedepth = scope ->
        errout ("Redeclaration of procedure " ^ pdecl.name)
     | _ -> (
       (* 2. Check generic type parameter declarations. *)
-      (* loop through typeparams and add to symtables, error out for repeats. *)
+      (* loop through typeparams and add to symtables, error for repeats. *)
       let tparams_result =
         List.fold_left (fun resacc tv ->
             (* Hmm, we're just using the fold to propagate the error here. *)

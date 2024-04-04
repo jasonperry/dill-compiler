@@ -63,6 +63,14 @@ let peek tbuf =
   tbuf.last_loc <- tbuf.buf.(i).loc;
   tbuf.buf.(i)
 
+(** LL(2) lookahead *)
+let peek2 tbuf =
+  if tbuf.bpos >= tbuf.lookahead - 1 then _refill_tbuf tbuf;
+  let i = tbuf.bpos + 1 in
+  tbuf.last_lexeme <- tbuf.sbuf.(i);
+  tbuf.last_loc <- tbuf.buf.(i).loc;
+  tbuf.buf.(i)
+
 (** Attempt to eat one token of given type from token buffer. *)
 let consume tbuf ttype =
   let tok = peek tbuf in
@@ -197,15 +205,17 @@ let import tbuf =
   | _ -> None
              
 let module_body mname tbuf =
+  let imports = list_of import tbuf in
+  (* "export" can be on type, global var, or proc *)
+   (* loop to accumulate both types and global vars?
+           or strictly types first?  *)
   { name = mname;
-    imports = list_of import tbuf;
+    imports = imports;
     typedefs = [];
     globals = [];
     procs = [];
   }
               
-   (* loop to accumulate both types and global vars?
-           or strictly types first?  *)
   (* let tok = peek tbuf in
   match tok.ttype with
   (* I can make imports come first, yay. *)
@@ -231,7 +241,7 @@ let dillsource tbuf =
         | Some _ ->
           let _ (* epos *) = snd (last_loc tbuf) in
           [the_module]
-        | None -> raise (expect_error "\"/module\"" tbuf)
+        | None -> raise (unexpect_error tbuf)
        )
   | _ -> [module_body "" tbuf] (* get location from returned body. *)
 
@@ -267,4 +277,5 @@ let _ =
   let tbuf = init_tbuf lexbuf 10 in
   (* any_tokens tbuf *)
   let modules = dillsource tbuf in
-  String.concat "\n" (List.map module_to_string modules)
+  print_string ("Parsed " ^ string_of_int (List.length modules) ^ " modules.\n");
+  print_string (String.concat "\n" (List.map module_to_string modules))

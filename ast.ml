@@ -135,7 +135,7 @@ type ('sd, 'l) procdecl = {
   (* One could imagine removing the typeExprs after analysis. *)
   (* The bool is the mutable indicator *)
   params: (bool * string * 'l typeExpr) list; 
-  (* TODO: Also need "private" signifier. *)
+  (* TODO: Also need "private" signifier (or visibility type). *)
   export: bool;
   rettype: 'l typeExpr;  (* make optional to get rid of void? *) 
   decor: 'sd
@@ -255,7 +255,7 @@ and typedef_to_string tdef =
      | Newtype tyex -> " is " ^ typeExpr_to_string tyex
      | Hidden -> ""
     )
-  ^ ";\n"
+  ^ ";\n/type\n"
 
 
 
@@ -391,7 +391,8 @@ let import_to_string istmt =
     "open " ^ mname ^ ";\n"
           
 let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
-  "module " ^ dmod.name ^ " is \n"
+  if dmod.name <> "" then 
+    "module " ^ dmod.name ^ " is \n" else ""
   ^ String.concat "" (List.map import_to_string dmod.imports)
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
@@ -405,7 +406,7 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
       ) "" dmod.globals
   ^ List.fold_left (fun s p -> s ^ proc_to_string p) "" dmod.procs
   (* ^ block_to_string dmod.initblock *)
-  ^ "/module\n" (* "end " ^ dmod.name ^ "\n" *)
+  ^ if dmod.name <> "" then "/module\n" else ""
 
 (** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =

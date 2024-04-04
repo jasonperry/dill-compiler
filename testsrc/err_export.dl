@@ -1,0 +1,7 @@
+(* hello from the Dill language *)
+import stdio;
+
+(* not allowed to export if the code is already top-level. *)
+export proc main() is
+   stdio::printString("Hello World.\n");
+/proc

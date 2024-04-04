@@ -1,0 +1,39 @@
+(* Test case of transitive mutability *)
+
+open stdio;
+
+type Thing is record
+   level: Int,
+   mut count: Int;
+
+(* proc selectMax(%as: Thing[]) => %Thing *)
+proc selectMax(ts: Thing[]) => Thing
+begin
+   var max = -1000000000;  (* todo: int_min *)
+   var maxi = 0;
+   var i = 0;
+   printString("Array length: ");
+   printInt(ts.length);
+   while i < ts.length loop (* for var i=1 to ts.length-1 loop *)
+      printInt(i);
+      if ts[i].level > max then
+         max = ts[i].level;
+         maxi = i;
+      /if
+      i = i + 1;
+   /while
+   return ts[maxi];   (* has to be a reference *)
+/proc
+
+proc main() => Int
+begin
+   var ts: Thing[] = [{level=40, count=0},
+                      {level=42, count=0},
+                      {level=43, count=0}];
+   var maxThing = selectMax(ts);
+   maxThing.count = 44;
+   printString("Should be 44, 44\n");
+   printInt(maxThing.count);
+   printInt(ts[2].count);    (* should say 44 again *)
+   return 0;
+/proc

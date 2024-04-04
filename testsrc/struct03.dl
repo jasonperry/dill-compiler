@@ -2,8 +2,10 @@
 
 module struct03 is
 
-type Complex is record
-  i: Float,
-  j: Float;
-
+type Complex is
+  record
+     i: Float,
+     j: Float;
+/type
+  
 /module
