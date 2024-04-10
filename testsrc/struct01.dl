@@ -6,7 +6,7 @@ open stdio;
 type Complex is record
   i: Float,
   j: Float;
-
+/type
 
 export proc main()
 is

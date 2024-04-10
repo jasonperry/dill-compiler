@@ -1,24 +1,24 @@
 (* Struct passed as argument. *)
-module struct04 begin
+module struct04 is
 
 open stdio;
 
-type Complex is struct
+type Complex is record
   i: Float,
   j: Float;
-
+/type
+  
 proc printComplex(c: Complex)
-begin
+is
   printFloat(c.i);
   printFloat(c.j);
   return;
-end printComplex
-
+/proc
 
 export proc main()
-begin
+is
   var cpx: Complex = {i=2.0, j=1.111};
   printComplex(cpx);
-end main
-
-end struct04
+/proc
+  
+/module
