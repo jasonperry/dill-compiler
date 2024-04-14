@@ -103,7 +103,7 @@ let last_loc tbuf = tbuf.last_loc
 
 (* -------------------- Parser Proper ------------------ *)
 
-(* helpers to extract token values. *)
+(* helpers to extract token values. Maybe not needed now. *)
 let tok_ival tok = match tok.ttype with
   | ICONST i -> i
   | _ -> failwith "can't get integer from non-int token "
@@ -138,37 +138,15 @@ let unexpect_error tbuf =
     loc = last_loc tbuf
   }
 
+(** Make location out of a start and end position. *)
+let make_location (t1spos, _) (_, t2epos) =
+  (t1spos, t2epos)
+
 (** Helper to add location to an AST object. *)
-let make_located node (stok: token) (etok: token) = {
+let make_located node (t1spos, _) (_, t2epos) = {
   value = node;
-  loc = (fst stok.loc, snd etok.loc)
+  loc = (t1spos, t2epos)
 }
-
-let semicolon tbuf =
-  match (consume tbuf SEMI) with
-  | None -> raise (expect_error "';'" tbuf)
-  | Some tok -> tok (* needed for location *)
-
-(** Parse a given token type *)
-let parse_tok ttype tbuf =
-  match (consume tbuf ttype) with
-  | None -> raise (expect_error (string_of_ttype ttype) tbuf)
-  | Some tok -> tok
-
-(** Parse unqualified name *)
-let uname descrip tbuf =
-  match (consume tbuf (IDENT_LC "")) with
-     | None -> raise (expect_error descrip tbuf)
-     | Some tok -> tok
-
-let proc tbuf =
-  (* let qualifiers = EXPORT, PRIVATE *)
-  let ptok = Option.get (consume tbuf PROC) in
-  let _ (* spos *) = fst ptok.loc in
-  (* generic params *)
-  match (consume tbuf (IDENT_LC "")) with
-  | None -> raise (expect_error "procedure name" tbuf)
-  | Some pname -> print_string ("found proc " ^ tok_sval pname)
 
 (** Parse an arbitrary number of a given object. *)
 let list_of pf tbuf =
@@ -180,28 +158,128 @@ let list_of pf tbuf =
     | None -> List.rev acc
   in loop []
 
+(*
+(** Maybe parse a given object, but OK if not (catch exception) *)
+let option rule tbuf =
+  try (rule tbuf) with
+  | SyntaxError _ -> None (* no it hides errors *)
+  | res -> Some res
+*)
+
+(* ----------------- rule functions begin ---------------- *)
+
+(*
+let semicolon tbuf =
+  match (consume tbuf SEMI) with
+  | None -> raise (expect_error "';'" tbuf)
+  | Some tok -> tok.loc 
+   *)
+
+(** Parse a given token type without data *)
+let parse_tok ttype tbuf =
+  match (consume tbuf ttype) with
+  | None -> raise (expect_error (string_of_ttype ttype) tbuf)
+  | Some tok -> tok.loc
+
+(** Parse unqualified lowercase name. Takes a description string from context
+    so errors can say what the value is for. *)
+let unqname descrip tbuf =
+  match (consume tbuf (IDENT_LC "")) with
+     | None -> raise (expect_error descrip tbuf)
+     | Some tok -> (tok_sval tok, tok.loc)
+
+let typename tbuf =
+  match (consume tbuf (IDENT_UC "")) with
+  | None -> raise (expect_error "class name" tbuf)
+  | Some tok -> (tok_sval tok, tok.loc)
+
+let proc tbuf =
+  (* let qualifiers = EXPORT, PRIVATE *)
+  let ptok = Option.get (consume tbuf PROC) in
+  let _ (* spos *) = fst ptok.loc in
+  (* generic params *)
+  match (consume tbuf (IDENT_LC "")) with
+  | None -> raise (expect_error "procedure name" tbuf)
+  | Some pname -> print_string ("found proc " ^ tok_sval pname)
+
+let typeExpr tbuf =
+  let stok = peek tbuf in
+  match stok.ttype with
+  | IDENT_LC _ ->
+    let (n1, _) = unqname "module name or type variable" tbuf in
+    (match (peek tbuf).ttype with
+     | DCOLON ->
+       ignore (parse_tok DCOLON tbuf);
+       let (cn, el1) = typename tbuf in
+       (* TODO: parse type args/nullable/array markers *)
+       ({ texpkind=(
+            Concrete {
+              modname=n1; classname=cn;
+              typeargs=[];
+            });
+           (* nullable should be 'option' *)
+           nullable=false; array=false;
+           loc=make_location stok.loc el1
+         },
+        make_location stok.loc el1)
+     | _ -> failwith "todo: type var parsing"
+    )
+  | IDENT_UC _ -> 
+    let (cn, el1) = typename tbuf in
+    (* TODO: parse type args/nullable/array markers *)
+    ({ texpkind=(
+         Concrete {
+           modname=""; classname=cn;
+           typeargs=[];
+         });
+        (* nullable should be 'option' *)
+        nullable=false; array=false;
+        loc=make_location stok.loc el1
+      },
+     make_location stok.loc el1)
+  | _ -> raise (expect_error "type expression" tbuf)
+           
+(* if initializer is required, the caller will check, right? *)
+(* Yes, I think that's better than trying to divide syntactically. *)
+let declStatement tbuf =
+  let stok = peek tbuf in
+  match stok.ttype with
+  | VAR -> 
+    let sloc = parse_tok VAR tbuf in
+    let (vname, _) = unqname "lvalue" tbuf in
+    let tyopt = 
+      (match (peek tbuf).ttype with
+       | COLON ->  (* has type expression *)
+         ignore (parse_tok COLON tbuf);
+         Some (typeExpr tbuf)
+       | _ -> None
+      ) in
+    let initopt = None in
+    let eloc = parse_tok SEMI tbuf in
+    Some ((vname, tyopt, initopt), (sloc, eloc))
+  | _ -> None
+    
 (** Parse a single import statement or nothing. *)
 let import tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | IMPORT ->
-    (* maybe a "pop" function would be nice *)
-    let _ = Option.get (consume tbuf IMPORT) in
-    let mntok = uname "module name" tbuf in
+    let sloc = parse_tok IMPORT tbuf in
+    let (mname, _) = unqname "module name" tbuf in
     let alias = match (peek tbuf).ttype with
       | AS ->
-        let _ = Option.get (consume tbuf AS) in
-        let matok = uname "module alias" tbuf in
-        Some (tok_sval matok)
+        let _ = parse_tok AS tbuf in
+        let (malias, _) = unqname "module alias" tbuf in
+        Some malias
       | _ -> None
     in
-    let etok = semicolon tbuf in
-    Some (make_located (Import (tok_sval mntok, alias)) stok etok)
+    let eloc = parse_tok SEMI tbuf in
+    Some (make_located (Import (mname, alias)) sloc eloc)
   | OPEN ->
-    let _ = Option.get (consume tbuf OPEN) in
-    let mntok = uname "module name" tbuf in 
-    let etok = semicolon tbuf in 
-    Some (make_located (Open (tok_sval mntok)) stok etok)
+    let sloc = parse_tok OPEN tbuf in
+    let (mname, _) = unqname "module name" tbuf in 
+    let eloc = parse_tok SEMI tbuf in 
+    Some (make_located (Open mname) sloc eloc)
   | _ -> None
              
 let module_body mname tbuf =
@@ -234,15 +312,17 @@ let dillsource tbuf =
   | MODULE ->
     let _ (* spos *) = fst (stok.loc) in 
     let _ = Option.get (consume tbuf MODULE) in
-    let mntok = uname "module name" tbuf in
+    let (mname, _) = unqname "module name" tbuf in
     let _ = parse_tok IS tbuf in 
-    let the_module = module_body (tok_sval mntok) tbuf in
+    let the_module = module_body mname tbuf in
        (match (consume tbuf ENDMODULE) with
         | Some _ ->
           let _ (* epos *) = snd (last_loc tbuf) in
           [the_module]
         | None -> raise (unexpect_error tbuf)
        )
+  (* Thought: allowing top-level code makes it unclear if signatures are
+     to be placed "outside"? No it doesn't! *)
   | _ -> [module_body "" tbuf] (* get location from returned body. *)
 
 (* for testing the lexer and token buffer. Any sequence of valid tokens. *)
@@ -277,5 +357,6 @@ let _ =
   let tbuf = init_tbuf lexbuf 10 in
   (* any_tokens tbuf *)
   let modules = dillsource tbuf in
-  print_string ("Parsed " ^ string_of_int (List.length modules) ^ " modules.\n");
+  print_string ("Parsed " ^ string_of_int (List.length modules)
+                ^ " module(s).\n");
   print_string (String.concat "\n" (List.map module_to_string modules))

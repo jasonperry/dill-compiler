@@ -6,11 +6,13 @@ open stdio;
 type Complex is record
   i: Float,
   j: Float;
-
+/type
+  
 type Cplx is record
    f: Int,
    j: Int;
-
+/type
+   
 proc main() is
   var cpx: Complex; (*  = {i=2.0, j=1.111};*)
   cpx = {i=4.0, j=-1.53};

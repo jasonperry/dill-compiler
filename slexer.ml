@@ -24,8 +24,10 @@ let fconst = [%sedlex.regexp? Opt '-', Plus digit, '.', Star digit, Opt expon]
 let ident_lc =
   [%sedlex.regexp? ('a'..'z' | '_'),
                  Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
+let qident_lc = [%sedlex.regexp? Opt (ident_lc, "::"), ident_lc]
 let ident_uc =
   [%sedlex.regexp? ('A'..'Z'), Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
+let qident_uc = [%sedlex.regexp? Opt (ident_lc, "::"), ident_uc]
 let ident_sym = [%sedlex.regexp? '#', ident_lc]
 let symbol = [%sedlex.regexp? '#', ident_lc]
 let hexbyte = [%sedlex.regexp? "\\x", Rep (hexdigit, 2)]
@@ -60,7 +62,7 @@ type ttype =
   | PROC | ENDPROC | RETURN
   | MODULE | ENDMODULE | MODSPEC | ENDMODSPEC
   | IMPORT | AS | OPEN | EXPORT | PRIVATE
-  | TYPE | OPAQUE | REC | RECORD | VARIANT | MUT (* | ENUM *)
+  | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT (* | ENUM *)
   | EOF
 
 type token = {
@@ -75,14 +77,17 @@ module Ttype =
     let compare = Stdlib.compare
   end
 
+(* It would be good to use this for the parser too.
+   Make a reversed version. *)
 module TokenMap = Map.Make(Ttype)
 let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (fun m (k,v) -> TokenMap.add k v m) TokenMap.empty [
     (LPAREN, "("); (RPAREN, ")"); (LBRACE, "{"); (RBRACE, "}");
     (LSQRB, "["); (RSQRB, "]"); (PLUS, "+"); (MINUS, "-");
+    (SEMI, ";");
   ]
 
-(* Used to write less code for error messages. *)
+(** For converting tokens back to strings. Use this in Ast also *)
 let string_of_ttype = function
   | ICONST n -> Int64.to_string n
   | FCONST x -> string_of_float x
@@ -181,6 +186,7 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "export" -> EXPORT
     | "private" -> PRIVATE
     | "type" -> TYPE
+    | "/type" -> ENDTYPE
     | "rec" -> REC
     | "opaque" -> OPAQUE
     | "mut" -> MUT
@@ -194,6 +200,11 @@ let rec tparse (buf: Sedlexing.lexbuf) =
       raise (syntax_error ("Unexpected character: "
                            ^ Enc.lexeme buf) buf) 
     | _ -> failwith "Unreachable: slexer.tparse"
+
+(* lexing rule for ident chained together with restricted whitespace *)
+(* but it has to return multiple tokens; do I have to do some sort of push/pop? *)
+(* or generalize so multiple tokens can be returned? *)
+(* nevermind *)
 
 and comment depth buf =
   match%sedlex buf with
