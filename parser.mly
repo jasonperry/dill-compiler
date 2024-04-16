@@ -380,7 +380,7 @@ caseBlock:
     { (caseexp, blk) }
 
 typeExp:
-  (* typename plus possibly array, null markers *)
+  (* typename or type variable plus possibly array, null markers *)
   | mn=moduleName DCOLON tn=IDENT_UC
     tprms=option(delimited(LPAREN, nonempty_list(typeExp), RPAREN))
     qm=option(QMARK) arr=option(pair(LSQRB,RSQRB))

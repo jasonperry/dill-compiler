@@ -101,7 +101,7 @@ let last_lexeme tbuf = tbuf.last_lexeme
 let last_loc tbuf = tbuf.last_loc
 
 
-(* -------------------- Parser Proper ------------------ *)
+(* -------------------- Parser Helper Functions ------------------ *)
 
 (* helpers to extract token values. Maybe not needed now. *)
 let tok_ival tok = match tok.ttype with
@@ -175,38 +175,72 @@ let semicolon tbuf =
   | Some tok -> tok.loc 
    *)
 
+(* "Token parsers" seem to have special status. They are the only ones
+   that call "consume" directly and use the coercion functions. *)
+
 (** Parse a given token type without data *)
 let parse_tok ttype tbuf =
   match (consume tbuf ttype) with
   | None -> raise (expect_error (string_of_ttype ttype) tbuf)
   | Some tok -> tok.loc
 
+let iconst tbuf =
+  match (consume tbuf (ICONST Int64.zero)) with
+  | None -> raise (expect_error "integer constant" tbuf)
+  | Some tok -> (tok_ival tok, tok.loc)
+
 (** Parse unqualified lowercase name. Takes a description string from context
     so errors can say what the value is for. *)
-let unqname descrip tbuf =
+let uqname descrip tbuf =
   match (consume tbuf (IDENT_LC "")) with
      | None -> raise (expect_error descrip tbuf)
      | Some tok -> (tok_sval tok, tok.loc)
 
+(* possibly qualified? *)
 let typename tbuf =
   match (consume tbuf (IDENT_UC "")) with
   | None -> raise (expect_error "class name" tbuf)
   | Some tok -> (tok_sval tok, tok.loc)
 
+(* ---- end of single-token parsers ---- *)
+
 let proc tbuf =
   (* let qualifiers = EXPORT, PRIVATE *)
-  let ptok = Option.get (consume tbuf PROC) in
-  let _ (* spos *) = fst ptok.loc in
+  let _ = parse_tok PROC tbuf in
   (* generic params *)
-  match (consume tbuf (IDENT_LC "")) with
-  | None -> raise (expect_error "procedure name" tbuf)
-  | Some pname -> print_string ("found proc " ^ tok_sval pname)
+  let (pname, _) = uqname "procedure name" tbuf  in 
+  print_string ("found proc " ^ pname)
 
+let rec expr tbuf =
+  (* Get a single expression, then look for operators, and finally
+     compute precedence *)
+  match (peek tbuf).ttype with
+  | LPAREN ->
+    let sloc = parse_tok LPAREN tbuf in
+    let e = expr tbuf in (* exprs already have location *)
+    let eloc = parse_tok RPAREN tbuf in
+    { e=e.e; decor=make_location sloc eloc }
+  | ICONST _ ->
+    let (n, tloc) = iconst tbuf in
+    { e=ExpConst (IntVal n); decor=make_location tloc tloc }
+  | _ -> raise (expect_error "Unknown expression token" tbuf)
+
+(* and operTail tbuf = (\* look for operators following *\) *)
+
+  (* want to try multiple things in a natural way... *)
+  (* Maybe I should raise errors always and catch them... *)
+  (* Where do I put the logic of when I'm "committed" to parsing that type
+     of thing? *)
+  (* step 1: constExp vs OpExp *)
+  (* exp's recursive "buddies" can be different from other things *)
 let typeExpr tbuf =
   let stok = peek tbuf in
   match stok.ttype with
+  (* Can't just do "qtypename" because an lc_ident could be a type
+     variable also. *)
   | IDENT_LC _ ->
-    let (n1, _) = unqname "module name or type variable" tbuf in
+    (* maybe move this out to qualTypename or just typename? *)
+    let (n1, _) = uqname "module name or type variable" tbuf in
     (match (peek tbuf).ttype with
      | DCOLON ->
        ignore (parse_tok DCOLON tbuf);
@@ -246,7 +280,7 @@ let declStatement tbuf =
   match stok.ttype with
   | VAR -> 
     let sloc = parse_tok VAR tbuf in
-    let (vname, _) = unqname "lvalue" tbuf in
+    let (vname, _) = uqname "lvalue" tbuf in
     let tyopt = 
       (match (peek tbuf).ttype with
        | COLON ->  (* has type expression *)
@@ -265,11 +299,11 @@ let import tbuf =
   match stok.ttype with
   | IMPORT ->
     let sloc = parse_tok IMPORT tbuf in
-    let (mname, _) = unqname "module name" tbuf in
+    let (mname, _) = uqname "module name" tbuf in
     let alias = match (peek tbuf).ttype with
       | AS ->
         let _ = parse_tok AS tbuf in
-        let (malias, _) = unqname "module alias" tbuf in
+        let (malias, _) = uqname "module alias" tbuf in
         Some malias
       | _ -> None
     in
@@ -277,7 +311,7 @@ let import tbuf =
     Some (make_located (Import (mname, alias)) sloc eloc)
   | OPEN ->
     let sloc = parse_tok OPEN tbuf in
-    let (mname, _) = unqname "module name" tbuf in 
+    let (mname, _) = uqname "module name" tbuf in 
     let eloc = parse_tok SEMI tbuf in 
     Some (make_located (Open mname) sloc eloc)
   | _ -> None
@@ -312,7 +346,7 @@ let dillsource tbuf =
   | MODULE ->
     let _ (* spos *) = fst (stok.loc) in 
     let _ = Option.get (consume tbuf MODULE) in
-    let (mname, _) = unqname "module name" tbuf in
+    let (mname, _) = uqname "module name" tbuf in
     let _ = parse_tok IS tbuf in 
     let the_module = module_body mname tbuf in
        (match (consume tbuf ENDMODULE) with
