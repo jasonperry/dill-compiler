@@ -129,6 +129,9 @@ type ('ed, 'sd, 'l) globalstmt = {
 (* I thought about removing the symtable decoration from the decl, but
    it can stand on its own in an interface file, so I guess it needs
    it. *)
+
+type visibility = Default | Export | Private
+
 type ('sd, 'l) procdecl = {
   name: string;
   typeparams: typevar list; (* need to change? *)
@@ -136,7 +139,7 @@ type ('sd, 'l) procdecl = {
   (* The bool is the mutable indicator *)
   params: (bool * string * 'l typeExpr) list; 
   (* TODO: Also need "private" signifier (or visibility type). *)
-  export: bool;
+  visibility: visibility;
   rettype: 'l typeExpr;  (* make optional to get rid of void? *) 
   decor: 'sd
 }
@@ -365,7 +368,9 @@ and case_to_string (matchexp, caseblocks, elseopt) =
 (* let interpret_params plist =  *)
 
 let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
-  (if pdecl.export then "export " else "") ^ "proc "
+  (match pdecl.visibility with
+   | Default -> "" | Export -> "export " | Private -> " private")
+  ^ "proc "
   ^ (if (List.length pdecl.typeparams) > 0
      then "(" ^ String.concat "," pdecl.typeparams ^ ") " else "")
   ^ pdecl.name ^ "("

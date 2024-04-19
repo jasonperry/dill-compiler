@@ -6,21 +6,18 @@ open stdio;
 type Complex is record
   i: Float,
   j: Float;
-/type
   
 type Cplx is record
    f: Int,
    j: Int;
-/type
    
-proc main() is
+proc main()
   var cpx: Complex; (*  = {i=2.0, j=1.111};*)
   cpx = {i=4.0, j=-1.53};
   (* cpx.j = 3.3; *) (* assignment to immutable field not allowed *)
   cpx = {i=4.1, j=-2.2};  (* reassignment should be fine *)
   printFloat(cpx.i);
   printFloat(cpx.j);
-
 /proc
 
 (* end struct02 *)

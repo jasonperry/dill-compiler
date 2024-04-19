@@ -117,10 +117,10 @@ rule token = parse  (* funny that it's called parse *)
   | "record"  { STRUCT }
   | "variant" { VARIANT }
   | "mut"     { MUT }
-  | "true"    { TRUE }    (* these also represent values *)
-  | "false"   { FALSE }
-  | "null"    { NULL }
-  | "val"     { VAL }
+  | "#true"    { TRUE }    (* these also represent values *)
+  | "#false"   { FALSE }
+  | "#null"    { NULL }
+  | "#val"     { VAL }
   | ident_lc as v	{ IDENT_LC v }
   | ident_uc as v	{ IDENT_UC v }
   | ident_variant as v  { IDENT_VARIANT v }

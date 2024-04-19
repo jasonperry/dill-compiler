@@ -178,38 +178,44 @@ let semicolon tbuf =
 (* "Token parsers" seem to have special status. They are the only ones
    that call "consume" directly and use the coercion functions. *)
 
-(** Parse a given token type without data *)
-let parse_tok ttype tbuf =
+(** Consume token of given type, with error message if not *)
+let get_tok ttype descrip tbuf =
   match (consume tbuf ttype) with
-  | None -> raise (expect_error (string_of_ttype ttype) tbuf)
-  | Some tok -> tok.loc
+  | None -> raise (expect_error descrip tbuf)
+  | Some tok -> tok
+
+(** Parse a given token type without data, returning only location *)
+let parse_tok ttype tbuf =
+  (get_tok ttype (string_of_ttype ttype) tbuf).loc
 
 let iconst tbuf =
-  match (consume tbuf (ICONST Int64.zero)) with
-  | None -> raise (expect_error "integer constant" tbuf)
-  | Some tok -> (tok_ival tok, tok.loc)
+  let tok = get_tok (ICONST Int64.zero) "integer constant" tbuf in
+  (tok_ival tok, tok.loc)
+                
+let fconst tbuf =
+  let tok = get_tok (FCONST 0.0) "float constant" tbuf
+  in (tok_fval tok, tok.loc)
+
+let bconst tbuf =
+  let tok = get_tok (BYTECONST '@') "byte constant" tbuf
+  in (tok_cval tok, tok.loc)
+
+let sconst tbuf =
+  let tok = get_tok (STRCONST "") "string constant" tbuf
+  in (tok_sval tok, tok.loc)
 
 (** Parse unqualified lowercase name. Takes a description string from context
     so errors can say what the value is for. *)
 let uqname descrip tbuf =
-  match (consume tbuf (IDENT_LC "")) with
-     | None -> raise (expect_error descrip tbuf)
-     | Some tok -> (tok_sval tok, tok.loc)
+  let tok = get_tok (IDENT_LC "") descrip tbuf in
+  (tok_sval tok, tok.loc)
 
 (* possibly qualified? *)
 let typename tbuf =
-  match (consume tbuf (IDENT_UC "")) with
-  | None -> raise (expect_error "class name" tbuf)
-  | Some tok -> (tok_sval tok, tok.loc)
+  let tok = get_tok (IDENT_UC "") "class name" tbuf in
+  (tok_sval tok, tok.loc)
 
 (* ---- end of single-token parsers ---- *)
-
-let proc tbuf =
-  (* let qualifiers = EXPORT, PRIVATE *)
-  let _ = parse_tok PROC tbuf in
-  (* generic params *)
-  let (pname, _) = uqname "procedure name" tbuf  in 
-  print_string ("found proc " ^ pname)
 
 let rec expr tbuf =
   (* Get a single expression, then look for operators, and finally
@@ -223,6 +229,15 @@ let rec expr tbuf =
   | ICONST _ ->
     let (n, tloc) = iconst tbuf in
     { e=ExpConst (IntVal n); decor=make_location tloc tloc }
+  | FCONST _ ->
+    let (x, tloc) = fconst tbuf in
+    { e=ExpConst (FloatVal x); decor=make_location tloc tloc }
+  | BYTECONST _ ->
+    let (c, tloc) = bconst tbuf in
+    { e=ExpConst (ByteVal c); decor=make_location tloc tloc }
+  | STRCONST _ ->
+    let (s, tloc) = sconst tbuf in
+    { e=ExpConst (StringVal s); decor=make_location tloc tloc }
   | _ -> raise (expect_error "Unknown expression token" tbuf)
 
 (* and operTail tbuf = (\* look for operators following *\) *)
@@ -308,56 +323,76 @@ let import tbuf =
       | _ -> None
     in
     let eloc = parse_tok SEMI tbuf in
-    Some (make_located (Import (mname, alias)) sloc eloc)
+    (make_located (Import (mname, alias)) sloc eloc)
   | OPEN ->
     let sloc = parse_tok OPEN tbuf in
     let (mname, _) = uqname "module name" tbuf in 
     let eloc = parse_tok SEMI tbuf in 
-    Some (make_located (Open mname) sloc eloc)
-  | _ -> None
-             
+    (make_located (Open mname) sloc eloc)
+  | _ -> failwith "BUG: import called with non-import token"
+
+let visibility tbuf =
+  let stok = peek tbuf in
+  let vis = match stok.ttype with
+    | EXPORT -> let _ = parse_tok EXPORT tbuf in Export
+    | PRIVATE -> let _ = parse_tok PRIVATE tbuf in Private 
+    | _ -> Default
+  in 
+  (vis, stok.loc)
+  
+let proc tbuf =
+  (* let qualifiers = EXPORT, PRIVATE *)
+  let _ = parse_tok PROC tbuf in
+  (* generic params *)
+  let (pname, _) = uqname "procedure name" tbuf  in 
+  print_string ("found proc " ^ pname)
+
 let module_body mname tbuf =
-  let imports = list_of import tbuf in
+  (* I can make imports come first, yay. *)
+  let imports =
+    let rec imploop () =
+      match (peek tbuf).ttype with
+      | IMPORT | OPEN -> (import tbuf)::(imploop ())
+      | _ -> []
+    in List.rev (imploop ())
+  in
+  let _ (* procs *) = 
+    let rec procloop () =
+      if (peek tbuf).ttype = PROC || (peek2 tbuf).ttype = PROC then
+        (proc tbuf)::(procloop ())
+      else []
+    in List.rev (procloop ())
   (* "export" can be on type, global var, or proc *)
    (* loop to accumulate both types and global vars?
            or strictly types first?  *)
+  (* need lookahead 2 for these? *)
+  (* | EXPORT -> print_string "Exporting a proc prolly, aight"
+  | PRIVATE -> print_string "Keepin secrets eh"
+  | PROC -> proc tbuf
+  | _ -> raise (unexpect_error tbuf) *)
+  in
   { name = mname;
     imports = imports;
     typedefs = [];
     globals = [];
-    procs = [];
+    procs = []; (* procs *)
   }
-              
-  (* let tok = peek tbuf in
-  match tok.ttype with
-  (* I can make imports come first, yay. *)
-  | IMPORT -> print_string "Imports with no module"
-  (* need lookahead 2 for these? *)
-  | EXPORT -> print_string "Exporting a proc prolly, aight"
-  | PRIVATE -> print_string "Keepin secrets eh"
-  | PROC -> proc tbuf
-  | ICONST i -> print_string ("ICONST " ^ Int64.to_string i ^ "\n")
-  | VAR -> print_string ("Global variable ya")
-     | _ -> raise (unexpect_error tbuf) *)
+
 
 let dillsource tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | MODULE ->
-    let _ (* spos *) = fst (stok.loc) in 
-    let _ = Option.get (consume tbuf MODULE) in
+    let _ (* spos *) = parse_tok MODULE tbuf in
     let (mname, _) = uqname "module name" tbuf in
     let _ = parse_tok IS tbuf in 
     let the_module = module_body mname tbuf in
-       (match (consume tbuf ENDMODULE) with
-        | Some _ ->
-          let _ (* epos *) = snd (last_loc tbuf) in
-          [the_module]
-        | None -> raise (unexpect_error tbuf)
-       )
+    let _ (* epos *) = parse_tok ENDMODULE tbuf in
+    [the_module]
   (* Thought: allowing top-level code makes it unclear if signatures are
      to be placed "outside"? No it doesn't! *)
-  | _ -> [module_body "" tbuf] (* get location from returned body. *)
+  (* need to get location from returned body. *)
+  | _ -> [module_body "" tbuf] 
 
 (* for testing the lexer and token buffer. Any sequence of valid tokens. *)
 let rec any_tokens buf =

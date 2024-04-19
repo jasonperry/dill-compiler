@@ -1207,7 +1207,7 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl)
   (* 0. Initial correctness checks *)
   if StrSet.mem pdecl.name reserved_procnames then
     errout ("Reserved name " ^ pdecl.name ^ " cannot be a procedure name")
-  else if modname = "" && pdecl.export then
+  else if modname = "" && pdecl.visibility = Export then
     errout ("\"export\" qualifier is redundant for top-level module")
   else
     (* 1. check procedure name for redeclaration. Is scope check needed? *)
@@ -1282,11 +1282,13 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl)
            match check_typeExpr syms tenv pdecl.rettype with
            | Error msg -> Error [{loc=pdecl.decor; value=msg}]
            | Ok rttag -> (
-             (* Create procedure symtable entry.
+               (* Create procedure symtable entry.
+                  * is this where I do private, by just not making it?
               * Don't add it to module symtable node here; caller does it. *)
                let procentry =
                  (* may get rid of export later. For now, handy for testing *)
-                 {procname=(if modname = "" || pdecl.export then pdecl.name
+                 {procname=(if modname = "" || pdecl.visibility = Export
+                            then pdecl.name
                             else modname ^ "::" ^ pdecl.name);
                   rettype=rttag; fparams=paramentries} in
              (* create new inner scope under the procedure, and add args *)
