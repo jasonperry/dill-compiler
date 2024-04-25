@@ -247,7 +247,9 @@ let rec expr tbuf =
   (* Where do I put the logic of when I'm "committed" to parsing that type
      of thing? *)
   (* step 1: constExp vs OpExp *)
-  (* exp's recursive "buddies" can be different from other things *)
+(* exp's recursive "buddies" can be different from other things *)
+
+(** typeExpr doesn't return separate location, it's in the struct. *)
 let typeExpr tbuf =
   let stok = peek tbuf in
   match stok.ttype with
@@ -261,7 +263,7 @@ let typeExpr tbuf =
        ignore (parse_tok DCOLON tbuf);
        let (cn, el1) = typename tbuf in
        (* TODO: parse type args/nullable/array markers *)
-       ({ texpkind=(
+       { texpkind=(
             Concrete {
               modname=n1; classname=cn;
               typeargs=[];
@@ -269,14 +271,13 @@ let typeExpr tbuf =
            (* nullable should be 'option' *)
            nullable=false; array=false;
            loc=make_location stok.loc el1
-         },
-        make_location stok.loc el1)
+       }
      | _ -> failwith "todo: type var parsing"
     )
   | IDENT_UC _ -> 
     let (cn, el1) = typename tbuf in
     (* TODO: parse type args/nullable/array markers *)
-    ({ texpkind=(
+    { texpkind=(
          Concrete {
            modname=""; classname=cn;
            typeargs=[];
@@ -284,8 +285,7 @@ let typeExpr tbuf =
         (* nullable should be 'option' *)
         nullable=false; array=false;
         loc=make_location stok.loc el1
-      },
-     make_location stok.loc el1)
+      }
   | _ -> raise (expect_error "type expression" tbuf)
            
 (* if initializer is required, the caller will check, right? *)
@@ -339,14 +339,71 @@ let visibility tbuf =
     | _ -> Default
   in 
   (vis, stok.loc)
-  
-let proc tbuf =
-  (* let qualifiers = EXPORT, PRIVATE *)
-  let _ = parse_tok PROC tbuf in
-  (* generic params *)
-  let (pname, _) = uqname "procedure name" tbuf  in 
-  print_string ("found proc " ^ pname)
 
+let param_info tbuf =
+  let sloc = (peek tbuf).loc in
+  let mutmark = match (peek tbuf).ttype with
+    | DOLLAR ->
+      ignore (parse_tok DOLLAR tbuf); true
+    | _ -> false
+  in
+  let (varname, _) = uqname "parameter name" tbuf in
+  let _ = parse_tok COLON tbuf in
+  let texp = typeExpr tbuf in
+  ((mutmark, varname, texp), make_location sloc texp.loc)
+  
+(* want list-of but have to have something that might return none *)
+let param_list tbuf =
+  let sloc = (peek tbuf).loc in
+  let rec loop eloc =
+    match (peek tbuf).ttype with
+    | RPAREN -> ([], eloc)
+    | _ -> let (pinfo, ploc) = param_info tbuf in
+      (match (peek tbuf).ttype with
+       | COMMA ->
+         let (rest, eloc) = loop ploc in
+         (pinfo::rest, eloc)
+       | _ -> ([], eloc))
+  in
+  let (plist, eloc) = loop sloc in
+  (List.rev plist, make_location sloc eloc)
+
+(** Void typeExpr for when it's implicit. *)
+let voidTypeExpr loc =
+  { texpkind = (Concrete {
+        modname = "";
+        classname = "Void";
+        typeargs = [] });
+    nullable = false;
+    array = false;
+    loc = loc
+  }
+          
+let proc_header tbuf = 
+  let vis, sloc = visibility tbuf in 
+  let _ = parse_tok PROC tbuf in
+  let (pname, _) = uqname "procedure name" tbuf in
+  (* TODO: generic params *)
+  let _ = parse_tok LPAREN tbuf in
+  let (params, _) = param_list tbuf in 
+  let eloc = parse_tok RPAREN tbuf in
+  let rettype = match (peek tbuf).ttype with
+    | COLON ->
+      let _ = parse_tok COLON tbuf in
+      typeExpr tbuf
+    | _ -> voidTypeExpr eloc
+  in 
+  { name=pname;
+    typeparams = [];
+    params = params;
+    visibility = vis;
+    rettype = rettype;
+    decor = make_location sloc rettype.loc
+  }
+
+let proc tbuf =
+    proc_header tbuf
+      
 let module_body mname tbuf =
   (* I can make imports come first, yay. *)
   let imports =

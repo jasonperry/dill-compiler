@@ -71,6 +71,7 @@ rule token = parse  (* funny that it's called parse *)
   | "||"    { OR }
   | '!'     { BANG }
   | '#'     { HASH }
+  | '$'     { DOLLAR }
   | '?'     { QMARK }
   | '='	    { ASSIGN }
   | "?="    { NULLASSIGN }

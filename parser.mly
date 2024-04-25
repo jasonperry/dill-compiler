@@ -12,7 +12,7 @@
 %token EQ NE LT GT LE GE
 %token AND OR BANG
 %token TRUE FALSE NULL VAL
-%token COLON DCOLON SEMI DOT COMMA HASH QMARK ARROW DARROW
+%token COLON DCOLON SEMI DOT COMMA HASH QMARK ARROW DARROW DOLLAR
 %token ASSIGN NULLASSIGN
 %token VAR REF
 %token IS (* BEGIN END *)
@@ -282,7 +282,7 @@ paramList:
 paramInfo:
   (* should this be varexp or should I have a different 'varname' rule? 
    * I believe it's just a name, you can't have dots in a parameter. *)
-  | HASH v=varName COLON t=typeExp
+  | DOLLAR v=varName COLON t=typeExp
     { true, v, t }
   | v=varName COLON t=typeExp
     { false, v, t } (* (string * typeExpr) for procdecl.params *)

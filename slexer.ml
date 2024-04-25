@@ -51,7 +51,8 @@ type ttype =
   | EQ | NE | LT | GT | LE | GE
   | AND | OR | NOT (* Which ones overloadable? Maybe not these. *)
   | TRUE | FALSE | NULL (* | VAL *)
-  | COLON | DCOLON | SEMI | DOT | COMMA (* | HASH | QMARK *) | ARROW | DARROW
+  | COLON | DCOLON | SEMI | DOT | COMMA
+  | HASH | DOLLAR | QMARK | ARROW | DARROW
   | ASSIGN | NULLASSIGN
   | VAR | REF | IMMREF
   | NOP
@@ -146,8 +147,9 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "&&" -> AND
     | "||" -> OR
     | '!' -> NOT
-    (* | '#' -> HASH
-       | '?' -> QMARK *) (* Must be attached to something else. *)
+    | '#' -> HASH
+    | '?' -> QMARK  (* Maybe later: attached to something else. *)
+    | '$' -> DOLLAR
     | '=' -> ASSIGN
     | "?=" -> NULLASSIGN
     | "->" -> ARROW

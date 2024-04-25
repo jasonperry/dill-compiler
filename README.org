@@ -1,7 +1,7 @@
 *Dill* is a statically typed programming language to capture how
 I want to write and read imperative code. It's meant to be
 type- and memory-safe, with an orthogonal set of type-based
-abstractions, with as close to zero runtime overhead as possible. The
+abstractions, and as low runtime overhead as possible. The
 most interesting feature is how it makes mutability visible and simplifies management of the value/reference distinction. 
 Goals and features include:
 - "Imperative locally, immutable-first globally"; local variables are reassignable, but datatypes are immutable by default, and procedure arguments are passed immutably by default and are not reassignable.
