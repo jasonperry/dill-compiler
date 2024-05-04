@@ -16,9 +16,9 @@ Goals and features include:
   but you have to write an explicit ~copy()~ for dynamically-sized types.
 - Algebraic datatypes, called ~record~ and ~variant~. Built-in ~Bool~ and ~Option~ types have the same syntax as user-defined variant types. Recursive types.
 - All types are datatypes; there are no classes (containers for
-  a type and methods), though method call syntax is planned. Method call syntax also distinguishes mutating and non-mutating functions.
+  a type and methods). As an alternative to method call syntax for call chaining, a pipe operator is in the works, with a parameter marker which also distinguishes mutable and non-mutable arguments.
 - Null-safety with explicit nullable (option) types, with syntactic sugar ~?~ and value promotion convenience features.
-- Syntax: keywords instead of curly braces, semicolons as statement terminators. LL(2) parseable (mostly LL(1)), no significant whitespace. Blocks are closed by a slashed keyword (~/if~, ~/while~) to be more informative than just ~end~ but still short to type. Making code easy to type and even read aloud are also goals.
+- Syntax: keyword-based, no curly braces or significant whitespace, semicolons as statement (not block) terminators. LL(2) parseable (mostly LL(1)), no significant whitespace. Blocks are closed by a slashed keyword (~/if~, ~/while~) to be more informative than just ~end~ but still short to type. Making code easy to type and even read aloud are also goals.
 - Modules as the primary construct for code grouping and data
   hiding. ~private~ means private to a module; functions in a
   module can access private fields of datatypes in that module. All
@@ -29,6 +29,8 @@ Goals and features include:
   modular equivalent of interfaces). Module imports explicitly specify
   which signature implementations you're using.
 - Planned: coroutines, probably stackless. 
+
+Look in testsrc/ for examples, though many are not up to date with recent syntax changes. 
 
 We'll see how far I get. The backend is LLVM with the Boehm garbage
 collector, currently targeting only x86-64.
