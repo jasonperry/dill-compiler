@@ -78,14 +78,28 @@ type 'ed raw_expr = (* should really probably change to inline records *)
 
 (** Type for an lvalue. Module name is currently concatted on
     (I guess because local symtables store them that way).  *)
-(* The first element is special because it's the symbol table lookup. *)
-(* The optional expression is indexing [] *)
-and 'ed var_expr = (string * 'ed expr option) * (string * 'ed expr option) list
-
+                     
+(* UPDATE: may have multiple indices, may be mutable arrow between
+   (may not need to track that), want to allow qualified name. *)
+(** New record type for segment of a varexp *)
+and 'ed ve_segment = {
+  mname: string;
+  vname: string;
+  indexes: 'ed expr list
+}
+        
+(* The parser stitches together the module name, for the symtable.
+   Perhaps I should not change it yet. But is that inconsistent with the tenv? *)
+(* The lists are indexing expressions, there can be multiple [] *)
+(* and 'ed var_expr = (string * 'ed expr option) * (string * 'ed expr option) list *)
+and 'ed var_expr = (string * 'ed expr list) list
+(* and 'ed var_expr = 'ed ve_segment list *)
+(* and 'ed var_expr = (string * string * 'ed expr option) * (string * 'ed expr option) list *)
+                     
 (** Decorated expression type *)
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
-let get_varexpr_var (ve: 'ed var_expr) = fst (fst ve)
+let get_varexpr_var (ve: 'ed var_expr) = fst (List.hd ve)
 
 type ('ed, 'sd, 'l) raw_stmt = 
   | StmtDecl of string * 'l typeExpr option * 'ed expr option
@@ -302,15 +316,14 @@ let rec exp_to_string (e: 'a expr) =
          ~some:(fun ty -> ": " ^ typeExpr_to_string ty) tyopt *)
      ^ " ?= " ^ exp_to_string e
 
-and varExpr_to_string (vi, fl) = 
-  let indexed_to_string (vn, eopt) =
-    vn ^ (match eopt with
-          | Some e -> "[" ^ exp_to_string e ^ "]"
-          | None -> "")
-  in
-  String.concat "." (List.map indexed_to_string (vi::fl))
-
-
+and varExpr_to_string seglist =
+  String.concat "."
+    (List.map (fun (name, ixs) ->
+         name
+         ^ (if ixs = [] then ""
+            else "[" ^ String.concat "][" (List.map exp_to_string ixs) ^ "]"))
+        seglist)
+      
 let rec stmt_to_string st = 
       match st.st with
       | StmtDecl (v, t, eopt) ->

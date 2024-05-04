@@ -4,7 +4,7 @@ module hello
 import stdio;
 
 (* export *)
-export proc main() => Int
+export proc main() : Int
    stdio::printInt(43);
    stdio::printString("Hello World.\n");
    return 42; 

@@ -1,14 +1,9 @@
 (* typename format error *)
 
-module thisname is
+module thisname 
 
-(* type name should be uppercase *)
-type lowertype is record
-   x: Int,
-   y: Float;
    
-proc double(x: Float) => Float
-is
+proc double(x: Float) : Flat (* unknown type *)
    return x * 2;
 /proc
 

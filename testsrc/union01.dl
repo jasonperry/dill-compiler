@@ -1,5 +1,5 @@
 (* variant (formerly union) types with case statements. *)
-module union01
+module union01 
 
 open stdio;
 
@@ -13,7 +13,7 @@ type Flags is variant
   |remote,
   |gone;
 
-export proc main() => Int
+export proc main() : Int
   var u1: Num = |i(4);
   (* var myf: Float = 5.6; *)
   var u2: Num = |f(5.5);

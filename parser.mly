@@ -247,7 +247,7 @@ proc:
 
 procHeader:
   | vis=option(visibility) PROC tvs=option(tyvarList) pn=IDENT_LC
-    LPAREN pl=paramList RPAREN rt=option(preceded(DARROW, typeExp))
+    LPAREN pl=paramList RPAREN rt=option(preceded(COLON, typeExp))
     { {decor=$loc;
        name=pn;
        typeparams=(match tvs with

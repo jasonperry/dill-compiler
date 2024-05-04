@@ -148,16 +148,23 @@ let make_located node (t1spos, _) (_, t2epos) = {
   loc = (t1spos, t2epos)
 }
 
-(** Parse an arbitrary number of a given object. *)
-let list_of pf tbuf =
-  (* need a list of matching tokens? FIRST set? *)
-  (* or the thing just returns none? *)
-  let rec loop acc =
-    match pf tbuf with
-    | Some thing -> loop (thing::acc)
-    | None -> List.rev acc
-  in loop []
-
+(** Parse a token-separated list on an object given by rule. *)
+let separated_list_of rule sep follow tbuf =
+  let sloc = (peek tbuf).loc in
+  let rec loop eloc =
+    if (peek tbuf).ttype = follow then
+      ([], eloc)
+    else
+      let (parsed, ploc) = rule tbuf in
+      if (peek tbuf).ttype = sep then
+         let (rest, eloc) = loop ploc in
+         (parsed::rest, eloc)
+      else
+        ([], eloc)
+  in
+  let (plist, eloc) = loop sloc in
+  (List.rev plist, make_location sloc eloc)
+  
 (*
 (** Maybe parse a given object, but OK if not (catch exception) *)
 let option rule tbuf =
@@ -167,13 +174,6 @@ let option rule tbuf =
 *)
 
 (* ----------------- rule functions begin ---------------- *)
-
-(*
-let semicolon tbuf =
-  match (consume tbuf SEMI) with
-  | None -> raise (expect_error "';'" tbuf)
-  | Some tok -> tok.loc 
-   *)
 
 (* "Token parsers" seem to have special status. They are the only ones
    that call "consume" directly and use the coercion functions. *)
@@ -210,44 +210,22 @@ let uqname descrip tbuf =
   let tok = get_tok (IDENT_LC "") descrip tbuf in
   (tok_sval tok, tok.loc)
 
+let qname descrip tbuf =
+  let name1 = get_tok (IDENT_LC "") ("module name or " ^ descrip) tbuf in
+  match (peek tbuf).ttype with
+  | DCOLON ->
+    let _ = parse_tok DCOLON tbuf in
+    let name2 = get_tok (IDENT_LC "") descrip tbuf in
+    (tok_sval name1, tok_sval name2, make_location name1.loc name2.loc)
+  | _ ->
+    ("", tok_sval name1, name1.loc)
+
 (* possibly qualified? *)
 let typename tbuf =
   let tok = get_tok (IDENT_UC "") "class name" tbuf in
   (tok_sval tok, tok.loc)
 
 (* ---- end of single-token parsers ---- *)
-
-let rec expr tbuf =
-  (* Get a single expression, then look for operators, and finally
-     compute precedence *)
-  match (peek tbuf).ttype with
-  | LPAREN ->
-    let sloc = parse_tok LPAREN tbuf in
-    let e = expr tbuf in (* exprs already have location *)
-    let eloc = parse_tok RPAREN tbuf in
-    { e=e.e; decor=make_location sloc eloc }
-  | ICONST _ ->
-    let (n, tloc) = iconst tbuf in
-    { e=ExpConst (IntVal n); decor=make_location tloc tloc }
-  | FCONST _ ->
-    let (x, tloc) = fconst tbuf in
-    { e=ExpConst (FloatVal x); decor=make_location tloc tloc }
-  | BYTECONST _ ->
-    let (c, tloc) = bconst tbuf in
-    { e=ExpConst (ByteVal c); decor=make_location tloc tloc }
-  | STRCONST _ ->
-    let (s, tloc) = sconst tbuf in
-    { e=ExpConst (StringVal s); decor=make_location tloc tloc }
-  | _ -> raise (expect_error "Unknown expression token" tbuf)
-
-(* and operTail tbuf = (\* look for operators following *\) *)
-
-  (* want to try multiple things in a natural way... *)
-  (* Maybe I should raise errors always and catch them... *)
-  (* Where do I put the logic of when I'm "committed" to parsing that type
-     of thing? *)
-  (* step 1: constExp vs OpExp *)
-(* exp's recursive "buddies" can be different from other things *)
 
 (** typeExpr doesn't return separate location, it's in the struct. *)
 let typeExpr tbuf =
@@ -287,10 +265,114 @@ let typeExpr tbuf =
         loc=make_location stok.loc el1
       }
   | _ -> raise (expect_error "type expression" tbuf)
-           
+
+
+(** Parse a string with idents and see if it's a varexpr or callexpr later *)
+(* something with a call in it can still be a varexpr but not lvalue. *)
+let rec var_or_call_expr tbuf =
+  let mname, id, sloc = qname "identifier" tbuf in
+  let qident = if mname = "" then id else mname ^ "::" ^ id in
+  match (peek tbuf).ttype with
+  | LPAREN -> (* CallExpr *)
+    let _ = parse_tok LPAREN tbuf in
+    let args = arg_list tbuf in
+    let eloc = parse_tok RPAREN tbuf in
+    { e=ExpCall (qident, args);
+      decor=make_location sloc eloc}
+  | _ -> (* loop for varexpr tail (starting with possible indexes) *)
+    let ix1, eloc =
+      if (peek tbuf).ttype = LSQRB then
+        index_exprs tbuf
+      else ([], sloc)
+    in
+    let rec ve_tail eloc =
+      match (peek tbuf).ttype with
+      | DOT ->
+        let ident, eloc = uqname "field identifier" tbuf in
+        let ixs, eloc =
+          if (peek tbuf).ttype = LSQRB then
+            index_exprs tbuf
+          else ([], eloc)
+        in
+        let rest, eloc = ve_tail eloc in 
+        ((ident, ixs)::rest, eloc)
+      | _ -> ([], eloc)
+    in
+    let tail, eloc = ve_tail eloc in
+    { e=ExpVar ((qident, ix1)::tail);
+      decor=make_location sloc eloc }
+
+(** Sequence of square-bracketed index expressions *)
+and index_exprs tbuf =
+  let sloc = parse_tok LSQRB tbuf in
+  let rec loop () = 
+    let iexpr = expr tbuf in
+    let eloc = parse_tok RSQRB tbuf in
+    match (peek tbuf).ttype with
+    | LSQRB ->
+      let _ = parse_tok LSQRB tbuf in
+      let tail, eloc = loop () in
+      (iexpr::tail, make_location sloc eloc)
+    | _ -> ([iexpr], make_location sloc eloc)
+  in loop ()
+  
+     
+and expr tbuf =
+  (* Get a single expression, then look for operators, and finally
+     compute precedence *)
+  match (peek tbuf).ttype with
+  | LPAREN ->
+    let sloc = parse_tok LPAREN tbuf in
+    let e = expr tbuf in (* exprs already have location *)
+    let eloc = parse_tok RPAREN tbuf in
+    { e=e.e; decor=make_location sloc eloc }
+  | ICONST _ ->
+    let (n, tloc) = iconst tbuf in
+    { e=ExpConst (IntVal n); decor=make_location tloc tloc }
+  | FCONST _ ->
+    let (x, tloc) = fconst tbuf in
+    { e=ExpConst (FloatVal x); decor=make_location tloc tloc }
+  | BYTECONST _ ->
+    let (c, tloc) = bconst tbuf in
+    { e=ExpConst (ByteVal c); decor=make_location tloc tloc }
+  | STRCONST _ ->
+    let (s, tloc) = sconst tbuf in
+    { e=ExpConst (StringVal s); decor=make_location tloc tloc }
+  | _ -> var_or_call_expr tbuf
+(* | _ -> raise (expect_error "Unknown expression token" tbuf) *)
+
+(* and operTail tbuf = (\* look for operators following *\) *)
+
+(** List of arguments to a function call. *)
+and arg_list tbuf =
+  (* Don't need overall location, each expr has its own *)
+  let rec loop () =
+    if (peek tbuf).ttype = RPAREN then []
+    else
+      let mutmark = match (peek tbuf).ttype with
+        | DOLLAR -> (ignore (parse_tok DOLLAR tbuf); true)
+        | _ -> false
+      in          
+      let e = expr tbuf in
+      if (peek tbuf).ttype = COMMA then
+         let rest = loop () in
+         ((mutmark, e)::rest)
+      else
+        [(mutmark, e)]
+  in
+  loop ()
+
+  (* want to try multiple things in a natural way... *)
+  (* Maybe I should raise errors always and catch them... *)
+  (* Where do I put the logic of when I'm "committed" to parsing that type
+     of thing? *)
+  (* step 1: constExp vs OpExp *)
+(* exp's recursive "buddies" can be different from other things *)
+
+
 (* if initializer is required, the caller will check, right? *)
 (* Yes, I think that's better than trying to divide syntactically. *)
-let declStatement tbuf =
+and decl_stmt tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | VAR -> 
@@ -305,9 +387,38 @@ let declStatement tbuf =
       ) in
     let initopt = None in
     let eloc = parse_tok SEMI tbuf in
-    Some ((vname, tyopt, initopt), (sloc, eloc))
-  | _ -> None
-    
+    { st=StmtDecl (vname, tyopt, initopt);
+      decor=make_location sloc eloc }
+  | _ -> failwith "decl_stmt invalid state"
+
+and nop_stmt tbuf =
+  let sloc = parse_tok NOP tbuf in
+  let eloc = parse_tok SEMI tbuf in
+  { st=StmtNop; decor=make_location sloc eloc }
+
+and call_stmt tbuf =
+  let e = expr tbuf in
+  match e.e with
+  | ExpCall _ ->
+    let eloc = parse_tok SEMI tbuf in
+    { st=StmtCall e; decor=(make_location e.decor eloc) }
+  | _ ->
+    raise (parse_error "Expression cannot serve as a statement" tbuf)
+
+and stmt tbuf =
+  match (peek tbuf).ttype with
+  | VAR -> decl_stmt tbuf (* | REF *)
+  (* | IF -> if_stmt tbuf
+  | WHILE -> while_stmt tbuf
+  | CASE -> case_stmt tbuf
+     | RETURN -> return_stmt tbuf *)
+  | NOP -> nop_stmt tbuf
+  (* TODO: make this the default case to try to parse any expression,
+     for a better error message *)
+  | IDENT_LC _ -> call_stmt tbuf
+  | _ -> raise (unexpect_error tbuf)
+(* idea: parse an entire varexp, check for equal sign, then parens *)
+
 (** Parse a single import statement or nothing. *)
 let import tbuf =
   let stok = peek tbuf in
@@ -352,23 +463,11 @@ let param_info tbuf =
   let texp = typeExpr tbuf in
   ((mutmark, varname, texp), make_location sloc texp.loc)
   
-(* want list-of but have to have something that might return none *)
 let param_list tbuf =
-  let sloc = (peek tbuf).loc in
-  let rec loop eloc =
-    match (peek tbuf).ttype with
-    | RPAREN -> ([], eloc)
-    | _ -> let (pinfo, ploc) = param_info tbuf in
-      (match (peek tbuf).ttype with
-       | COMMA ->
-         let (rest, eloc) = loop ploc in
-         (pinfo::rest, eloc)
-       | _ -> ([], eloc))
-  in
-  let (plist, eloc) = loop sloc in
-  (List.rev plist, make_location sloc eloc)
+  separated_list_of param_info COMMA RPAREN tbuf
 
-(** Void typeExpr for when it's implicit. *)
+(** Void typeExpr for when it's implicit.
+    Still want to think about removing this from AST too. *)
 let voidTypeExpr loc =
   { texpkind = (Concrete {
         modname = "";
@@ -402,7 +501,15 @@ let proc_header tbuf =
   }
 
 let proc tbuf =
-    proc_header tbuf
+  let decl = proc_header tbuf in
+  let rec stmtLoop () =
+    match (peek tbuf).ttype with
+    | ENDPROC -> []
+    | _ -> (stmt tbuf)::(stmtLoop ())
+  in
+  let stmts = stmtLoop () in
+  let eloc = parse_tok ENDPROC tbuf in
+  { decl=decl; body=stmts; decor=make_location decl.decor eloc }
       
 let module_body mname tbuf =
   (* I can make imports come first, yay. *)
