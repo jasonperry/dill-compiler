@@ -42,9 +42,9 @@ rule token = parse  (* funny that it's called parse *)
     { string (Buffer.create 80) lexbuf }
   | iconst as i
    (* OCaml seems to use 63-bit ints now. *)
-    { ICONST (Int64.of_string i) }
+    { I_LIT (Int64.of_string i) }
   | fconst as f
-    { FCONST (float_of_string f) }
+    { F_LIT (float_of_string f) }
   | '('     { LPAREN }
   | ')'     { RPAREN }
   | '{'     { LBRACE }
@@ -122,9 +122,9 @@ rule token = parse  (* funny that it's called parse *)
   | "#false"   { FALSE }
   | "#null"    { NULL }
   | "#val"     { VAL }
-  | ident_lc as v	{ IDENT_LC v }
-  | ident_uc as v	{ IDENT_UC v }
-  | ident_variant as v  { IDENT_VARIANT v }
+  | ident_lc as s	{ LC_IDENT s }
+  | ident_uc as s	{ UC_IDENT s }
+  | ident_variant as v  { VLABEL v }
   | eof     { EOF }
   | _ as c 
     { raise (Error (Printf.sprintf "Unexpected character %c" c)) }
@@ -143,7 +143,7 @@ and linecomment = parse
   | _ { linecomment lexbuf }
 
 and string acc = parse
-  | '"' { STRCONST (Buffer.contents acc) }
+  | '"' { S_LIT (Buffer.contents acc) }
   | '\\' '\"' { Buffer.add_char acc '\"'; string acc lexbuf }
   | "\\n" { Buffer.add_char acc '\n'; string acc lexbuf }
   | "\\r" { Buffer.add_char acc '\r'; string acc lexbuf }
@@ -165,7 +165,7 @@ and byte acc = parse
       else if List.length acc > 1 then
         raise (Error ("Byte constant too long: " ^ Lexing.lexeme lexbuf)) 
       else
-        BYTECONST (List.hd acc)
+        B_LIT (List.hd acc)
     }
   | "\\n" { byte ('\n'::acc) lexbuf } (* doesn't matter if it reverses. *)
   | "\\t" { byte ('\t'::acc) lexbuf }

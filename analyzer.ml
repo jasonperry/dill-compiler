@@ -89,7 +89,7 @@ let rec check_typeExpr syms tenv texp : (typetag, string) result =
 let rec is_const_expr = function
   (* if true, I could eval and replace it in the AST. But...
    * what if numerics don't match the target? Let LLVM do it. *)
-  | ExpConst _ -> true
+  | ExpLiteral _ -> true
   | ExpVar _ -> false (* TODO: check in syms if it's a const *)
   | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
   | ExpUnop (_, e1) -> is_const_expr e1.e
@@ -137,18 +137,18 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
     (ex: locinfo expr) : expr_result = 
   match ex.e with
   (* The type info in constants is already there...ok I guess *)
-  | ExpConst NullVal ->
-    Ok {e=ExpConst NullVal; decor=null_ttag}
-  | ExpConst (IntVal i) ->
-    Ok {e=ExpConst (IntVal i); decor=int_ttag}
-  | ExpConst (FloatVal f) ->
-    Ok {e=ExpConst (FloatVal f); decor=float_ttag}
-  | ExpConst (ByteVal c) ->
-    Ok {e=ExpConst (ByteVal c); decor=byte_ttag}
-  | ExpConst (BoolVal b) ->
-    Ok {e=ExpConst(BoolVal b); decor=bool_ttag}
-  | ExpConst (StringVal s) ->
-    Ok {e=ExpConst (StringVal s); decor=string_ttag}
+  | ExpLiteral NullVal ->
+    Ok {e=ExpLiteral NullVal; decor=null_ttag}
+  | ExpLiteral (IntVal i) ->
+    Ok {e=ExpLiteral (IntVal i); decor=int_ttag}
+  | ExpLiteral (FloatVal f) ->
+    Ok {e=ExpLiteral (FloatVal f); decor=float_ttag}
+  | ExpLiteral (ByteVal c) ->
+    Ok {e=ExpLiteral (ByteVal c); decor=byte_ttag}
+  | ExpLiteral (BoolVal b) ->
+    Ok {e=ExpLiteral(BoolVal b); decor=bool_ttag}
+  | ExpLiteral (StringVal s) ->
+    Ok {e=ExpLiteral (StringVal s); decor=string_ttag}
 
   (* The "val" constructor for a nullable *)
   | ExpVal (expr) -> (

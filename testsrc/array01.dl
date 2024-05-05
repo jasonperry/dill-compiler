@@ -4,7 +4,7 @@ open stdio;
 
 proc main() : Int
 
-   var a: Int[] = [8,7,6,5,4]; (* { func(i) => 8-i } *)
+   var a: Int[] = [8,7,6,5,4]; (* [ for i -> 8-i ] *)
    a = [145,33,44,15,43, 44];  (* Can assign different-length array. *)
    a[2] = 14;
    var i: Int = 0;

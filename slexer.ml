@@ -38,12 +38,13 @@ let char_noesc = [%sedlex.regexp? (20 .. 38 | 40 .. 91 | 93 .. 126)]
 let str_noesc = [%sedlex.regexp? Sub (any, Chars "\"\\")]
 
 type ttype =
-  | ICONST of Int64.t
-  | FCONST of float
-  | STRCONST of string
-  | BYTECONST of char
-  | IDENT_LC of string
-  | IDENT_UC of string
+  | I_LIT of Int64.t
+  | F_LIT of float
+  | S_LIT of string
+  | B_LIT of char
+  | LC_IDENT of string
+  | UC_IDENT of string
+  | VLABEL of string
   | LPAREN | RPAREN | LBRACE | RBRACE | LSQRB | RSQRB
   | PLUS | MINUS | TIMES | DIV | MOD
   (* | UMINUS (* not lexed *) *)
@@ -63,7 +64,7 @@ type ttype =
   | PROC | ENDPROC | RETURN
   | MODULE | ENDMODULE | MODSPEC | ENDMODSPEC
   | IMPORT | AS | OPEN | EXPORT | PRIVATE
-  | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT (* | ENUM *)
+  | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT 
   | EOF
 
 type token = {
@@ -90,12 +91,12 @@ let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
 
 (** For converting tokens back to strings. Use this in Ast also *)
 let string_of_ttype = function
-  | ICONST n -> Int64.to_string n
-  | FCONST x -> string_of_float x
-  | STRCONST s -> "\"" ^ String.escaped s ^ "\""
-  | BYTECONST c -> "'" ^ Char.escaped c ^ "'"
-  | IDENT_UC s -> s
-  | IDENT_LC s -> s
+  | I_LIT n -> Int64.to_string n
+  | F_LIT x -> string_of_float x
+  | S_LIT s -> "\"" ^ String.escaped s ^ "\""
+  | B_LIT c -> "'" ^ Char.escaped c ^ "'"
+  | UC_IDENT s -> s
+  | LC_IDENT s -> s
   | t -> TokenMap.find t ttype_strings
 
 (* will we need this? *)
@@ -121,9 +122,9 @@ let rec tparse (buf: Sedlexing.lexbuf) =
       byte [] buf
     | "\"" ->
        string (Buffer.create 80) buf
-    | iconst -> ICONST (Int64.of_string (Enc.lexeme buf))
-    | hexconst -> ICONST (Int64.of_string (Enc.lexeme buf))
-    | fconst -> FCONST (Float.of_string (Enc.lexeme buf))
+    | iconst -> I_LIT (Int64.of_string (Enc.lexeme buf))
+    | hexconst -> I_LIT (Int64.of_string (Enc.lexeme buf))
+    | fconst -> F_LIT (Float.of_string (Enc.lexeme buf))
     | '(' -> LPAREN
     | ')' -> RPAREN
     | '{' -> LBRACE
@@ -194,8 +195,8 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "mut" -> MUT
     | "record" -> RECORD
     | "variant" -> VARIANT
-    | ident_lc -> IDENT_LC (Enc.lexeme buf)
-    | ident_uc -> IDENT_UC (Enc.lexeme buf)
+    | ident_lc -> LC_IDENT (Enc.lexeme buf)
+    | ident_uc -> UC_IDENT (Enc.lexeme buf)
     | eof -> EOF
     (* Lexeme will be empty unless we match an actual regex. *)
     | any ->
@@ -220,7 +221,7 @@ and comment depth buf =
 
 and string acc buf = 
   match%sedlex buf with
-  | '"' -> STRCONST (Buffer.contents acc)
+  | '"' -> S_LIT (Buffer.contents acc)
   | "\\\"" -> Buffer.add_char acc '\"'; string acc buf
   | "\\n" -> Buffer.add_char acc '\n'; string acc buf 
   | "\\r" -> Buffer.add_char acc '\r'; string acc buf 
@@ -253,7 +254,7 @@ and byte (acc: char list) buf =
          but this is more informative? *)
       raise (syntax_error "Too many characters in byte constant" buf)
     else
-      BYTECONST (List.hd acc)
+      B_LIT (List.hd acc)
   | "\\n" -> byte ('\n'::acc) buf
   | "\\t" -> byte ('\t'::acc) buf
   | "\\r" -> byte ('\r'::acc) buf

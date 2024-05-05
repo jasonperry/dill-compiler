@@ -464,7 +464,7 @@ let rec gen_constexpr_value lltypes (ex: typetag expr) =
   (* How many types will this support? Might need a tenv later *)
   if ex.decor = int_ttag then
     match ex.e with
-    | ExpConst (IntVal n) -> const_of_int64 int_type n true
+    | ExpLiteral (IntVal n) -> const_of_int64 int_type n true
     | ExpUnop (OpNeg, e) -> const_neg (gen_constexpr_value lltypes e)
     | ExpBinop (e1, op, e2) -> (
       let c1 = gen_constexpr_value lltypes e1 in
@@ -479,16 +479,16 @@ let rec gen_constexpr_value lltypes (ex: typetag expr) =
     | _ -> failwith "Unimplemented Int const expression"
   else if ex.decor = float_ttag then
     match ex.e with
-    | ExpConst (FloatVal x) -> const_float float_type x
+    | ExpLiteral (FloatVal x) -> const_float float_type x
     | ExpUnop (OpNeg, e) -> const_fneg (gen_constexpr_value lltypes e)
     | _ -> failwith "Unimplemented Float const expression"
   else if ex.decor = byte_ttag then
     match ex.e with
-    | ExpConst (ByteVal c) -> const_int byte_type (int_of_char c)
+    | ExpLiteral (ByteVal c) -> const_int byte_type (int_of_char c)
     | _ -> failwith "Unsupported Byte const expression"
   else if ex.decor = bool_ttag then
     match ex.e with
-    | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0)
+    | ExpLiteral (BoolVal b) -> const_int bool_type (if b then 1 else 0)
     | _ -> failwith "Unsupported Bool const expression"
   else
     (* struct type *)
@@ -650,12 +650,12 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
 (** Generate LLVM code for an expression *)
 and gen_expr the_module builder syms lltypes (ex: typetag expr) = 
   match ex.e with
-  | ExpConst NullVal -> const_int nulltag_type 0 (* maybe used now *)
-  | ExpConst (IntVal i) -> const_of_int64 int_type i true (* signed *)
-  | ExpConst (FloatVal f) -> const_float float_type f
-  | ExpConst (ByteVal c) -> const_int byte_type (int_of_char c)
-  | ExpConst (BoolVal b) -> const_int bool_type (if b then 1 else 0) 
-  | ExpConst (StringVal s) ->
+  | ExpLiteral NullVal -> const_int nulltag_type 0 (* maybe used now *)
+  | ExpLiteral (IntVal i) -> const_of_int64 int_type i true (* signed *)
+  | ExpLiteral (FloatVal f) -> const_float float_type f
+  | ExpLiteral (ByteVal c) -> const_int byte_type (int_of_char c)
+  | ExpLiteral (BoolVal b) -> const_int bool_type (if b then 1 else 0) 
+  | ExpLiteral (StringVal s) ->
     (* It will build the instruction /and/ return the ptr value *)
     build_global_stringptr s "sconst" builder
 
@@ -1232,7 +1232,7 @@ let rec gen_stmt the_module builder lltypes
          build_icmp
            Icmp.Eq (const_int nulltag_type 1) matchtagval
            "valcomp" builder
-      | ExpConst NullVal ->
+      | ExpLiteral NullVal ->
          let matchtagval = build_extractvalue matchval 0 "matchtag" builder in
          build_icmp
            Icmp.Eq (const_int nulltag_type 0) matchtagval

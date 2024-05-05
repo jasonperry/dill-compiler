@@ -3,7 +3,7 @@
 (* open Types *) (* shouldn't need this *)
 open Common
 
-type consttype =
+type literaltype =
   | FloatVal of float
   | IntVal of Int64.t
   | ByteVal of char
@@ -60,7 +60,7 @@ let get_texp_classname te = match te.texpkind with
 
 
 type 'ed raw_expr = (* should really probably change to inline records *)
-  | ExpConst of consttype
+  | ExpLiteral of literaltype
   | ExpVal of 'ed expr (* builtin val(v) to match non-null nullable *)
   | ExpVar of 'ed var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
@@ -279,12 +279,12 @@ and typedef_to_string tdef =
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
   match e.e with
-  | ExpConst (FloatVal f) -> Float.to_string f
-  | ExpConst (IntVal i) -> Int64.to_string i
-  | ExpConst (ByteVal c) -> String.make 1 c
-  | ExpConst (BoolVal b) -> if b then "true" else "false"
-  | ExpConst (StringVal s) -> "\"" ^ String.escaped s ^ "\""
-  | ExpConst NullVal -> "null"
+  | ExpLiteral (FloatVal f) -> Float.to_string f
+  | ExpLiteral (IntVal i) -> Int64.to_string i
+  | ExpLiteral (ByteVal c) -> String.make 1 c
+  | ExpLiteral (BoolVal b) -> if b then "true" else "false"
+  | ExpLiteral (StringVal s) -> "\"" ^ String.escaped s ^ "\""
+  | ExpLiteral NullVal -> "null"
   | ExpVal (e) -> "val(" ^ exp_to_string e ^ ")"
   | ExpVar vexpr -> varExpr_to_string vexpr
   | ExpRecord fl ->

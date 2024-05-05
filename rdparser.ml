@@ -76,12 +76,12 @@ let consume tbuf ttype =
   let tok = peek tbuf in
   let samettype = match (ttype, tok.ttype) with
     (* Could save typing with Obj.tag but I'd feel dirty :) *)
-    | ICONST _, ICONST _ -> true
-    | FCONST _, FCONST _ -> true
-    | STRCONST _, STRCONST _ -> true
-    | BYTECONST _, BYTECONST _ -> true
-    | IDENT_LC _, IDENT_LC _ -> true
-    | IDENT_UC _, IDENT_UC _ -> true
+    | I_LIT _, I_LIT _ -> true
+    | F_LIT _, F_LIT _ -> true
+    | S_LIT _, S_LIT _ -> true
+    | B_LIT _, B_LIT _ -> true
+    | LC_IDENT _, LC_IDENT _ -> true
+    | UC_IDENT _, UC_IDENT _ -> true
     | _, _ -> ttype = tok.ttype
   in
   if samettype then (
@@ -105,16 +105,16 @@ let last_loc tbuf = tbuf.last_loc
 
 (* helpers to extract token values. Maybe not needed now. *)
 let tok_ival tok = match tok.ttype with
-  | ICONST i -> i
+  | I_LIT i -> i
   | _ -> failwith "can't get integer from non-int token "
 let tok_fval tok = match tok.ttype with
-  | FCONST x -> x
+  | F_LIT x -> x
   | _ -> failwith "can't get float from non-float token "
 let tok_cval tok = match tok.ttype with
-  | BYTECONST c -> c
+  | B_LIT c -> c
   | _ -> failwith "can't get char from non-char token "
 let tok_sval tok = match tok.ttype with
-  | STRCONST s | IDENT_LC s | IDENT_UC s -> s
+  | S_LIT s | LC_IDENT s | UC_IDENT s -> s
   | _ -> failwith "can't get string from non-string token "
 
 (** Helper for general parse error messages. *)
@@ -189,40 +189,40 @@ let parse_tok ttype tbuf =
   (get_tok ttype (string_of_ttype ttype) tbuf).loc
 
 let iconst tbuf =
-  let tok = get_tok (ICONST Int64.zero) "integer constant" tbuf in
+  let tok = get_tok (I_LIT Int64.zero) "integer constant" tbuf in
   (tok_ival tok, tok.loc)
                 
 let fconst tbuf =
-  let tok = get_tok (FCONST 0.0) "float constant" tbuf
+  let tok = get_tok (F_LIT 0.0) "float constant" tbuf
   in (tok_fval tok, tok.loc)
 
 let bconst tbuf =
-  let tok = get_tok (BYTECONST '@') "byte constant" tbuf
+  let tok = get_tok (B_LIT '@') "byte constant" tbuf
   in (tok_cval tok, tok.loc)
 
 let sconst tbuf =
-  let tok = get_tok (STRCONST "") "string constant" tbuf
+  let tok = get_tok (S_LIT "") "string constant" tbuf
   in (tok_sval tok, tok.loc)
 
 (** Parse unqualified lowercase name. Takes a description string from context
     so errors can say what the value is for. *)
 let uqname descrip tbuf =
-  let tok = get_tok (IDENT_LC "") descrip tbuf in
+  let tok = get_tok (LC_IDENT "") descrip tbuf in
   (tok_sval tok, tok.loc)
 
 let qname descrip tbuf =
-  let name1 = get_tok (IDENT_LC "") ("module name or " ^ descrip) tbuf in
+  let name1 = get_tok (LC_IDENT "") ("module name or " ^ descrip) tbuf in
   match (peek tbuf).ttype with
   | DCOLON ->
     let _ = parse_tok DCOLON tbuf in
-    let name2 = get_tok (IDENT_LC "") descrip tbuf in
+    let name2 = get_tok (LC_IDENT "") descrip tbuf in
     (tok_sval name1, tok_sval name2, make_location name1.loc name2.loc)
   | _ ->
     ("", tok_sval name1, name1.loc)
 
 (* possibly qualified? *)
 let typename tbuf =
-  let tok = get_tok (IDENT_UC "") "class name" tbuf in
+  let tok = get_tok (UC_IDENT "") "class name" tbuf in
   (tok_sval tok, tok.loc)
 
 (* ---- end of single-token parsers ---- *)
@@ -233,7 +233,7 @@ let typeExpr tbuf =
   match stok.ttype with
   (* Can't just do "qtypename" because an lc_ident could be a type
      variable also. *)
-  | IDENT_LC _ ->
+  | LC_IDENT _ ->
     (* maybe move this out to qualTypename or just typename? *)
     let (n1, _) = uqname "module name or type variable" tbuf in
     (match (peek tbuf).ttype with
@@ -252,7 +252,7 @@ let typeExpr tbuf =
        }
      | _ -> failwith "todo: type var parsing"
     )
-  | IDENT_UC _ -> 
+  | UC_IDENT _ -> 
     let (cn, el1) = typename tbuf in
     (* TODO: parse type args/nullable/array markers *)
     { texpkind=(
@@ -326,18 +326,18 @@ and expr tbuf =
     let e = expr tbuf in (* exprs already have location *)
     let eloc = parse_tok RPAREN tbuf in
     { e=e.e; decor=make_location sloc eloc }
-  | ICONST _ ->
+  | I_LIT _ ->
     let (n, tloc) = iconst tbuf in
-    { e=ExpConst (IntVal n); decor=make_location tloc tloc }
-  | FCONST _ ->
+    { e=ExpLiteral (IntVal n); decor=make_location tloc tloc }
+  | F_LIT _ ->
     let (x, tloc) = fconst tbuf in
-    { e=ExpConst (FloatVal x); decor=make_location tloc tloc }
-  | BYTECONST _ ->
+    { e=ExpLiteral (FloatVal x); decor=make_location tloc tloc }
+  | B_LIT _ ->
     let (c, tloc) = bconst tbuf in
-    { e=ExpConst (ByteVal c); decor=make_location tloc tloc }
-  | STRCONST _ ->
+    { e=ExpLiteral (ByteVal c); decor=make_location tloc tloc }
+  | S_LIT _ ->
     let (s, tloc) = sconst tbuf in
-    { e=ExpConst (StringVal s); decor=make_location tloc tloc }
+    { e=ExpLiteral (StringVal s); decor=make_location tloc tloc }
   | _ -> var_or_call_expr tbuf
 (* | _ -> raise (expect_error "Unknown expression token" tbuf) *)
 
@@ -415,7 +415,7 @@ and stmt tbuf =
   | NOP -> nop_stmt tbuf
   (* TODO: make this the default case to try to parse any expression,
      for a better error message *)
-  | IDENT_LC _ -> call_stmt tbuf
+  | LC_IDENT _ -> call_stmt tbuf
   | _ -> raise (unexpect_error tbuf)
 (* idea: parse an entire varexp, check for equal sign, then parens *)
 
@@ -561,16 +561,16 @@ let dillsource tbuf =
 (* for testing the lexer and token buffer. Any sequence of valid tokens. *)
 let rec any_tokens buf =
   match (consume_any buf).ttype with 
-  | ICONST i -> print_string ("(ICONST " ^ Int64.to_string i ^ ") ");
+  | I_LIT i -> print_string ("(I_LIT " ^ Int64.to_string i ^ ") ");
     any_tokens buf
-  | FCONST x -> print_string ("(FCONST " ^ string_of_float x ^ ") ");
+  | F_LIT x -> print_string ("(F_LIT " ^ string_of_float x ^ ") ");
     any_tokens buf
-  | BYTECONST c -> print_string ("(BYTECONST '" ^ Char.escaped c ^ "') ");
+  | B_LIT c -> print_string ("(B_LIT '" ^ Char.escaped c ^ "') ");
     any_tokens buf
-  | STRCONST s -> print_string ("(STRCONST \"" ^ String.escaped s ^ "\") ");
+  | S_LIT s -> print_string ("(S_LIT \"" ^ String.escaped s ^ "\") ");
     any_tokens buf
-  | IDENT_LC s -> print_string ("(IDENT_LC " ^ s ^ ") "); any_tokens buf
-  | IDENT_UC s -> print_string ("(IDENT_UC " ^ s ^ ") "); any_tokens buf
+  | LC_IDENT s -> print_string ("(LC_IDENT " ^ s ^ ") "); any_tokens buf
+  | UC_IDENT s -> print_string ("(UC_IDENT " ^ s ^ ") "); any_tokens buf
   | EOF -> print_string "EOF\n "; (* don't recurse *)
   | _ -> print_string "token "; any_tokens buf
 

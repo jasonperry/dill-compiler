@@ -8,7 +8,7 @@ open Qbe
 
 let gen_expr _(*theModule*) _(*syms*) _(*lltypes*) (ex: typetag expr) =
   match ex.e with
-  | ExpConst (IntVal i) -> Const (LConst i)
+  | ExpLiteral (IntVal i) -> Const (LConst i)
   | _ -> failwith "unimplemented so far"
 
 let res1 = Reg (Word, "res1")
