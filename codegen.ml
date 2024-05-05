@@ -559,7 +559,7 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
          strip off array type *)
       let rec ix_allocas prevalloca parentty ixs = 
         match ixs with
-        | [] -> (alloca, parentty)
+        | [] -> (prevalloca, parentty)
         | ixexpr :: rest ->
           debug_print ("#CG: computing index expression into "
                         ^ string_of_llvalue prevalloca);
