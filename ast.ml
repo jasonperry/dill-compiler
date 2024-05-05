@@ -92,14 +92,13 @@ and 'ed ve_segment = {
    Perhaps I should not change it yet. But is that inconsistent with the tenv? *)
 (* The lists are indexing expressions, there can be multiple [] *)
 (* and 'ed var_expr = (string * 'ed expr option) * (string * 'ed expr option) list *)
-and 'ed var_expr = (string * 'ed expr list) list
-(* and 'ed var_expr = 'ed ve_segment list *)
-(* and 'ed var_expr = (string * string * 'ed expr option) * (string * 'ed expr option) list *)
+(* I'm still keeping the first segment separate to avoid empty lists *)
+and 'ed var_expr = (string * 'ed expr list) * (string * 'ed expr list) list
                      
 (** Decorated expression type *)
 and 'ed expr = { e: 'ed raw_expr; decor: 'ed }
 
-let get_varexpr_var (ve: 'ed var_expr) = fst (List.hd ve)
+let get_varexpr_var (ve: 'ed var_expr) = fst (fst ve)
 
 type ('ed, 'sd, 'l) raw_stmt = 
   | StmtDecl of string * 'l typeExpr option * 'ed expr option
@@ -316,7 +315,8 @@ let rec exp_to_string (e: 'a expr) =
          ~some:(fun ty -> ": " ^ typeExpr_to_string ty) tyopt *)
      ^ " ?= " ^ exp_to_string e
 
-and varExpr_to_string seglist =
+and varExpr_to_string (seg1, flist) =
+  let seglist = seg1 :: flist in
   String.concat "."
     (List.map (fun (name, ixs) ->
          name

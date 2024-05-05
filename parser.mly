@@ -462,10 +462,8 @@ varExp:
     { (iv, fl) }
 
 indexedVar:
-  | v=varName LSQRB e=expr RSQRB 
-    { (v, Some e) }
-  | v=varName
-    { (v, None) }
+  | v=varName ixs=list(delimited(LSQRB, expr, RSQRB))
+    { (v, ixs) }
 
 (* indexOp:
   (* will it conflict with seqExp? *)

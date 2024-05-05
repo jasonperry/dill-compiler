@@ -298,8 +298,8 @@ let rec var_or_call_expr tbuf =
         ((ident, ixs)::rest, eloc)
       | _ -> ([], eloc)
     in
-    let tail, eloc = ve_tail eloc in
-    { e=ExpVar ((qident, ix1)::tail);
+    let fields, eloc = ve_tail eloc in
+    { e=ExpVar ((qident, ix1), fields);
       decor=make_location sloc eloc }
 
 (** Sequence of square-bracketed index expressions *)

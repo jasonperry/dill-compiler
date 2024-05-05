@@ -90,7 +90,7 @@ let rec is_const_expr = function
   (* if true, I could eval and replace it in the AST. But...
    * what if numerics don't match the target? Let LLVM do it. *)
   | ExpConst _ -> true
-  | ExpVar (_,_) -> false (* TODO: check in syms if it's a const *)
+  | ExpVar _ -> false (* TODO: check in syms if it's a const *)
   | ExpBinop (e1, _, e2) -> is_const_expr e1.e && is_const_expr e2.e
   | ExpUnop (_, e1) -> is_const_expr e1.e
   | ExpRecord fieldlist ->
@@ -104,33 +104,33 @@ let rec is_const_expr = function
 type expr_result = (typetag expr, string located) Stdlib.result
 
 (** Deep check to see if a varexp is something mutable. *)
-let is_mutable_varexp syms ((vname, ixopt), flist) =
+let is_mutable_varexp syms ((vname, ixs), flist) =
   let varentry, _ =
+    (* Everything is in the symbtable? Don't need to consult the type? *)
     Symtable.findvar vname syms in
   if not (varentry.var && varentry.mut)
   then false
   else
+    let rec indexes_type prevtype ixs =
+      (* all arrays are mutable if the var or field is mutable? *)
+      match ixs with
+      | [] -> prevtype
+      | _ :: rest -> indexes_type (array_element_type prevtype) rest
+    in
+    let vartype = indexes_type varentry.symtype ixs in
     let rec is_mut_loop partype = function
       | [] -> true
-      | (fname, ixopt) :: rest ->
+      | (fname, ixs) :: rest ->
         (* find field in partype and check if mut *)
         (match get_ttag_field partype fname with
          | None -> failwith "is_mutable_varexp: type doesn't have such a field"
          | Some finfo -> 
            if not finfo.mut then false
-           else let fieldtype =
-                  match ixopt with
-                  | Some _ -> array_element_type finfo.fieldtype
-                  | None -> finfo.fieldtype
-             in
+           else let fieldtype = indexes_type finfo.fieldtype ixs in
              is_mut_loop fieldtype rest)
     in
-    let vartype = match ixopt with
-      | Some _ -> array_element_type varentry.symtype
-      | None -> varentry.symtype
-    in 
     is_mut_loop vartype flist
-
+      
 
 (** Check semantics of an expression, replacing decor with a type *)
 let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
@@ -162,7 +162,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
           Ok { e=ExpVal(echecked);
                decor=option_type_of echecked.decor })
 
-  | ExpVar ((varstr, ixopt), fields) -> (
+  | ExpVar ((varstr, ixs), fields) -> (
       (* let varstr = exp_to_string ex in *)
       debug_print ("#AN: checking variable expression " ^ exp_to_string ex);
       match Symtable.findvar_opt varstr syms with
@@ -172,38 +172,39 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
             Error {loc=ex.decor;
                    value="Variable " ^ varstr ^ " may not be initialized"}
           else
-            (* Now need to do proper field checking *)
-            (* first, make sure var is array type if has index expr. *)
-          if Option.is_some ixopt && not (is_array_type entry.symtype) then
-            Error {loc=ex.decor; value="Index expression on non-array type "
-                                       ^ typetag_to_string entry.symtype}
-          else 
-            (* first, check index expression if any *)
-            let check_indexexp ixopt =
-              match ixopt with
-              | None -> Ok None
-              | Some ixexp -> 
-                match check_expr syms tenv ixexp with
-                | Error err -> Error err
-                | Ok checked_ixexp ->
-                  if checked_ixexp.decor <> int_ttag then
-                    Error {loc=ex.decor;
-                           value="Index expression must have integer type"}
-                  else Ok (Some checked_ixexp) in
-            match check_indexexp ixopt with 
+            (* Check list of indexing expressions, returning new list
+               plus ending type *)
+            let rec check_indexes prevty ixs =
+              match ixs with
+              | [] -> Ok ([], prevty)
+              | ixexp::rest -> 
+                if not (is_array_type prevty) then
+                  Error {loc=ex.decor;
+                         value="Index expression on non-array type "
+                               ^ typetag_to_string entry.symtype}
+                else
+                  (match check_expr syms tenv ixexp with
+                   | Error err -> Error err
+                   | Ok checked_ix ->
+                     if checked_ix.decor <> int_ttag then
+                       Error {loc=ex.decor;
+                              value="Index expression must have integer type"}
+                     else
+                       (match check_indexes (array_element_type prevty)
+                                rest with
+                       | Ok (checked_rest, endty) ->
+                         Ok (checked_ix::checked_rest, endty)
+                       | Error err -> Error err
+                       ))
+            in 
+            match check_indexes entry.symtype ixs with 
             | Error err -> Error err
-            | Ok ixopt -> (
-                (* get type of expression apart from array *)
-                let headtype =
-                  if Option.is_some ixopt then
-                    array_element_type entry.symtype
-                  else entry.symtype
-                in 
+            | Ok (varixs, headtype) -> (
                 (* second, recursively check fields. return fields & type *)
                 let rec check_fields prevty fields =
                   match fields with
                   | [] -> Ok ([], prevty)
-                  | (fname, ixopt)::rest -> (
+                  | (fname, ixs)::rest -> (
                       (* TODO: check for opaque type here for better
                          error messages "cannot access fields of types
                          whose structure is hidden" *)
@@ -214,40 +215,31 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                                      ^ " does not belong to type "
                                      ^ typetag_to_string prevty}
                       | Some finfo ->
-                        if Option.is_some ixopt
-                        && not (is_array_type finfo.fieldtype) then
-                          Error {loc=ex.decor;
-                                 value="Index expression on non-array type"
-                                       ^ typetag_to_string finfo.fieldtype}
-                        else
-                          (* Look for a specified type if field is generic. *)
-                          let fieldty = 
-                            match finfo.fieldtype with
-                            | Typevar tvar -> get_typearg prevty tvar
-                            (* TODO: may need to recurse to fill in type
-                               variables all the way down. *)
-                            | Namedtype _ -> finfo.fieldtype 
-                          in 
-                          match check_indexexp ixopt with
-                          | Error err -> Error err
-                          | Ok ixopt -> (
-                              (* Recurse with this type as the outer type. *)
-                              match check_fields
-                                      (* It's only the array type if no ix *)
-                                      (if Option.is_none ixopt then fieldty
-                                       else array_element_type fieldty)
-                                      rest with
-                              | Ok (checked_fields, finalty) ->
-                                Ok ((fname, ixopt)::checked_fields, finalty)
-                              | Error err -> Error err
-                            ))
+                        (* Look for a specified type if field is generic. *)
+                        let fieldty = 
+                          match finfo.fieldtype with
+                          | Typevar tvar -> get_typearg prevty tvar
+                          (* TODO: may need to recurse to specify type
+                             variables all the way down (class with tvars) *)
+                          (* could we just call specify_type? *)
+                          | Namedtype _ -> finfo.fieldtype 
+                        in 
+                        match check_indexes fieldty ixs with
+                        | Error err -> Error err
+                        | Ok (fixs, ixty) -> (
+                            (* Recurse with this type as the outer type. *)
+                            match check_fields ixty rest with
+                            | Ok (checked_fields, finalty) ->
+                              Ok ((fname, fixs)::checked_fields, finalty)
+                            | Error err -> Error err
+                          ))
                 in
                 match check_fields headtype fields with
                 | Error err -> Error err
                 | Ok (checked_fields, expty) -> 
                   debug_print ("#AN: var expression type: "
                                ^ typetag_to_string expty);
-                  Ok { e=ExpVar ((varstr, ixopt), checked_fields);
+                  Ok { e=ExpVar ((varstr, varixs), checked_fields);
                        decor=expty })
         )
     )
@@ -597,12 +589,12 @@ and check_variant syms tenv ex ~declvar thint =
 
 (** lvalue checking code for assignment contexts. Also removes from
     uninitialized symbols set. *)
-and check_lvalue syms tenv (((varname, ixopt), flds) as varexpr) loc =
+and check_lvalue syms tenv (((varname, ixs), flds) as varexpr) loc =
   match Symtable.findvar_opt varname syms with
   | None -> Error {loc=loc; value="Undefined variable " ^ varname}
   | Some (varsym, scope) -> (
       (* Check the lvalue (new), first setting as initted if applicable. *)
-      if Option.is_none ixopt && flds = [] then
+      if ixs = [] && flds = [] then
         (* This will be expanded to update the specific field's uninit status. *)
         (syms.uninit <- StrSet.remove varname syms.uninit;
          if scope < syms.scopedepth then 
@@ -987,12 +979,12 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                             check_casebody newcexp vntname cbody blocksyms
                           | Some cvalexp ->
                             match cvalexp.e with
-                            | ExpVar ((cvar, None), []) -> (
+                            | ExpVar ((cvar, []), []) -> (
                                 let vntty = Option.get vnttyopt in
                                 let (newcexp: typetag expr) =
                                   {e=ExpVariant(
                                        modname, vntname,
-                                       Some {e=ExpVar((cvar, None), []);
+                                       Some {e=ExpVar((cvar, []), []);
                                              decor=vntty});
                                    decor=matchexp.decor} in
                                 let blocksyms = Symtable.new_scope syms in
@@ -1017,10 +1009,10 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                     errout ("Duplicate val() case ")
                   else 
                     match varexpr.e with 
-                    | ExpVar ((valvar, None), []) -> (
+                    | ExpVar ((valvar, []), []) -> (
                         let valty = (option_base_type mtype) in
                         let (newcexp: typetag expr) =
-                          {e=ExpVal({e=ExpVar((valvar, None), []); decor=valty});
+                          {e=ExpVal({e=ExpVar((valvar, []), []); decor=valty});
                            decor=matchexp.decor} in
                         (* Add the variable to the symtable *)
                         let blocksyms = Symtable.new_scope syms in

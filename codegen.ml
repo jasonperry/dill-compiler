@@ -544,7 +544,7 @@ let gen_bounds_check ixval arraysize the_module builder =
 (** Find the target address of a varexp from symtable entry and
     field type information *)
 let rec get_varexp_alloca the_module builder varexp syms lltypes =
-  let ((varname, ixopt), fields) = varexp in
+  let ((varname, ixs), fields) = varexp in
   debug_print ("#CG: get_varexp_alloca for varexp under var " ^ varname);
   let (entry, _) =  Symtable.findvar varname syms in
   match entry.addr with 
@@ -552,33 +552,38 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
                       ^ entry.symname)
   | Some alloca ->
     (* traverse indices and record fields to generate the final alloca. *)
-    let rec get_field_alloca flds ixopt (parentty: typetag) alloca =
-      debug_print ("#CG: get_field_alloca with parent type: "
+    let rec field_allocas flds ixs (parentty: typetag) alloca =
+      debug_print ("#CG: field_allocas with parent type: "
                     ^ typetag_to_string parentty);
-      (* 1. determine if array index expression [], then load and
+      (* 1. if there are array index expressions [], then load and
          strip off array type *)
-      let (alloca, parentty) = (* newty) = *)
-        match ixopt with
-        | None -> (alloca, parentty)
-        | Some ixexpr ->
+      let rec ix_allocas prevalloca parentty ixs = 
+        match ixs with
+        | [] -> (alloca, parentty)
+        | ixexpr :: rest ->
           debug_print ("#CG: computing index expression into "
-                        ^ string_of_llvalue alloca);
+                        ^ string_of_llvalue prevalloca);
           let ixval = gen_expr the_module builder syms lltypes ixexpr in
           (* get the array at index 1. alloca is the address of the struct. *)
-          let arraydata = build_struct_gep alloca 1 "arraydata" builder in
+          let arraydata = build_struct_gep prevalloca 1 "arraydata" builder in
           (* have to load to get the actual pointer to the llvm array *)
           let dataptr = build_load arraydata "dataptr" builder in
           (* Load the array size to do the bounds check. *)
           let arraysize = build_load
-              (build_struct_gep alloca 0 "sizeptr" builder)
+              (build_struct_gep prevalloca 0 "sizeptr" builder)
               "arraysize" builder
           in
           gen_bounds_check ixval arraysize the_module builder;
           (* gep to the 0th element first to "follow the pointer" *)
-          (build_gep dataptr [|(const_int int_type 0); ixval|]  
-             "elementtptr" builder,
-           (array_element_type parentty))
+          let newalloca, newty =
+            (build_gep dataptr [|(const_int int_type 0); ixval|]
+               "elementtptr" builder,
+             (array_element_type parentty)) in
+          debug_print ("#CG: index expr alloca: " ^ string_of_llvalue newalloca
+                       ^ "\n   type: " ^ typetag_to_string newty);
+          ix_allocas newalloca newty rest
       in
+      let (alloca, parentty) = ix_allocas alloca parentty ixs in (* newty) = *)
       (* 2. get the field offset if there is one. *)
       match flds with
       | [] -> (alloca, parentty)
@@ -636,10 +641,10 @@ let rec get_varexp_alloca the_module builder varexp syms lltypes =
               (fieldtype, alloca) 
           in 
           debug_print "#CG get_varexp_alloca: recursing";
-          get_field_alloca rest ixopt fieldtype alloca )
+          field_allocas rest ixopt fieldtype alloca )
     in
     (* top-level call *)
-    get_field_alloca fields ixopt entry.symtype alloca
+    field_allocas fields ixs entry.symtype alloca
 
 
 (** Generate LLVM code for an expression *)
@@ -1046,7 +1051,7 @@ let rec gen_stmt the_module builder lltypes
     | Some initexp ->
        (* desugar to an assignment statement to avoid code duplication. *)
        gen_stmt the_module builder lltypes
-         {st=StmtAssign (((varname, None), []), initexp); decor=syms}
+         {st=StmtAssign (((varname, []), []), initexp); decor=syms}
   )
 
   | StmtAssign (varexp, ex) -> (
