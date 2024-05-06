@@ -8,7 +8,7 @@
 %token LPAREN RPAREN LBRACE RBRACE LSQRB RSQRB
 %token PLUS MINUS TIMES DIV MOD
 %token UMINUS (* not lexed *)
-%token AMP PIPE CARAT TILDE
+%token AMP PIPE CARAT TILDE SHL SHR
 %token EQ NE LT GT LE GE
 %token AND OR BANG
 %token TRUE FALSE NULL VAL
@@ -514,6 +514,10 @@ opExp:
     { ExpBinop (e1, OpBitOr, e2) }
   | e1=expr CARAT e2=expr
     { ExpBinop (e1, OpBitXor, e2) }
+  | e1=expr SHL e2=expr
+    { ExpBinop (e1, OpShl, e2) }
+  | e1=expr SHR e2=expr
+    { ExpBinop (e1, OpShr, e2) }
   | e1=expr EQ e2=expr
     { ExpBinop (e1, OpEq, e2) }
   | e1=expr NE e2=expr

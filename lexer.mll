@@ -60,6 +60,8 @@ rule token = parse  (* funny that it's called parse *)
   | '|'     { PIPE }
   | '^'     { CARAT }
   | '~'     { TILDE }
+  | "<<"    { SHL }
+  | ">>"    { SHR }
   (* | "++"   { CONCAT } *)
   | "=="    { EQ }
   | "!="    { NE }

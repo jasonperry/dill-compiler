@@ -204,6 +204,40 @@ let sconst tbuf =
   let tok = get_tok (S_LIT "") "string constant" tbuf
   in (tok_sval tok, tok.loc)
 
+(** Convert a token to its operator type *)
+let binop_tok = function
+  | PLUS -> OpPlus
+  | MINUS -> OpMinus
+  | TIMES -> OpTimes
+  | DIV -> OpDiv
+  | MOD -> OpMod
+  | AMP -> OpBitAnd
+  | PIPE -> OpBitOr
+  | CARAT -> OpBitXor
+  | SHL -> OpShl
+  | SHR -> OpShr
+  | AND -> OpAnd
+  | OR -> OpOr
+  | EQ -> OpEq
+  | NE -> OpNe
+  | LT -> OpLt
+  | LE -> OpLe
+  | GT -> OpGt
+  | GE -> OpGe
+  | _ -> failwith "BUG: Token does not correspond do a binary operator"
+  
+let binop_prec = function
+  | OpTimes | OpDiv | OpMod -> 1
+  | OpPlus | OpMinus -> 2
+  | OpShl | OpShr -> 3
+  | OpBitAnd -> 4   (* Break with C, put these higher than comparison *)
+  | OpBitXor -> 5
+  | OpBitOr -> 6
+  | OpLt | OpLe | OpGt | OpGe -> 7
+  | OpEq | OpNe -> 8
+  | OpAnd -> 9
+  | OpOr -> 10
+
 (** Parse unqualified lowercase name. Takes a description string from context
     so errors can say what the value is for. *)
 let uqname descrip tbuf =
@@ -320,27 +354,97 @@ and index_exprs tbuf =
 and expr tbuf =
   (* Get a single expression, then look for operators, and finally
      compute precedence *)
-  match (peek tbuf).ttype with
-  | LPAREN ->
-    let sloc = parse_tok LPAREN tbuf in
-    let e = expr tbuf in (* exprs already have location *)
-    let eloc = parse_tok RPAREN tbuf in
-    { e=e.e; decor=make_location sloc eloc }
-  | I_LIT _ ->
-    let (n, tloc) = iconst tbuf in
-    { e=ExpLiteral (IntVal n); decor=make_location tloc tloc }
-  | F_LIT _ ->
-    let (x, tloc) = fconst tbuf in
-    { e=ExpLiteral (FloatVal x); decor=make_location tloc tloc }
-  | B_LIT _ ->
-    let (c, tloc) = bconst tbuf in
-    { e=ExpLiteral (ByteVal c); decor=make_location tloc tloc }
-  | S_LIT _ ->
-    let (s, tloc) = sconst tbuf in
-    { e=ExpLiteral (StringVal s); decor=make_location tloc tloc }
-  | _ -> var_or_call_expr tbuf
-(* | _ -> raise (expect_error "Unknown expression token" tbuf) *)
+  let rec base_expr () = 
+    match (peek tbuf).ttype with
+    | LPAREN ->
+      let sloc = parse_tok LPAREN tbuf in
+      let e = expr tbuf in (* exprs already have location *)
+      let eloc = parse_tok RPAREN tbuf in
+      { e=e.e; decor=make_location sloc eloc }
+    | I_LIT _ ->
+      let (n, tloc) = iconst tbuf in
+      { e=ExpLiteral (IntVal n); decor=make_location tloc tloc }
+    | F_LIT _ ->
+      let (x, tloc) = fconst tbuf in
+      { e=ExpLiteral (FloatVal x); decor=make_location tloc tloc }
+    | B_LIT _ ->
+      let (c, tloc) = bconst tbuf in
+      { e=ExpLiteral (ByteVal c); decor=make_location tloc tloc }
+    | S_LIT _ ->
+      let (s, tloc) = sconst tbuf in
+      { e=ExpLiteral (StringVal s); decor=make_location tloc tloc }
+    | TRUE ->
+      let tloc = parse_tok TRUE tbuf in
+      { e=ExpLiteral (BoolVal true); decor=make_location tloc tloc }
+    | FALSE ->
+      let tloc = parse_tok FALSE tbuf in
+      { e=ExpLiteral (BoolVal false); decor=make_location tloc tloc }
+    | NULL ->
+      let tloc = parse_tok NULL tbuf in
+      { e=ExpLiteral NullVal; decor=make_location tloc tloc }
+    | MINUS ->
+      let sloc = parse_tok MINUS tbuf in
+      let e = base_expr () in
+      { e=ExpUnop (OpNeg, e); decor=make_location sloc e.decor }
+    | NOT ->
+      let sloc = parse_tok NOT tbuf in
+      let e = base_expr () in
+      { e=ExpUnop(OpNot, e); decor=make_location sloc e.decor }
+    | TILDE -> (* bitwise not *)
+      let sloc = parse_tok TILDE tbuf in
+      let e = base_expr () in
+      { e=ExpUnop(OpBitNot, e); decor=make_location sloc e.decor }
+    | _ -> var_or_call_expr tbuf
+  in
+  let e1 = base_expr () in
+  let rec oper_tail () = 
+    match (peek tbuf).ttype with
+    | PLUS | MINUS | TIMES | DIV | MOD | AND | OR | AMP | PIPE | CARAT
+    | SHL | SHR | EQ | NE | LT | LE | GT | GE ->
+      let optok = consume_any tbuf in
+      let oper = binop_tok optok.ttype in
+      let e = base_expr () in
+      (oper, e) :: (oper_tail ())
+    | _ -> []
+  in
+  let tail = oper_tail () in
+  if tail = [] then e1
+  else
+    let opers, exprs = List.split tail in
+    expr_tree (e1 :: exprs) opers
 
+(*  if List.length tail = 1 then
+    let oper, e2 = List.hd tail in
+    { e=ExpBinop(e1, oper, e2); decor=make_location e1.decor e2.decor }
+  else
+    failwith "prec climbing not implemented yet" *)
+
+(** Generate an expression tree based on precedence *)
+and expr_tree elist oplist =
+  let rec max_prec maxi max li ri =
+    if li = ri then maxi
+    else
+      let prec = binop_prec (List.nth oplist li) in
+      if prec >= max   (* greater or equal to find rightmost max *)
+      then max_prec li prec (li+1) ri
+      else max_prec maxi max (li+1) ri
+  in
+  let rec build li ri =
+    if li = ri then List.nth elist li
+    (* if li = ri-1 then
+      let e1, e2 = List.nth elist li, List.nth elist ri in
+      { e=ExpBinop(e1, List.nth oplist li, e2);
+        decor=make_location e1.decor e2.decor } *)
+    else
+      let maxi = max_prec 0 0 li ri in
+      let e1, e2 = build li maxi, build (maxi+1) ri in
+      { e=ExpBinop(e1, List.nth oplist maxi, e2);
+        decor=make_location e1.decor e2.decor }
+  in
+  build 0 (List.length oplist)
+        
+  (* | _ -> raise (expect_error "Unknown expression token" tbuf) *)
+             
 (* and operTail tbuf = (\* look for operators following *\) *)
 
 (** List of arguments to a function call. *)
@@ -391,6 +495,68 @@ and decl_stmt tbuf =
       decor=make_location sloc eloc }
   | _ -> failwith "decl_stmt invalid state"
 
+and if_stmt tbuf =
+  let sloc = parse_tok IF tbuf in
+  let cond = expr tbuf in
+  let _ = parse_tok THEN tbuf in
+  let then_block = stmt_seq tbuf in
+  let elsif_blocks = match (peek tbuf).ttype with
+    | ELSIF ->
+      let rec elsif_loop () =
+        (* have to do (optional) else in here too? *)
+        let _ = parse_tok ELSIF tbuf in
+        let cond = expr tbuf in
+        let _ = parse_tok THEN tbuf in
+        let block = stmt_seq tbuf in
+        match (peek tbuf).ttype with
+        | ELSIF -> (cond, block) :: (elsif_loop ())
+        | _ -> [(cond, block)]
+      in elsif_loop ()
+    | _ -> []
+  in
+  let elseopt = match (peek tbuf).ttype with
+    | ELSE ->
+      let _ = parse_tok ELSE tbuf in
+      let else_block = stmt_seq tbuf in
+      Some else_block
+    | _ -> None
+  in
+  let eloc = parse_tok ENDIF tbuf in
+  { st=StmtIf (cond, then_block, elsif_blocks, elseopt);
+    decor=make_location sloc eloc }
+
+and while_stmt tbuf =
+  let sloc = parse_tok WHILE tbuf in
+  let cond = expr tbuf in
+  let _ = parse_tok LOOP tbuf in
+  let body = stmt_seq tbuf in
+  let eloc = parse_tok ENDWHILE tbuf in
+  { st=StmtWhile (cond, body); decor=make_location sloc eloc }
+
+and case_stmt tbuf =
+  let sloc = parse_tok CASE tbuf in
+  let matchexp = expr tbuf in
+  let caseblocks =
+    let rec case_loop () =
+      let _ = parse_tok OF tbuf in
+      let patexp = expr tbuf in
+      let _ = parse_tok THEN tbuf in
+      let body = stmt_seq tbuf in
+      match (peek tbuf).ttype with
+      | OF -> (patexp, body) :: (case_loop ())
+      | _ -> [(patexp, body)]
+    in case_loop()
+  in
+  let elseopt = match (peek tbuf).ttype with
+    | ELSE ->
+      let _ = parse_tok ELSE tbuf in
+      Some (stmt_seq tbuf)
+    | _ -> None
+  in 
+  let eloc = parse_tok ENDCASE tbuf in
+  { st=StmtCase (matchexp, caseblocks, elseopt);
+    decor=make_location sloc eloc }
+
 and nop_stmt tbuf =
   let sloc = parse_tok NOP tbuf in
   let eloc = parse_tok SEMI tbuf in
@@ -405,19 +571,64 @@ and call_stmt tbuf =
   | _ ->
     raise (parse_error "Expression cannot serve as a statement" tbuf)
 
+(** Both call and assign statement start with an expression *)
+and call_or_assign_stmt tbuf =
+  let e = expr tbuf in
+  match (peek tbuf).ttype with
+  | ASSIGN ->
+    (match e.e with
+     (* Lvalues are somewhat defined syntactically by the AST: only var_expr. *)
+     | ExpVar vexp -> 
+       let _ = parse_tok ASSIGN tbuf in
+       let rvalue = expr tbuf in
+       let eloc = parse_tok SEMI tbuf in
+       { st=StmtAssign (vexp, rvalue); decor=make_location e.decor eloc }
+     | _ -> raise (parse_error "This expression type cannot be assigned to" tbuf)
+    )
+  | SEMI ->
+    (match e.e with
+     (* Then I could have had StmtCall be just name and args too, not expr *)
+     | ExpCall _ ->
+       let eloc = parse_tok SEMI tbuf in
+       { st=StmtCall e; decor=make_location e.decor eloc }
+     | _ ->
+       raise (parse_error "Expression cannot serve as a statement" tbuf)
+    )
+  | _ -> raise (unexpect_error tbuf)
+       
+
+and return_stmt tbuf =
+  let sloc = parse_tok RETURN tbuf in
+  match (peek tbuf).ttype with
+  | SEMI ->
+    let eloc = parse_tok SEMI tbuf in
+    { st=StmtReturn None; decor=make_location sloc eloc }
+  | _ ->
+    let retexp = expr tbuf in
+    let eloc = parse_tok SEMI tbuf in
+    { st=StmtReturn (Some retexp); decor=make_location sloc eloc }
+
+(** At least one statement, possibly more *)
+and stmt_seq tbuf =
+  let rec loop () =
+    let st = stmt tbuf in
+    match (peek tbuf).ttype with
+    | ELSE | ELSIF | ENDIF | ENDCASE | ENDPROC | ENDTYPE | ENDWHILE -> [st]
+    | _ -> st :: (loop ())
+  in
+  loop ()
+
 and stmt tbuf =
   match (peek tbuf).ttype with
   | VAR -> decl_stmt tbuf (* | REF *)
-  (* | IF -> if_stmt tbuf
+  | IF -> if_stmt tbuf
   | WHILE -> while_stmt tbuf
   | CASE -> case_stmt tbuf
-     | RETURN -> return_stmt tbuf *)
+  | RETURN -> return_stmt tbuf 
   | NOP -> nop_stmt tbuf
-  (* TODO: make this the default case to try to parse any expression,
-     for a better error message *)
-  | LC_IDENT _ -> call_stmt tbuf
-  | _ -> raise (unexpect_error tbuf)
-(* idea: parse an entire varexp, check for equal sign, then parens *)
+  (* | LC_IDENT _ -> call_stmt tbuf (* call_or_assign *) *)
+  | _ -> call_or_assign_stmt tbuf
+
 
 (** Parse a single import statement or nothing. *)
 let import tbuf =

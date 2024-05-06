@@ -49,6 +49,7 @@ type ttype =
   | PLUS | MINUS | TIMES | DIV | MOD
   (* | UMINUS (* not lexed *) *)
   | AMP | PIPE | CARAT | TILDE (* bitwise operators *)
+  | SHL | SHR  (* logical shift *)
   | EQ | NE | LT | GT | LE | GE
   | AND | OR | NOT (* Which ones overloadable? Maybe not these. *)
   | TRUE | FALSE | NULL (* | VAL *)
@@ -140,6 +141,8 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | '|' -> PIPE
     | '&' -> AMP
     | '~' -> TILDE (* bitwise not *)
+    | "<<" -> SHL
+    | ">>" -> SHR
     | "==" -> EQ
     | "!=" -> NE
     | '<' -> LT

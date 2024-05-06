@@ -25,6 +25,8 @@ type binary_op =
   | OpBitAnd
   | OpBitOr
   | OpBitXor
+  | OpShl
+  | OpShr
   | OpEq
   | OpNe
   | OpLt
