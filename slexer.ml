@@ -80,14 +80,28 @@ module Ttype =
     let compare = Stdlib.compare
   end
 
-(* It would be good to use this for the parser too.
-   Make a reversed version. *)
+(* Used by the parser to generate error messages also. *)
 module TokenMap = Map.Make(Ttype)
 let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (fun m (k,v) -> TokenMap.add k v m) TokenMap.empty [
     (LPAREN, "("); (RPAREN, ")"); (LBRACE, "{"); (RBRACE, "}");
     (LSQRB, "["); (RSQRB, "]"); (PLUS, "+"); (MINUS, "-");
-    (SEMI, ";");
+    (TIMES, "*"); (DIV, "/"); (MOD, "%"); (CARAT, "^"); (TILDE, "~");
+    (NOT, "!"); (AMP, "&"); (SHL, "<<"); (SHR, ">>"); (EQ, "==");
+    (NE, "!="); (LT, "<"); (LE, "<="); (GT, ">"); (GE, ">=");
+    (AND, "&&"); (OR, "||"); (HASH, "#"); (QMARK, "?"); (DOLLAR, "$");
+    (ASSIGN, "="); (NULLASSIGN, "?="); (ARROW, "->"); (DARROW, "=>");
+    (DOT, "."); (SEMI, ";"); (DCOLON, "::"); (COMMA, ","); (COLON, ":");
+    (MODULE, "module"); (ENDMODULE, "/module"); (IMPORT, "import");
+    (OPEN, "open"); (AS, "as"); (EXPORT, "export"); (PRIVATE, "private");
+    (MODSPEC, "modspec"); (ENDMODSPEC, "/modspec");
+    (PROC, "proc"); (ENDPROC, "/proc"); (RETURN, "return");
+    (VAR, "var"); (REF, "ref"); (NOP, "nop"); (IF, "if"); (THEN, "then");
+    (ELSIF, "elsif"); (ELSE, "else"); (ENDIF, "/if"); (WHILE, "while");
+    (LOOP, "loop"); (ENDWHILE, "/while"); (CASE, "case"); (OF, "of");
+    (ENDCASE, "/case"); (TYPE, "type"); (MUT, "mut"); (REC, "rec");
+    (RECORD, "record"); (VARIANT, "variant");
+    (TRUE, "#true"); (FALSE, "#false"); (NULL, "#null")
   ]
 
 (** For converting tokens back to strings. Use this in Ast also *)
@@ -164,10 +178,10 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "::" -> DCOLON (* actually this should be attached too. *)
     | ':' -> COLON
     | "var" -> VAR
-    | "ref^" -> IMMREF
+    (* | "ref^" -> IMMREF *)
     | "ref" -> REF
     | "nop" -> NOP
-    | "if" -> IF
+     | "if" -> IF
     | "then" -> THEN
     | "elsif" -> ELSIF
     | "else" -> ELSE

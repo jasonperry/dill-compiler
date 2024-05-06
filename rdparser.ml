@@ -188,6 +188,27 @@ let get_tok ttype descrip tbuf =
 let parse_tok ttype tbuf =
   (get_tok ttype (string_of_ttype ttype) tbuf).loc
 
+(** Parse unqualified lowercase name. Takes a description string from context
+    so errors can say what the value is for. *)
+let uqname descrip tbuf =
+  let tok = get_tok (LC_IDENT "") descrip tbuf in
+  (tok_sval tok, tok.loc)
+
+let qname descrip tbuf =
+  let name1 = get_tok (LC_IDENT "") ("module name or " ^ descrip) tbuf in
+  match (peek tbuf).ttype with
+  | DCOLON ->
+    let _ = parse_tok DCOLON tbuf in
+    let name2 = get_tok (LC_IDENT "") descrip tbuf in
+    (tok_sval name1, tok_sval name2, make_location name1.loc name2.loc)
+  | _ ->
+    ("", tok_sval name1, name1.loc)
+
+(* possibly qualified? *)
+let typename tbuf =
+  let tok = get_tok (UC_IDENT "") "class name" tbuf in
+  (tok_sval tok, tok.loc)
+
 let iconst tbuf =
   let tok = get_tok (I_LIT Int64.zero) "integer constant" tbuf in
   (tok_ival tok, tok.loc)
@@ -238,26 +259,6 @@ let binop_prec = function
   | OpAnd -> 9
   | OpOr -> 10
 
-(** Parse unqualified lowercase name. Takes a description string from context
-    so errors can say what the value is for. *)
-let uqname descrip tbuf =
-  let tok = get_tok (LC_IDENT "") descrip tbuf in
-  (tok_sval tok, tok.loc)
-
-let qname descrip tbuf =
-  let name1 = get_tok (LC_IDENT "") ("module name or " ^ descrip) tbuf in
-  match (peek tbuf).ttype with
-  | DCOLON ->
-    let _ = parse_tok DCOLON tbuf in
-    let name2 = get_tok (LC_IDENT "") descrip tbuf in
-    (tok_sval name1, tok_sval name2, make_location name1.loc name2.loc)
-  | _ ->
-    ("", tok_sval name1, name1.loc)
-
-(* possibly qualified? *)
-let typename tbuf =
-  let tok = get_tok (UC_IDENT "") "class name" tbuf in
-  (tok_sval tok, tok.loc)
 
 (* ---- end of single-token parsers ---- *)
 
@@ -300,10 +301,116 @@ let typeExpr tbuf =
       }
   | _ -> raise (expect_error "type expression" tbuf)
 
+(** Parse a token for a literal and extract its value for an ExpLiteral. *)
+let literal_val tbuf =
+  match (peek tbuf).ttype with
+  | I_LIT _ -> 
+    let (n, tloc) = iconst tbuf in (IntVal n, tloc)
+  | F_LIT _ ->
+    let (x, tloc) = fconst tbuf in (FloatVal x, tloc)
+  | B_LIT _ ->
+    let (c, tloc) = bconst tbuf in (ByteVal c, tloc)
+  | S_LIT _ ->
+    let (s, tloc) = sconst tbuf in (StringVal s, tloc)
+  | TRUE ->
+    let tloc = parse_tok TRUE tbuf in (BoolVal true, tloc)
+  | FALSE ->
+    let tloc = parse_tok FALSE tbuf in (BoolVal false, tloc)
+  | NULL ->
+    let tloc = parse_tok NULL tbuf in (NullVal, tloc)
+  | _ -> failwith "BUG: literal_val called with wrong token type"
 
+let unop_val tbuf =
+  match (peek tbuf).ttype with
+  | MINUS ->
+    let tloc = parse_tok MINUS tbuf in (OpNeg, tloc)
+  | NOT ->
+    let tloc = parse_tok NOT tbuf in (OpNot, tloc)
+  | TILDE ->
+    let tloc = parse_tok TILDE tbuf in (OpBitNot, tloc)
+  | _ -> failwith "BUG: unop_val called with wrong token type"
+
+let rec expr tbuf =
+  (* oh wait! record exps don't work with operators. Do I need to
+     catch that here? *)
+  (* Get a single expression, then look for operators, and finally
+     compute precedence *)
+  let rec base_expr () = 
+    match (peek tbuf).ttype with
+    | LPAREN ->
+      let sloc = parse_tok LPAREN tbuf in
+      let e = expr tbuf in (* exprs already have location *)
+      let eloc = parse_tok RPAREN tbuf in
+      { e=e.e; decor=make_location sloc eloc }
+    | I_LIT _ | F_LIT _ | B_LIT _ | S_LIT _ | TRUE | FALSE | NULL ->
+      let (v, tloc) = literal_val tbuf in
+      { e=ExpLiteral v; decor=make_location tloc tloc }
+    | MINUS | NOT | TILDE ->
+      let oper, sloc = unop_val tbuf in 
+      let e = base_expr () in
+      { e=ExpUnop (oper, e); decor=make_location sloc e.decor }
+    | LSQRB ->
+      let sloc = parse_tok LSQRB tbuf in
+      let rec seq_loop () =
+        (* Revisit: should an empty sequence be allowed? *)
+        let e = expr tbuf in
+        match (peek tbuf).ttype with
+        | COMMA ->
+          let _ = parse_tok COMMA tbuf in e :: (seq_loop ())
+        | _ -> [e]
+      in
+      let seq = seq_loop () in
+      let eloc = parse_tok RSQRB tbuf in
+      { e=ExpSeq seq; decor=make_location sloc eloc }
+    | _ -> var_or_call_expr tbuf
+  in
+  let e1 = base_expr () in
+  let rec oper_tail () = 
+    match (peek tbuf).ttype with
+    | PLUS | MINUS | TIMES | DIV | MOD | AND | OR | AMP | PIPE | CARAT
+    | SHL | SHR | EQ | NE | LT | LE | GT | GE ->
+      let optok = consume_any tbuf in
+      let oper = binop_tok optok.ttype in
+      let e = base_expr () in
+      (oper, e) :: (oper_tail ())
+    | _ -> []
+  in
+  let tail = oper_tail () in
+  if tail = [] then e1
+  else
+    let opers, exprs = List.split tail in
+    expr_tree (e1 :: exprs) opers
+
+
+(** Generate an expression tree based on precedence *)
+and expr_tree elist oplist =
+  let rec max_prec maxi max li ri =
+    if li = ri then maxi
+    else
+      let prec = binop_prec (List.nth oplist li) in
+      if prec >= max   (* greater or equal to find rightmost max *)
+      then max_prec li prec (li+1) ri
+      else max_prec maxi max (li+1) ri
+  in
+  let rec build li ri =
+    if li = ri then List.nth elist li
+    (* if li = ri-1 then
+      let e1, e2 = List.nth elist li, List.nth elist ri in
+      { e=ExpBinop(e1, List.nth oplist li, e2);
+        decor=make_location e1.decor e2.decor } *)
+    else
+      let maxi = max_prec 0 0 li ri in
+      let e1, e2 = build li maxi, build (maxi+1) ri in
+      { e=ExpBinop(e1, List.nth oplist maxi, e2);
+        decor=make_location e1.decor e2.decor }
+  in
+  build 0 (List.length oplist)
+        
+             
+(* and operTail tbuf = (\* look for operators following *\) *)
 (** Parse a string with idents and see if it's a varexpr or callexpr later *)
 (* something with a call in it can still be a varexpr but not lvalue. *)
-let rec var_or_call_expr tbuf =
+and var_or_call_expr tbuf =
   let mname, id, sloc = qname "identifier" tbuf in
   let qident = if mname = "" then id else mname ^ "::" ^ id in
   match (peek tbuf).ttype with
@@ -350,103 +457,6 @@ and index_exprs tbuf =
     | _ -> ([iexpr], make_location sloc eloc)
   in loop ()
   
-     
-and expr tbuf =
-  (* Get a single expression, then look for operators, and finally
-     compute precedence *)
-  let rec base_expr () = 
-    match (peek tbuf).ttype with
-    | LPAREN ->
-      let sloc = parse_tok LPAREN tbuf in
-      let e = expr tbuf in (* exprs already have location *)
-      let eloc = parse_tok RPAREN tbuf in
-      { e=e.e; decor=make_location sloc eloc }
-    | I_LIT _ ->
-      let (n, tloc) = iconst tbuf in
-      { e=ExpLiteral (IntVal n); decor=make_location tloc tloc }
-    | F_LIT _ ->
-      let (x, tloc) = fconst tbuf in
-      { e=ExpLiteral (FloatVal x); decor=make_location tloc tloc }
-    | B_LIT _ ->
-      let (c, tloc) = bconst tbuf in
-      { e=ExpLiteral (ByteVal c); decor=make_location tloc tloc }
-    | S_LIT _ ->
-      let (s, tloc) = sconst tbuf in
-      { e=ExpLiteral (StringVal s); decor=make_location tloc tloc }
-    | TRUE ->
-      let tloc = parse_tok TRUE tbuf in
-      { e=ExpLiteral (BoolVal true); decor=make_location tloc tloc }
-    | FALSE ->
-      let tloc = parse_tok FALSE tbuf in
-      { e=ExpLiteral (BoolVal false); decor=make_location tloc tloc }
-    | NULL ->
-      let tloc = parse_tok NULL tbuf in
-      { e=ExpLiteral NullVal; decor=make_location tloc tloc }
-    | MINUS ->
-      let sloc = parse_tok MINUS tbuf in
-      let e = base_expr () in
-      { e=ExpUnop (OpNeg, e); decor=make_location sloc e.decor }
-    | NOT ->
-      let sloc = parse_tok NOT tbuf in
-      let e = base_expr () in
-      { e=ExpUnop(OpNot, e); decor=make_location sloc e.decor }
-    | TILDE -> (* bitwise not *)
-      let sloc = parse_tok TILDE tbuf in
-      let e = base_expr () in
-      { e=ExpUnop(OpBitNot, e); decor=make_location sloc e.decor }
-    | _ -> var_or_call_expr tbuf
-  in
-  let e1 = base_expr () in
-  let rec oper_tail () = 
-    match (peek tbuf).ttype with
-    | PLUS | MINUS | TIMES | DIV | MOD | AND | OR | AMP | PIPE | CARAT
-    | SHL | SHR | EQ | NE | LT | LE | GT | GE ->
-      let optok = consume_any tbuf in
-      let oper = binop_tok optok.ttype in
-      let e = base_expr () in
-      (oper, e) :: (oper_tail ())
-    | _ -> []
-  in
-  let tail = oper_tail () in
-  if tail = [] then e1
-  else
-    let opers, exprs = List.split tail in
-    expr_tree (e1 :: exprs) opers
-
-(*  if List.length tail = 1 then
-    let oper, e2 = List.hd tail in
-    { e=ExpBinop(e1, oper, e2); decor=make_location e1.decor e2.decor }
-  else
-    failwith "prec climbing not implemented yet" *)
-
-(** Generate an expression tree based on precedence *)
-and expr_tree elist oplist =
-  let rec max_prec maxi max li ri =
-    if li = ri then maxi
-    else
-      let prec = binop_prec (List.nth oplist li) in
-      if prec >= max   (* greater or equal to find rightmost max *)
-      then max_prec li prec (li+1) ri
-      else max_prec maxi max (li+1) ri
-  in
-  let rec build li ri =
-    if li = ri then List.nth elist li
-    (* if li = ri-1 then
-      let e1, e2 = List.nth elist li, List.nth elist ri in
-      { e=ExpBinop(e1, List.nth oplist li, e2);
-        decor=make_location e1.decor e2.decor } *)
-    else
-      let maxi = max_prec 0 0 li ri in
-      let e1, e2 = build li maxi, build (maxi+1) ri in
-      { e=ExpBinop(e1, List.nth oplist maxi, e2);
-        decor=make_location e1.decor e2.decor }
-  in
-  build 0 (List.length oplist)
-        
-  (* | _ -> raise (expect_error "Unknown expression token" tbuf) *)
-             
-(* and operTail tbuf = (\* look for operators following *\) *)
-
 (** List of arguments to a function call. *)
 and arg_list tbuf =
   (* Don't need overall location, each expr has its own *)
@@ -466,17 +476,11 @@ and arg_list tbuf =
   in
   loop ()
 
-  (* want to try multiple things in a natural way... *)
-  (* Maybe I should raise errors always and catch them... *)
-  (* Where do I put the logic of when I'm "committed" to parsing that type
-     of thing? *)
-  (* step 1: constExp vs OpExp *)
-(* exp's recursive "buddies" can be different from other things *)
-
+(* ------------------- Statement parsers ------------------- *)
 
 (* if initializer is required, the caller will check, right? *)
 (* Yes, I think that's better than trying to divide syntactically. *)
-and decl_stmt tbuf =
+let rec decl_stmt tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | VAR -> 
@@ -629,14 +633,18 @@ and stmt tbuf =
   (* | LC_IDENT _ -> call_stmt tbuf (* call_or_assign *) *)
   | _ -> call_or_assign_stmt tbuf
 
+(* ------------------------ top-level parsers ------------------------ *)
 
 (** Parse a single import statement or nothing. *)
 let import tbuf =
+  print_string "* import...\n";
   let stok = peek tbuf in
+  print_string "saw a token at least\n";
   match stok.ttype with
   | IMPORT ->
     let sloc = parse_tok IMPORT tbuf in
     let (mname, _) = uqname "module name" tbuf in
+    print_string mname;
     let alias = match (peek tbuf).ttype with
       | AS ->
         let _ = parse_tok AS tbuf in
@@ -712,45 +720,43 @@ let proc_header tbuf =
   }
 
 let proc tbuf =
+  print_string "* proc...\n";
   let decl = proc_header tbuf in
-  let rec stmtLoop () =
-    match (peek tbuf).ttype with
-    | ENDPROC -> []
-    | _ -> (stmt tbuf)::(stmtLoop ())
-  in
-  let stmts = stmtLoop () in
+  let stmts = stmt_seq tbuf in
   let eloc = parse_tok ENDPROC tbuf in
   { decl=decl; body=stmts; decor=make_location decl.decor eloc }
       
 let module_body mname tbuf =
   (* I can make imports come first, yay. *)
   let imports =
+    print_string "* imports...\n";
     let rec imploop () =
       match (peek tbuf).ttype with
-      | IMPORT | OPEN -> (import tbuf)::(imploop ())
+      | IMPORT | OPEN ->
+        (* must be sure the statement is parsed first or infinite loop! *)
+        let istmt = import tbuf in istmt :: (imploop ())
       | _ -> []
-    in List.rev (imploop ())
+    in imploop ()
   in
-  let _ (* procs *) = 
+  let procs =
     let rec procloop () =
       if (peek tbuf).ttype = PROC || (peek2 tbuf).ttype = PROC then
-        (proc tbuf)::(procloop ())
+        let p = proc tbuf in p :: (procloop ())
       else []
-    in List.rev (procloop ())
+    in procloop ()
   (* "export" can be on type, global var, or proc *)
    (* loop to accumulate both types and global vars?
            or strictly types first?  *)
   (* need lookahead 2 for these? *)
   (* | EXPORT -> print_string "Exporting a proc prolly, aight"
   | PRIVATE -> print_string "Keepin secrets eh"
-  | PROC -> proc tbuf
-  | _ -> raise (unexpect_error tbuf) *)
+     | PROC -> proc tbuf *)
   in
   { name = mname;
     imports = imports;
     typedefs = [];
     globals = [];
-    procs = []; (* procs *)
+    procs = procs;
   }
 
 
@@ -760,7 +766,7 @@ let dillsource tbuf =
   | MODULE ->
     let _ (* spos *) = parse_tok MODULE tbuf in
     let (mname, _) = uqname "module name" tbuf in
-    let _ = parse_tok IS tbuf in 
+    (* let _ = parse_tok IS tbuf in *)
     let the_module = module_body mname tbuf in
     let _ (* epos *) = parse_tok ENDMODULE tbuf in
     [the_module]
@@ -785,7 +791,7 @@ let rec any_tokens buf =
   | EOF -> print_string "EOF\n "; (* don't recurse *)
   | _ -> print_string "token "; any_tokens buf
 
-(* temporary top-level code *)
+(* top-level testing code *)
 let _ =
   (* Could go in dillc.ml *)
   Printexc.register_printer (

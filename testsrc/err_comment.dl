@@ -1,11 +1,11 @@
 
-proc main() is
+proc main() 
 
 var x: Int = 100;
-var y: Bool = false;
+var y: Bool = #false;
 
 if (x > 30) then
-  y = true;
+  y = #true;
 /if
 
 if (x < 50 && y) then
