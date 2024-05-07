@@ -1,5 +1,5 @@
-var x: int = 45;
-var y: float = 33.3;
+var x: Int = 45;
+var y: Float = 33.3;
 
 `  (* how did that get there? *)
 

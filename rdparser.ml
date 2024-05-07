@@ -332,7 +332,7 @@ let unop_val tbuf =
 
 let rec expr tbuf =
   (* oh wait! record exps don't work with operators. Do I need to
-     catch that here? *)
+     catch that here? Nah. *)
   (* Get a single expression, then look for operators, and finally
      compute precedence *)
   let rec base_expr () = 
@@ -362,6 +362,20 @@ let rec expr tbuf =
       let seq = seq_loop () in
       let eloc = parse_tok RSQRB tbuf in
       { e=ExpSeq seq; decor=make_location sloc eloc }
+    | LBRACE ->
+      let sloc = parse_tok LBRACE tbuf in
+      let rec record_loop () =
+        let fname, _ = uqname "field name" tbuf in
+        let _ = parse_tok ASSIGN tbuf in
+        let fexp = expr tbuf in
+        match (peek tbuf).ttype with
+        | COMMA ->
+          let _ = parse_tok COMMA tbuf in (fname, fexp) :: (record_loop ())
+        | _ -> [(fname, fexp)]
+      in
+      let fields = record_loop() in
+      let eloc = parse_tok RBRACE tbuf in
+      { e=ExpRecord fields; decor=make_location sloc eloc }
     | _ -> var_or_call_expr tbuf
   in
   let e1 = base_expr () in
@@ -493,7 +507,13 @@ let rec decl_stmt tbuf =
          Some (typeExpr tbuf)
        | _ -> None
       ) in
-    let initopt = None in
+    let initopt =
+      match (peek tbuf).ttype with
+      | ASSIGN ->
+        let _ = parse_tok ASSIGN tbuf in
+        Some (expr tbuf)
+      | _ -> None
+    in
     let eloc = parse_tok SEMI tbuf in
     { st=StmtDecl (vname, tyopt, initopt);
       decor=make_location sloc eloc }
@@ -600,7 +620,6 @@ and call_or_assign_stmt tbuf =
     )
   | _ -> raise (unexpect_error tbuf)
        
-
 and return_stmt tbuf =
   let sloc = parse_tok RETURN tbuf in
   match (peek tbuf).ttype with
@@ -639,7 +658,6 @@ and stmt tbuf =
 let import tbuf =
   print_string "* import...\n";
   let stok = peek tbuf in
-  print_string "saw a token at least\n";
   match stok.ttype with
   | IMPORT ->
     let sloc = parse_tok IMPORT tbuf in
@@ -738,6 +756,17 @@ let module_body mname tbuf =
       | _ -> []
     in imploop ()
   in
+  let globals =
+    let rec globals_loop () =
+      if (peek tbuf).ttype = VAR || (peek2 tbuf).ttype = VAR then
+        let gdecl = match decl_stmt tbuf with
+          | { st=StmtDecl (vname, tyexp, init); decor=stloc } ->
+            { varname=vname; typeexp=tyexp; init=init; decor=stloc }
+          | _ -> failwith "BUG: didn't get StmtDecl for global statement"
+        in gdecl :: (globals_loop ())
+      else []
+    in globals_loop ()
+  in 
   let procs =
     let rec procloop () =
       if (peek tbuf).ttype = PROC || (peek2 tbuf).ttype = PROC then
@@ -755,7 +784,7 @@ let module_body mname tbuf =
   { name = mname;
     imports = imports;
     typedefs = [];
-    globals = [];
+    globals = globals;
     procs = procs;
   }
 

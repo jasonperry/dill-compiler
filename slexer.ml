@@ -129,8 +129,8 @@ let rec tparse (buf: Sedlexing.lexbuf) =
   match%sedlex buf with
     | whitespace ->
       tparse buf
-    | newline ->
-      new_line buf; tparse buf
+    | newline ->  (* sedlex doesn't need you to manually bump newlines *)
+      (* new_line buf; *) tparse buf
     | "(*" ->
       comment 0 buf
     | '\'' ->
@@ -161,10 +161,14 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "!=" -> NE
     | '<' -> LT
     | "<=" -> LE
-    | ">=" -> GT
+    | ">" -> GT
+    | ">=" -> GE
     | "&&" -> AND
     | "||" -> OR
     | '!' -> NOT
+    | "#true" -> TRUE
+    | "#false" -> FALSE
+    | "#null" -> NULL
     | '#' -> HASH
     | '?' -> QMARK  (* Maybe later: attached to something else. *)
     | '$' -> DOLLAR
@@ -231,7 +235,7 @@ and comment depth buf =
   | "(*" -> comment (depth+1) buf
   | "*)" ->
     if depth = 0 then tparse buf else comment (depth-1) buf
-  | newline -> new_line buf; comment depth buf
+  | newline -> (* new_line buf; *) comment depth buf
   | eof -> raise (syntax_error "Unterminated comment at EOF" buf)
   | any -> comment depth buf (* unicode in comments too, yay! *)
   | _ -> failwith "Unreachable: slexer.comment"
