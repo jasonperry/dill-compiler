@@ -487,13 +487,13 @@ seqExp:
   | LSQRB vl=separated_nonempty_list(COMMA, expr) RSQRB
     { ExpSeq vl }
 
-variantExp: (* Now using pairs everywhere for type names *)
-  | mn=moduleName DCOLON (*tn=UC_IDENT PIPE*) vn=VLABEL
-        eopt=option(delimited(LPAREN, expr, RPAREN))
-    { ExpVariant (mn, vn, eopt) }
-  | (* tn=UC_IDENT *) vn=VLABEL
-        eopt=option(delimited(LPAREN, expr, RPAREN))
-    { ExpVariant ("", vn, eopt) }
+variantExp:
+  | vl=VLABEL
+    etup=option(delimited(LPAREN,
+                          separated_nonempty_list(COMMA, expr), RPAREN))
+    { match etup with
+      | Some etup -> ExpVariant (vl, etup)
+      | None -> ExpVariant (vl, []) }
 
 fieldAssign:
   | vn=varName ASSIGN e=expr

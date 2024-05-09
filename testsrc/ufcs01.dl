@@ -1,0 +1,37 @@
+(* Testing UFCS possibilities *)
+
+open stdio;
+
+type Complex is record
+  i: Float,
+  j: Float;
+  
+type Cplx is record
+   f: Int,
+   j: Int;
+   
+proc main()
+  var cpx: Complex; (*  = {i=2.0, j=1.111};*)
+  cpx = {i=4.0, j=-1.53};
+  (* cpx.j = 3.3; *) (* assignment to immutable field not allowed *)
+  cpx = {i=4.1, j=-2.2};  (* reassignment should be fine *)
+  printFloat(cpx.i);
+  printFloat(cpx.j);
+  cpx.i'print(); (* It's at the top, functions are a higher abstraction layer ;) *)
+  cpx.i->print();  (* it's close to PHP! it's good *)
+  cps.i=>modify();
+  cps.i<-modify(); (* whoa. But maybe too confusing because it doesn't necessarily
+  only modify the object it's called on. *)
+  (* How about NO ufcs for modifiable? no, confusing.*)
+
+  (* alternatives to UFCS to still allow chaining? The pipe *)
+  modify($i) | split($, ",") | sort(^);   (* yeah! $ if mutable, ^ if not! it rhymes! *)
+  (* but need to reserve | for bitwise or so *)
+  modify($i) |> split($, ",")[4:9] |> sort(^);
+  (* Yeah! no compromise with OO *)
+  (* okay, so syntactically, where does a "pipeExp" fit around other things?
+  what is its precedence? *)
+  arr |> modify($) |> split(^, ",")[1:] |> sort(^); (* can "lose" mut but not gain *)
+/proc
+
+(* end struct02 *)

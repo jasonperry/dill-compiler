@@ -740,14 +740,15 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       build_load recaddr "recordval" builder
 
 
-  | ExpVariant (tymod, variant, eopt) ->
-    let tyname = get_type_classname ex.decor in 
+  | ExpVariant (variant, eopt) ->
+    let tyname = get_type_classname ex.decor in
+    let tymod = get_type_modulename ex.decor in
     debug_print ("** Generating variant expression code of type " ^ tyname);
     (* 1. Look up lltype and allocate struct *)
     let (llvarty, varmap) = Lltenv.find (tymod, tyname) lltypes in
     (* 2. Look up variant type, allocate struct, store tag value *)
     debug_print ("variant lltype:" ^ string_of_lltype llvarty);
-    let typesize =
+    let typesize =  (* TODO: have one sizeof function for the whole codegen *)
       if is_pointer_type llvarty then 
         Array.length (struct_element_types (element_type llvarty))
       else 
@@ -1212,7 +1213,7 @@ let rec gen_stmt the_module builder lltypes
     (* Get the conditional value for matching against the case. *)
     let gen_caseexp caseexp =
       match caseexp.e with
-      | ExpVariant (_, vname, _) ->
+      | ExpVariant (vname, _) ->
         debug_print ("Generating case comparison on "
                      ^ string_of_llvalue matchval);
          (* only compare the tags; the load of the value into the
@@ -1260,7 +1261,7 @@ let rec gen_stmt the_module builder lltypes
       position_at_end casebody_bb builder;
       (* If variant holds a value, create alloca and load value *)
       (match caseexp.e with
-       | ExpVariant (_, vname, Some valvar) -> (
+       | ExpVariant (vname, Some valvar) -> (
          match valvar.e with
          | ExpVar ((varname, _), _) -> 
             let fieldmap = Option.get fieldmap in

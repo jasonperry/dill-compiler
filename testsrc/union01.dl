@@ -1,41 +1,42 @@
 (* variant (formerly union) types with case statements. *)
-module union01 
+module union01 begin
 
 open stdio;
 
 type Num is variant
-  |f : Float,
-  |i : Int,
-  |nan;
+  #f : Float,   (*  #f(Float) is easier and makes room for tuples? *)
+  #i : Int,     (*  Yeah, anyway Float is not the type of the label! *)
+  #nan;
 
 type Flags is variant
-  |local,
-  |remote,
-  |gone;
+  #local,
+  #remote,
+  #gone;
 
 export proc main() : Int
-  var u1: Num = |i(4);
+begin
+  var u1: Num = #i(4);
   (* var myf: Float = 5.6; *)
-  var u2: Num = |f(5.5);
-  var u3: Num = |nan;
-  (* var flag1 = Flags|remote; *)
+  var u2: Num = #f(5.5);
+  var u3: Num = #nan;
+  (* var flag1 = Flags#remote; *)
   (* var x: Int = 4; *)
 
   var i: Int = 0;
   while i < 3 loop
   
     if i == 1 then
-      u1 = |f(5.5);
+      u1 = #f(5.5);
     elsif i == 2 then
-      u1 = |nan;
+      u1 = #nan;
     /if
   
     case u1
-      of |nan then 
+      of #nan then 
         printString("nan"); 
-      of |i(i) then
+      of #i(i) then
         printInt(i);
-      of |f(f) then
+      of #f(f) then
         printFloat(f);
         (* printFloat(myf); *)
       (* else
@@ -44,9 +45,9 @@ export proc main() : Int
     i = i + 1;
   /while
 
-  (* var f1 = Flags|remote;
+  (* var f1 = Flags#remote;
   case f1
-  of Flags|local then
+  of Flags#local then
     printString("local");
   else
     printString("not local");

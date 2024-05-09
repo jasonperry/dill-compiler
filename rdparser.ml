@@ -391,6 +391,7 @@ let unop_val tbuf =
     let tloc = parse_tok TILDE tbuf in (OpBitNot, tloc)
   | _ -> failwith "BUG: unop_val called with wrong token type"
 
+
 let rec expr tbuf =
   (* oh wait! record exps don't work with operators. Do I need to
      catch that here? Nah. *)
@@ -437,6 +438,7 @@ let rec expr tbuf =
       let fields = record_loop() in
       let eloc = parse_tok RBRACE tbuf in
       { e=ExpRecord fields; decor=make_location sloc eloc }
+    | VLABEL _ -> variant_exp tbuf
     | _ -> var_or_call_expr tbuf
   in
   let e1 = base_expr () in
@@ -456,6 +458,23 @@ let rec expr tbuf =
     let opers, exprs = List.split tail in
     expr_tree (e1 :: exprs) opers
 
+and variant_exp tbuf =
+  let lbltok = get_tok (VLABEL "") "variant label" tbuf in
+  match (peek tbuf).ttype with
+  | LPAREN ->
+    let _ = parse_tok LPAREN tbuf in
+    let rec varvals_loop () =
+      let e = expr tbuf in
+      match (peek tbuf).ttype with
+      | COMMA -> e :: (varvals_loop ())
+      | _ -> [e]
+    in
+    let varvals = varvals_loop() in
+    let eloc = parse_tok RPAREN tbuf in 
+    { e=ExpVariant(tok_sval lbltok, varvals);
+      decor=make_location lbltok.loc eloc }
+  | _ ->
+    { e=ExpVariant(tok_sval lbltok, []); decor=lbltok.loc }
 
 (** Generate an expression tree based on precedence *)
 and expr_tree elist oplist =
@@ -774,7 +793,7 @@ let voidTypeExpr loc =
     array = false;
     loc = loc
   }
-          
+
 let proc_header tbuf = 
   let vis, sloc = visibility tbuf in 
   let _ = parse_tok PROC tbuf in

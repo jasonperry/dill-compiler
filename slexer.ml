@@ -27,8 +27,9 @@ let ident_lc =
 let qident_lc = [%sedlex.regexp? Opt (ident_lc, "::"), ident_lc]
 let ident_uc =
   [%sedlex.regexp? ('A'..'Z'), Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
-let qident_uc = [%sedlex.regexp? Opt (ident_lc, "::"), ident_uc]
-let ident_sym = [%sedlex.regexp? '#', ident_lc]
+(* Currently parsing :: as a separate token. *)
+(* let qident_uc = [%sedlex.regexp? Opt (ident_lc, "::"), ident_uc] *)
+let vlabel = [%sedlex.regexp? '#', ident_lc]
 let symbol = [%sedlex.regexp? '#', ident_lc]
 let hexbyte = [%sedlex.regexp? "\\x", Rep (hexdigit, 2)]
 (* ASCII printable except ' and \ (for char literals) *)
@@ -113,6 +114,7 @@ let string_of_ttype = function
   | B_LIT c -> "'" ^ Char.escaped c ^ "'"
   | UC_IDENT s -> s
   | LC_IDENT s -> s
+  | VLABEL s -> s
   | t -> TokenMap.find t ttype_strings
 
 (* Useful in parser for error messages *)
@@ -141,6 +143,11 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | iconst -> I_LIT (Int64.of_string (Enc.lexeme buf))
     | hexconst -> I_LIT (Int64.of_string (Enc.lexeme buf))
     | fconst -> F_LIT (Float.of_string (Enc.lexeme buf))
+    | "#true" -> TRUE
+    | "#false" -> FALSE
+    | "#null" -> NULL
+    | vlabel -> VLABEL (Enc.lexeme buf)
+    (* | '#' -> HASH *)
     | '(' -> LPAREN
     | ')' -> RPAREN
     | '{' -> LBRACE
@@ -167,10 +174,6 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "&&" -> AND
     | "||" -> OR
     | '!' -> NOT
-    | "#true" -> TRUE
-    | "#false" -> FALSE
-    | "#null" -> NULL
-    | '#' -> HASH
     | '?' -> QMARK  (* Maybe later: attached to something else. *)
     | '$' -> DOLLAR
     | '=' -> ASSIGN

@@ -286,7 +286,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
   (* typecheck and all make sure they're the same type. *)
   (* return type is array of, or special sequence type to be more general? *) 
 
-  | ExpVariant (_, _, _) ->
+  | ExpVariant (_, _) ->
     check_variant syms tenv ex ~declvar:false thint
 
   | ExpBinop (e1, oper, e2) -> (
@@ -521,7 +521,7 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
 (** check a variant expression (used in both expressions and case matches) *)
 and check_variant syms tenv ex ~declvar thint =
   match ex.e with 
-  | ExpVariant (mname, vname, eopt) -> (
+  | ExpVariant (vname, eopt) -> (
       match thint with
       (* Later we can add better variant type disambiguation. *)
       | None -> Error {loc=ex.decor;
@@ -530,6 +530,7 @@ and check_variant syms tenv ex ~declvar thint =
       | Some ty -> (
           (* 1. the variant type exists *)
           let tname = get_type_classname ty in
+          let mname = get_type_modulename ty in
           let cdata = PairMap.find (mname, tname) tenv in
           let variants = get_type_variants ty in
           (* 2. vname is a variant of it *)
@@ -551,7 +552,7 @@ and check_variant syms tenv ex ~declvar thint =
                   (* Wait, I shouldn't really need to, since all the type info
                      is going in the decor. *)
                   (*Ok {e=ExpVariant (ty.modulename, vname, None); *)
-                  Ok {e=ExpVariant (mname, vname, None);
+                  Ok {e=ExpVariant (vname, None);
                       (* TODO: generate typevars when we have them in the AST *)
                       decor=gen_ttag cdata []} 
               | Some vtype -> (
@@ -569,8 +570,7 @@ and check_variant syms tenv ex ~declvar thint =
                         | Ok echecked ->
                           if subtype_match echecked.decor vtype then
                             Ok {
-                              e=ExpVariant (mname, vname,
-                                            Some echecked);
+                              e=ExpVariant (vname, Some echecked);
                               decor=gen_ttag cdata []
                             }
                           else
@@ -581,7 +581,7 @@ and check_variant syms tenv ex ~declvar thint =
                                     ^ typetag_to_string vtype
                             }
                       else
-                        Ok {e=ExpVariant (mname, vname, None);
+                        Ok {e=ExpVariant (vname, None);
                             decor=gen_ttag cdata []}
 
                     )))))
@@ -952,7 +952,7 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
               (* 1. check the case expression *)
               match cexp.e with 
               (* expression-type-specific stuff starts here. *)
-              | ExpVariant (modname, vntname, eopt) -> (
+              | ExpVariant (vlabel, eopt) -> (
                   (* typecheck as an expression but skip the variable if any *)
                   match check_variant syms tenv cexp ~declvar:true (Some mtype) with
                   | Error err -> Error [err]
@@ -965,27 +965,26 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                       else (
                         (* get type of this specific case's value, if it has one *)
                         let (_, vnttyopt) =
-                          List.find (fun (vn, _) -> vntname = vn)
+                          List.find (fun (vn, _) -> vlabel = vn)
                             (get_type_variants casetype) in
-                        if List.exists ((=) vntname) caseacc then 
-                          errout ("Duplicate variant case " ^ "|" ^ vntname)
+                        if List.exists ((=) vlabel) caseacc then 
+                          errout ("Duplicate variant case " ^ "|" ^ vlabel)
                         else
                           match eopt with (* result.fold? join? bind? *)
                           | None -> 
                             let newcexp =
-                              {e=ExpVariant(modname, vntname, None);
+                              {e=ExpVariant(vlabel, None);
                                decor=matchexp.decor} in
                             let blocksyms = Symtable.new_scope syms in
-                            check_casebody newcexp vntname cbody blocksyms
+                            check_casebody newcexp vlabel cbody blocksyms
                           | Some cvalexp ->
                             match cvalexp.e with
                             | ExpVar ((cvar, []), []) -> (
                                 let vntty = Option.get vnttyopt in
                                 let (newcexp: typetag expr) =
-                                  {e=ExpVariant(
-                                       modname, vntname,
-                                       Some {e=ExpVar((cvar, []), []);
-                                             decor=vntty});
+                                  {e=ExpVariant(vlabel,
+                                                Some {e=ExpVar((cvar, []), []);
+                                                      decor=vntty});
                                    decor=matchexp.decor} in
                                 let blocksyms = Symtable.new_scope syms in
                                 Symtable.addvar blocksyms cvar {
@@ -996,7 +995,7 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                                   addr=None 
                                 };
                                 debug_print (st_node_to_string blocksyms);
-                                check_casebody newcexp vntname cbody blocksyms
+                                check_casebody newcexp vlabel cbody blocksyms
                               )
                             | _ -> errout ("Variant case value expression must "
                                            ^ "be a single variable name")
