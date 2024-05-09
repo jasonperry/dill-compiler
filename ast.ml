@@ -145,7 +145,8 @@ type ('ed, 'sd, 'l) globalstmt = {
    it can stand on its own in an interface file, so I guess it needs
    it. *)
 
-type visibility = Default | Export | Private
+type visibility = Public | Private
+type typevis = Open | Opaque | Private
 
 type ('sd, 'l) procdecl = {
   name: string;
@@ -192,6 +193,7 @@ type 'l kindInfo =
   | Newtype of 'l typeExpr
   | Hidden (* for externally-defined opaque types *)
 
+
 (** struct for definition of any type. *)
 type ('sd, 'l) typedef = {
   (* module name is stored in the tenv. *)
@@ -199,7 +201,7 @@ type ('sd, 'l) typedef = {
   rectype: bool;
   typeparams: string list;
   kindinfo: 'l kindInfo;
-  opaque: bool;
+  visibility: typevis;
   decor: 'sd
 }
 
@@ -384,7 +386,7 @@ and case_to_string (matchexp, caseblocks, elseopt) =
 
 let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
   (match pdecl.visibility with
-   | Default -> "" | Export -> "export " | Private -> " private")
+   | Public -> "" | Private -> "private ")
   ^ "proc "
   ^ (if (List.length pdecl.typeparams) > 0
      then "(" ^ String.concat "," pdecl.typeparams ^ ") " else "")

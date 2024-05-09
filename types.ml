@@ -23,7 +23,7 @@ and classData = {
   classname: string;
   in_module: string; (* for extensions, classes need to "know" the original
                       * module where they were defined. *)
-  opaque: bool;
+  opaque: bool;   (* other visibility options don't affect representation *)
   muttype: bool;  (* true if any field or variant is mutable *)
   rectype: bool;
   (* We save the explicit params because they're linked to the field

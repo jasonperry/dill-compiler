@@ -22,7 +22,7 @@
 %token PROC ENDPROC RETURN NOP
 %token MODULE ENDMODULE MODSPEC ENDMODSPEC
 %token IMPORT AS OPEN 
-%token PRIVATE EXPORT
+%token PRIVATE (* EXPORT *)
 %token TYPE ENDTYPE OPAQUE REC STRUCT VARIANT MUT
 %token EOF
 
@@ -158,7 +158,7 @@ typedeclBody:
        kindinfo=Hidden;
        typeparams=[];
        rectype=false;
-       opaque=true;
+       visibility=Opaque;
        decor=$loc}
     }
   | IS rt=option(REC) tdi=typedefInfo SEMI
@@ -174,13 +174,13 @@ typedeclBody:
 		       | _ -> true)
 	 );
        kindinfo=tdi;
-       opaque=false;
+       visibility=Open;  (* not relevant for newtypes? *)
        decor=$loc}
     }
 
 (* Type definition in a module, must have a body *)
 typedef:
-  | op=option(OPAQUE) TYPE tname=UC_IDENT
+  | op=option(typevis) TYPE tname=UC_IDENT
     tps=option(delimited(LPAREN, separated_nonempty_list(COMMA, LC_IDENT), RPAREN))
     IS
     rt=option(REC) tdi=typedefInfo (* ENDTYPE *)
@@ -198,10 +198,16 @@ typedef:
 		   | Some tplist -> tplist
 		   | None -> []);
        kindinfo=tdi;
-       opaque=Option.is_some(op);
+       visibility=(match op with
+		   | Some vis -> vis
+		   | None -> Open) ;
        decor=$loc} }
-  | option(OPAQUE) TYPE error
+  | option(typevis) TYPE error
     { raise (SyntaxError ($loc($3), "Invalid type identifier")) }
+
+typevis:
+  | OPAQUE { Opaque }
+  | PRIVATE { Private }
 
 typedefInfo:
   | STRUCT fl=fieldList SEMI
@@ -255,7 +261,7 @@ procHeader:
 		   | Some tvList -> tvList
 		  );
        params=pl;
-       visibility=( match vis with | Some v -> v | None -> Default );
+       visibility=( match vis with | Some v -> v | None -> Public );
        rettype=(
 	 match rt with
 	 | None ->
@@ -288,8 +294,8 @@ paramInfo:
     { false, v, t } (* (string * typeExpr) for procdecl.params *)
 
 visibility:
-  | EXPORT { Export }
-  | PRIVATE { Private }
+  (* | EXPORT { Export } *)
+  | PRIVATE { Private : visibility }
 
 stmtSeq:
   | sl = list(stmt)

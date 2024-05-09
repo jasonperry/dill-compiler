@@ -110,7 +110,7 @@ rule token = parse  (* funny that it's called parse *)
   | "import"  { IMPORT }
   | "as"      { AS }
   | "open"    { OPEN }
-  | "export"  { EXPORT }
+  (* | "export"  { EXPORT } *)
   | "private" { PRIVATE }
   | '.'       { DOT }
   | "type"    { TYPE }

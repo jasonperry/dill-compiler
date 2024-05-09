@@ -64,7 +64,7 @@ type ttype =
   | IS
   | PROC | ENDPROC | RETURN
   | MODULE | ENDMODULE | MODSPEC | ENDMODSPEC
-  | IMPORT | AS | OPEN | EXPORT | PRIVATE
+  | IMPORT | AS | OPEN (* | EXPORT *) | PRIVATE
   | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT 
   | EOF
 
@@ -93,13 +93,14 @@ let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (ASSIGN, "="); (NULLASSIGN, "?="); (ARROW, "->"); (DARROW, "=>");
     (DOT, "."); (SEMI, ";"); (DCOLON, "::"); (COMMA, ","); (COLON, ":");
     (MODULE, "module"); (ENDMODULE, "/module"); (IMPORT, "import");
-    (OPEN, "open"); (AS, "as"); (EXPORT, "export"); (PRIVATE, "private");
+    (OPEN, "open"); (AS, "as"); (PRIVATE, "private");
     (MODSPEC, "modspec"); (ENDMODSPEC, "/modspec");
     (PROC, "proc"); (ENDPROC, "/proc"); (RETURN, "return");
     (VAR, "var"); (REF, "ref"); (NOP, "nop"); (IF, "if"); (THEN, "then");
     (ELSIF, "elsif"); (ELSE, "else"); (ENDIF, "/if"); (WHILE, "while");
     (LOOP, "loop"); (ENDWHILE, "/while"); (CASE, "case"); (OF, "of");
-    (ENDCASE, "/case"); (TYPE, "type"); (MUT, "mut"); (REC, "rec");
+    (ENDCASE, "/case");
+    (OPAQUE, "opaque"); (TYPE, "type"); (MUT, "mut"); (REC, "rec");
     (RECORD, "record"); (VARIANT, "variant");
     (TRUE, "#true"); (FALSE, "#false"); (NULL, "#null")
   ]
@@ -114,7 +115,7 @@ let string_of_ttype = function
   | LC_IDENT s -> s
   | t -> TokenMap.find t ttype_strings
 
-(* will we need this? *)
+(* Useful in parser for error messages *)
 let string_of_token token = string_of_ttype token.ttype
 
 (* do I have to write my own to_string for the buf? *)
@@ -207,7 +208,7 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "import" -> IMPORT
     | "as" -> AS
     | "open" -> OPEN
-    | "export" -> EXPORT
+    (* | "export" -> EXPORT *)
     | "private" -> PRIVATE
     | "type" -> TYPE
     | "/type" -> ENDTYPE

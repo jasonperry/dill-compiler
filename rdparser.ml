@@ -204,10 +204,17 @@ let qname descrip tbuf =
   | _ ->
     ("", tok_sval name1, name1.loc)
 
-(* possibly qualified? *)
 let typename tbuf =
   let tok = get_tok (UC_IDENT "") "class name" tbuf in
   (tok_sval tok, tok.loc)
+
+(* finish me! or is it already done in typeexps. Anyway need generics *)
+(* let qtypename tbuf = *)
+(*   match (peek tbuf).ttype with *)
+(*   | LC_IDENT _ -> (\* actually could be typevar *\)  *)
+(*     let mname = get_tok (LC_IDENT "") ("module name ") tbuf in *)
+(*     let _ = parse_tok DCOLON tbuf in *)
+(*     let tname = get_tok (UC_IDENT "") ("type name ") tbuf in *)
 
 let iconst tbuf =
   let tok = get_tok (I_LIT Int64.zero) "integer constant" tbuf in
@@ -301,6 +308,60 @@ let typeExpr tbuf =
       }
   | _ -> raise (expect_error "type expression" tbuf)
 
+let type_defn tbuf =
+  (* oh, have to look for "rec" too *)
+  let (vis, sloc) = match (peek tbuf).ttype with
+    | OPAQUE ->
+      let sloc = parse_tok OPAQUE tbuf in
+      let _ = parse_tok TYPE tbuf in
+      (Opaque, sloc)
+    | PRIVATE ->
+      let sloc = parse_tok PRIVATE tbuf in
+      let _ = parse_tok TYPE tbuf in
+      (Private, sloc)
+    | _ ->
+      let sloc = parse_tok TYPE tbuf in
+      (Open, sloc)
+  in
+  (* todo: type variables for generics *)
+  let tname, _ = typename tbuf in
+  let _ = parse_tok IS tbuf in
+  match (peek tbuf).ttype with
+  | RECORD ->
+    let _ = parse_tok RECORD tbuf in
+    let rec fields_loop () =
+      let fpriv = match (peek tbuf).ttype with
+        | PRIVATE -> ignore (parse_tok PRIVATE tbuf); true
+        | _ -> false
+      in
+      let fmut = match (peek tbuf).ttype with
+        | MUT -> ignore (parse_tok MUT tbuf); true
+        | _ -> false
+      in
+      let fname, floc = uqname "field name" tbuf in
+      let _ = parse_tok COLON tbuf in
+      let ftype = typeExpr tbuf in
+      let finfo = { fieldname=fname; priv=fpriv; mut=fmut; fieldtype=ftype;
+                    decor=make_location floc ftype.loc} in
+      match (peek tbuf).ttype with
+      | COMMA -> finfo :: (fields_loop ())
+      | _ -> [finfo]
+    in
+    let fields = fields_loop() in
+    let eloc = parse_tok SEMI tbuf in
+    { typename=tname;
+      rectype=false;
+      typeparams=[];
+      kindinfo = Fields fields;
+      visibility = vis;
+      decor = make_location sloc eloc
+    }
+  | VARIANT -> failwith "in progress"
+  | UC_IDENT _ -> failwith "in progress" (* newtype *)
+  | _ -> raise (parse_error ("expected type or type kind specifier, found " ^
+                string_of_token (peek tbuf)) tbuf)
+             
+  
 (** Parse a token for a literal and extract its value for an ExpLiteral. *)
 let literal_val tbuf =
   match (peek tbuf).ttype with
@@ -681,10 +742,9 @@ let import tbuf =
 
 let visibility tbuf =
   let stok = peek tbuf in
-  let vis = match stok.ttype with
-    | EXPORT -> let _ = parse_tok EXPORT tbuf in Export
+  let vis: visibility = match stok.ttype with
     | PRIVATE -> let _ = parse_tok PRIVATE tbuf in Private 
-    | _ -> Default
+    | _ -> Public
   in 
   (vis, stok.loc)
 
@@ -756,6 +816,14 @@ let module_body mname tbuf =
       | _ -> []
     in imploop ()
   in
+  let typedefs =
+    let rec typedefs_loop () =
+      if (peek tbuf).ttype = TYPE || (peek2 tbuf).ttype = TYPE then
+        let ty = type_defn tbuf in
+        ty :: (typedefs_loop ())
+      else []
+    in typedefs_loop ()
+  in 
   let globals =
     let rec globals_loop () =
       if (peek tbuf).ttype = VAR || (peek2 tbuf).ttype = VAR then
@@ -773,17 +841,10 @@ let module_body mname tbuf =
         let p = proc tbuf in p :: (procloop ())
       else []
     in procloop ()
-  (* "export" can be on type, global var, or proc *)
-   (* loop to accumulate both types and global vars?
-           or strictly types first?  *)
-  (* need lookahead 2 for these? *)
-  (* | EXPORT -> print_string "Exporting a proc prolly, aight"
-  | PRIVATE -> print_string "Keepin secrets eh"
-     | PROC -> proc tbuf *)
   in
   { name = mname;
     imports = imports;
-    typedefs = [];
+    typedefs = typedefs;
     globals = globals;
     procs = procs;
   }

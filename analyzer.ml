@@ -1199,8 +1199,8 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl)
   (* 0. Initial correctness checks *)
   if StrSet.mem pdecl.name reserved_procnames then
     errout ("Reserved name " ^ pdecl.name ^ " cannot be a procedure name")
-  else if modname = "" && pdecl.visibility = Export then
-    errout ("\"export\" qualifier is redundant for top-level module")
+  else if modname = "" && pdecl.visibility = Private then
+    errout ("top-level procedures cannot be private")
   else
     (* 1. check procedure name for redeclaration. Is scope check needed? *)
     match Symtable.findproc_opt pdecl.name syms with
@@ -1275,12 +1275,10 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl)
            | Error msg -> Error [{loc=pdecl.decor; value=msg}]
            | Ok rttag -> (
                (* Create procedure symtable entry.
-                  * is this where I do private, by just not making it?
-              * Don't add it to module symtable node here; caller does it. *)
+                * is this where I do private, by just not making it?
+                * Don't add it to module symtable node here; caller does it. *)
                let procentry =
-                 (* may get rid of export later. For now, handy for testing *)
-                 {procname=(if modname = "" || pdecl.visibility = Export
-                            then pdecl.name
+                 {procname=(if modname = "" then pdecl.name
                             else modname ^ "::" ^ pdecl.name);
                   rettype=rttag; fparams=paramentries} in
              (* create new inner scope under the procedure, and add args *)
@@ -1449,7 +1447,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                (* construct the classData for the entire struct type. *)
                classname = tdef.typename;
                in_module = modname;
-               opaque = tdef.opaque;
+               opaque = tdef.visibility = Opaque;
                muttype = List.exists (fun (finfo: fieldInfo) ->
                    (* If either the field itself is mutable or its type is. *)
                    finfo.mut || is_mutable_type finfo.fieldtype) flist;
@@ -1514,7 +1512,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
           Ok {
               classname = tdef.typename;
               in_module = modname;
-              opaque = tdef.opaque;
+              opaque = tdef.visibility = Opaque;
               (* Should variant types be immutable always? Need to think. *)
               muttype = List.exists
                   (fun st -> Option.is_some (snd st)
@@ -1844,7 +1842,7 @@ let create_module_spec (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
     (* change opaque to hidden typedefs. *)
     typedefs =
        List.map (fun tdef ->
-           if tdef.opaque then
+           if tdef.visibility = Opaque then
              { tdef with kindinfo = Hidden }
            else tdef
          ) the_mod.typedefs;
