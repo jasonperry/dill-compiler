@@ -5,11 +5,11 @@ proc main()
 begin
 
 var x: Int = 100;
-var y: Bool = False;
+var y: Bool = #false;
 
 if (x > 30) then
-  y = True;
-endif
+  y = #true;
+/if
 
 if (x < 50 && y) then
   y = !y;
@@ -17,8 +17,8 @@ if (x < 50 && y) then
 elsif !(x == 2) then 
   x = x + 3;
   x = x % 23;  (* let's have a (* nested comment test *) too. *)
-endif
+/if
 
 printInt(x);
 
-end main
+/proc

@@ -17,10 +17,10 @@ let newline = [%sedlex.regexp? Opt '\r', '\n']
 let whitespace = [%sedlex.regexp? (' ' | '\t')]
 let digit = [%sedlex.regexp? '0'..'9']
 let hexdigit = [%sedlex.regexp? ('0'..'9' | 'a'..'f' | 'A'..'F')]
-let iconst = [%sedlex.regexp? Opt '-', Plus digit]
+let iconst = [%sedlex.regexp? Plus digit]
 let hexconst = [%sedlex.regexp? "0x", Plus hexdigit]
 let expon = [%sedlex.regexp? Opt ('e' | 'E'), Opt ('-' | '+'), Plus digit] 
-let fconst = [%sedlex.regexp? Opt '-', Plus digit, '.', Star digit, Opt expon]
+let fconst = [%sedlex.regexp? Plus digit, '.', Star digit, Opt expon]
 let ident_lc =
   [%sedlex.regexp? ('a'..'z' | '_'),
                  Star ('a'..'z' | 'A'..'Z' | '0'..'9' | '_')]
@@ -64,7 +64,7 @@ type ttype =
   | CASE | OF | ENDCASE
   | IS
   | PROC | ENDPROC | RETURN
-  | MODULE | ENDMODULE | MODSPEC | ENDMODSPEC
+  | MODULE | BEGIN | ENDMODULE | MODSPEC | ENDMODSPEC
   | IMPORT | AS | OPEN (* | EXPORT *) | PRIVATE
   | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT 
   | EOF
@@ -93,8 +93,8 @@ let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (AND, "&&"); (OR, "||"); (HASH, "#"); (QMARK, "?"); (DOLLAR, "$");
     (ASSIGN, "="); (NULLASSIGN, "?="); (ARROW, "->"); (DARROW, "=>");
     (DOT, "."); (SEMI, ";"); (DCOLON, "::"); (COMMA, ","); (COLON, ":");
-    (MODULE, "module"); (ENDMODULE, "/module"); (IMPORT, "import");
-    (OPEN, "open"); (AS, "as"); (PRIVATE, "private");
+    (MODULE, "module"); (BEGIN, "begin"); (ENDMODULE, "/module");
+    (IMPORT, "import"); (OPEN, "open"); (AS, "as"); (PRIVATE, "private");
     (MODSPEC, "modspec"); (ENDMODSPEC, "/modspec");
     (PROC, "proc"); (ENDPROC, "/proc"); (RETURN, "return");
     (VAR, "var"); (REF, "ref"); (NOP, "nop"); (IF, "if"); (THEN, "then");
@@ -189,7 +189,7 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     (* | "ref^" -> IMMREF *)
     | "ref" -> REF
     | "nop" -> NOP
-     | "if" -> IF
+    | "if" -> IF
     | "then" -> THEN
     | "elsif" -> ELSIF
     | "else" -> ELSE
@@ -205,6 +205,7 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "return" -> RETURN
     | "is" -> IS
     | "module" -> MODULE
+    | "begin" -> BEGIN
     | "/module" -> ENDMODULE
     | "modspec" -> MODSPEC
     | "/modspec" -> ENDMODSPEC (* Should put these in separate parser? *)

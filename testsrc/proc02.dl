@@ -1,16 +1,19 @@
+(* calling function in a separate module *)
 module fntriple begin
-
-open stdio;
    
-proc triple(x: Int) => Int
+proc triple(x: Int) -> Int
 begin
   var y = 3;
   return x * y;
-end triple
+/proc
 
-export proc main()
+/module
+
+(* separate top-level code *)
+import fntriple;
+open stdio;
+
+proc main()
 begin
-  printInt(triple(14));
-end main
-
-end fntriple
+  printInt(fntriple::triple(14));
+/proc

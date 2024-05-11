@@ -3,11 +3,11 @@
 proc main()
 begin
    var x: Int = 100;
-   var y: Bool = false;
+   var y: Bool = #false;
 
    if (x > 30) then
-      y = true;
-   endif
+      y = #true;
+   /if
 
    if (x < 50 && y) then
       y = !y;
@@ -18,5 +18,5 @@ begin
       x = x - 27;
    elsif (x < 22222) then
       y = x < y;         (* y isn't int *)
-   endif
-end main
+   /if
+/proc

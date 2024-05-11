@@ -2,13 +2,13 @@
 
 open stdio;
 
-proc square(x: Int) => Int
+proc square(x: Int) -> Int
 begin
   return x * x;
-end square
+/proc
 
 proc main()
 begin
   var x = square(9);
   printInt(x);
-end main
+/proc

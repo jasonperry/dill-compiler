@@ -1,5 +1,5 @@
 (* Immutable type to import into other modules *)
-module complex is
+module complex begin
 
 
 type Complex is record

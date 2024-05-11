@@ -393,7 +393,7 @@ let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
         List.map (fun (mut, varname, vartype) ->
             (if mut then "#" else "")
             ^ varname ^ ": " ^ typeExpr_to_string vartype) pdecl.params)
-  ^ ") => " ^ typeExpr_to_string pdecl.rettype
+  ^ ") -> " ^ typeExpr_to_string pdecl.rettype
 
 let proc_to_string (proc: ('ed, 'sd, 'tt) proc) =
   (* a little ugly, but maybe I will use the pdecl later. *)

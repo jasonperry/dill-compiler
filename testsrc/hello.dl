@@ -1,6 +1,8 @@
 (* hello from the Dill language *)
 import stdio;
 
-proc main()
+proc main() -> Int
+begin
    stdio::printString("Hello World.\n");
+   return 0;
 /proc

@@ -2,16 +2,16 @@ modspec stdio is
 
 type File; ** opaque type
 
-proc initIntArray(length: Int, value: Int) : Int[];
-proc printInt(n: Int) : Void;
-proc printFloat(n: Float) : Void;
-proc printBytes(ba: Byte[]) : Void;
-proc printString(s: String) : Void;
-proc getLineStdin(n: Int) : String?;
+proc initIntArray(length: Int, value: Int) -> Int[];
+proc printInt(n: Int) -> Void;
+proc printFloat(n: Float) -> Void;
+proc printBytes(ba: Byte[]) -> Void;
+proc printString(s: String) -> Void;
+proc getLineStdin(n: Int) -> String?;
 
-proc openFile(filename: String, mode: String) : stdio::File;
-proc closeFile($file: stdio::File) : Void;
-proc readFile($file: stdio::File) : Byte[];
+proc openFile(filename: String, mode: String) -> stdio::File;
+proc closeFile($file: stdio::File) -> Void;
+proc readFile($file: stdio::File) -> Byte[];
 
 /modspec
 (* end stdio *)

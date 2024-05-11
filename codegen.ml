@@ -740,7 +740,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
       build_load recaddr "recordval" builder
 
 
-  | ExpVariant (variant, eopt) ->
+  | ExpVariant (variant, etup) ->
     let tyname = get_type_classname ex.decor in
     let tymod = get_type_modulename ex.decor in
     debug_print ("** Generating variant expression code of type " ^ tyname);
@@ -774,9 +774,9 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
     let tagaddr = build_struct_gep structaddr 0 "tag" builder in
     ignore (build_store (const_int varianttag_type tagval) tagaddr builder);
     (* 3. generate code for expr (if exists) and store in the value slot *)
-    (match eopt with
-     | None -> ()
-     | Some e ->
+    (match etup with
+     | [] -> ()   
+     | e :: _ ->  (* FIXME: handle the full tuple *)
        (* Think we need to hint this to the variant subtype 
         * (for instance, so "null" will be promoted *)
        let expval =
@@ -1261,7 +1261,7 @@ let rec gen_stmt the_module builder lltypes
       position_at_end casebody_bb builder;
       (* If variant holds a value, create alloca and load value *)
       (match caseexp.e with
-       | ExpVariant (vname, Some valvar) -> (
+       | ExpVariant (vname, valvar::_) -> (  (* FIXME: handle rest *)
          match valvar.e with
          | ExpVar ((varname, _), _) -> 
             let fieldmap = Option.get fieldmap in

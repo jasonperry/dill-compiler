@@ -321,7 +321,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
                   if ty1 <> bool_ttag then
                     Error {
                       loc=ex.decor;
-                      value="Operations && and || only valid for type bool"
+                      value="Operations && and || only valid for type Bool"
                     }
                   else
                     Ok {e=ExpBinop (e1, oper, e2); decor=bool_ttag}
@@ -342,7 +342,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
           | OpNot ->
             if ty <> bool_ttag then
               Error {loc=ex.decor;
-                     value="Operation ! only valid for type bool"}
+                     value="Operation ! only valid for type Bool"}
             else
               Ok {e=ExpUnop (oper, exp); decor=ty}
           | _ ->
@@ -521,12 +521,12 @@ and check_recExpr syms tenv (ttag: typetag) (rexp: locinfo expr) =
 (** check a variant expression (used in both expressions and case matches) *)
 and check_variant syms tenv ex ~declvar thint =
   match ex.e with 
-  | ExpVariant (vname, eopt) -> (
+  | ExpVariant (vname, etup) -> (
       match thint with
       (* Later we can add better variant type disambiguation. *)
       | None -> Error {loc=ex.decor;
-                       value=("Cannot determine type of variant expression " ^
-                              exp_to_string ex)}
+                       value=("Cannot determine type of variant expression "
+                              ^ exp_to_string ex)}
       | Some ty -> (
           (* 1. the variant type exists *)
           let tname = get_type_classname ty in
@@ -543,48 +543,48 @@ and check_variant syms tenv ex ~declvar thint =
               match tyopt with
               | None -> 
                 (* 3. check if the variant takes a value or not *)
-                if Option.is_some eopt then
-                  Error {loc=(Option.get eopt).decor;
-                         value="Variant |" ^ vname
-                               ^ " does not hold a value"}
+                if etup <> [] then
+                  Error {loc=(List.hd etup).decor;
+                         value="Variant " ^ vname ^ " does not hold values"}
                 else
                   (* NOTE: replacing with the type's actual module name here. *)
                   (* Wait, I shouldn't really need to, since all the type info
                      is going in the decor. *)
                   (*Ok {e=ExpVariant (ty.modulename, vname, None); *)
-                  Ok {e=ExpVariant (vname, None);
+                  Ok {e=ExpVariant (vname, []);
                       (* TODO: generate typevars when we have them in the AST *)
                       decor=gen_ttag cdata []} 
               | Some vtype -> (
-                  match eopt with
-                  | None -> 
+                  if etup = [] then 
                     Error {loc=ex.decor;
-                           value="Variant " ^ tname ^ "|" ^ vname
-                                 ^ " requires a value"}
-                  | Some e2 -> (
+                           value="Variant " ^ vname ^ " requires a value"}
+                  else (
                       (* 4. typecheck value (if it's not a declaration in a case) *)
-                      if not declvar then 
-                        match check_expr syms tenv e2 with 
-                        | Error err -> Error err
-                        (* 5. Check that the value type and variant type match *)
-                        | Ok echecked ->
-                          if subtype_match echecked.decor vtype then
-                            Ok {
-                              e=ExpVariant (vname, Some echecked);
-                              decor=gen_ttag cdata []
-                            }
-                          else
-                            Error {
-                              loc=e2.decor;
-                              value="Value type " ^ typetag_to_string echecked.decor
-                                    ^ " Does not match variant type "
+                    if not declvar then
+                      (* FIXME: map over all of them *)
+                      let e2 = List.hd etup in 
+                      match check_expr syms tenv e2 with 
+                      | Error err -> Error err
+                      (* 5. Check that the value type and variant type match *)
+                      | Ok echecked ->
+                        if subtype_match echecked.decor vtype then
+                          Ok {
+                            e=ExpVariant (vname, [echecked]);
+                            decor=gen_ttag cdata []
+                          }
+                        else
+                          Error {
+                            loc=e2.decor;
+                            value="Value type "
+                                  ^ typetag_to_string echecked.decor
+                                  ^ " Does not match variant type "
                                     ^ typetag_to_string vtype
-                            }
-                      else
-                        Ok {e=ExpVariant (vname, None);
-                            decor=gen_ttag cdata []}
-
-                    )))))
+                          }
+                    else
+                      Ok {e=ExpVariant (vname, []);
+                          decor=gen_ttag cdata []}
+                        
+                  )))))
   | _ -> failwith "check_variant called without variant expr"
 
 (** lvalue checking code for assignment contexts. Also removes from
@@ -952,7 +952,7 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
               (* 1. check the case expression *)
               match cexp.e with 
               (* expression-type-specific stuff starts here. *)
-              | ExpVariant (vlabel, eopt) -> (
+              | ExpVariant (vlabel, etup) -> (
                   (* typecheck as an expression but skip the variable if any *)
                   match check_variant syms tenv cexp ~declvar:true (Some mtype) with
                   | Error err -> Error [err]
@@ -970,21 +970,22 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                         if List.exists ((=) vlabel) caseacc then 
                           errout ("Duplicate variant case " ^ "|" ^ vlabel)
                         else
-                          match eopt with (* result.fold? join? bind? *)
-                          | None -> 
+                          if etup = [] then
                             let newcexp =
-                              {e=ExpVariant(vlabel, None);
+                              {e=ExpVariant(vlabel, []);
                                decor=matchexp.decor} in
                             let blocksyms = Symtable.new_scope syms in
                             check_casebody newcexp vlabel cbody blocksyms
-                          | Some cvalexp ->
+                          else
+                            (* FIXME: stopgap *)
+                            let cvalexp = List.hd etup in
                             match cvalexp.e with
                             | ExpVar ((cvar, []), []) -> (
                                 let vntty = Option.get vnttyopt in
                                 let (newcexp: typetag expr) =
                                   {e=ExpVariant(vlabel,
-                                                Some {e=ExpVar((cvar, []), []);
-                                                      decor=vntty});
+                                                [{e=ExpVar((cvar, []), []);
+                                                  decor=vntty}]);
                                    decor=matchexp.decor} in
                                 let blocksyms = Symtable.new_scope syms in
                                 Symtable.addvar blocksyms cvar {

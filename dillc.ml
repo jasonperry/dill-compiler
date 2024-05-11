@@ -121,7 +121,7 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo, 'tt) dillmodule) =
        print_string (Symtable1.st_node_to_string topsyms);
      Ok (typed_mod, mod_tenv, topsyms)
 
-
+(** Do codegen for a single analyzed module and also generate spec. *)
 let codegen (config: dillc_config) tenv syms layout typedmod =
   (* Unused value here, just to pull in the code. *)
   let _ = if config.qbe_codegen then
@@ -234,38 +234,49 @@ let () =
    * modspecs that are loaded. *)
   let process_sourcefile ispecs srcfilename =
     let infile = open_in srcfilename in
-    let parsedmod = parse_sourcefile infile srcfilename in
+    let parsedmods = parse_sourcefile infile srcfilename in
     if cconfig.parse_only then (
-      print_string (module_to_string parsedmod);
+      List.iter (fun pm -> print_string (module_to_string pm)) parsedmods;
       ispecs (* import specifications carried through *)
     )
     else (
-      match analysis cconfig ispecs parsedmod with
-      | Error errs -> 
-         prerr_string (format_errors srcfilename errs);
-         exit 1
-      (* Here is where I may want to generate a new spec from the 
-         module that was just analyzed. *)
-      | Ok (typedmod, tenv, syms(*, new_ispecs? *)) -> (
-        if not cconfig.typecheck_only then (
-          debug_print "* codegen stage reached";
-          let open Llvm_target in
-          let machine = gen_target_machine () in
-          let layout = TargetMachine.data_layout machine in
-          let modcode, header = codegen cconfig tenv syms layout typedmod in
-          (* should we set this before codegen? *)
-          Llvm.set_target_triple (TargetMachine.triple machine) modcode;
-          (* print_string (st_node_to_string topsyms); *)
-          if parsedmod.name <> "" then 
-            write_header cconfig.source_dir header;
-          if cconfig.emit_llvm then 
-            write_module_llvm srcfilename modcode
-          else 
-            write_module_native srcfilename modcode cconfig machine
-        )
-      ); ispecs
+      let open Llvm_target in
+      let machine = gen_target_machine () in
+      let layout = TargetMachine.data_layout machine in
+      let target_triple = TargetMachine.triple machine in
+      (* Can compile multiple modules from one source file. *)
+      let rec modules_loop ispecs pmods =
+        match pmods with
+        | [] -> ispecs
+        | parsedmod :: rest -> (
+            (* parsedmods |> List.iter (fun parsedmod -> *)
+            match analysis cconfig ispecs parsedmod with
+            | Error errs -> 
+              prerr_string (format_errors srcfilename errs);
+              exit 1
+            (* Here is where I may want to generate a new spec from the 
+               module that was just analyzed. *)
+            | Ok (typedmod, tenv, syms(*, new_specs? *)) -> (
+                if not cconfig.typecheck_only then (
+                  debug_print "* codegen stage reached";
+                  let modcode, spec =
+                    codegen cconfig tenv syms layout typedmod in
+                  (* print_string (st_node_to_string topsyms); *)
+                  (* TODO: add spec to ispecs here. *)
+                  if parsedmod.name <> "" then 
+                    write_header cconfig.source_dir spec;
+                  if not cconfig.typecheck_only then (
+                    if cconfig.emit_llvm then 
+                      write_module_llvm srcfilename modcode
+                    else
+                      (* should we set this before codegen? *)
+                      Llvm.set_target_triple target_triple modcode;
+                    write_module_native srcfilename modcode cconfig machine
+                  ))));
+          modules_loop ispecs rest
+      in modules_loop ispecs parsedmods
     )
   in
-  (* We accumulate module headers for efficiency, to avoid reading the same 
-   * one multiple times. *)
+  (* We will eventually accumulate module headers for efficiency, to
+     avoid reading the same one multiple times. *)
   ignore (List.fold_left process_sourcefile StrMap.empty srcfiles)

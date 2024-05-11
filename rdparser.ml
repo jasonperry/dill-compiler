@@ -127,7 +127,7 @@ let parse_error msg tbuf =
 (** Helper for "expected this, got that" error messages. *)
 let expect_error estr tbuf =
   SyntaxError {
-    msg = "Expected " ^ estr ^ ", found \"" ^ last_lexeme tbuf ^ "\"";
+    msg = "Expected \"" ^ estr ^ "\", found \"" ^ last_lexeme tbuf ^ "\"";
     loc = last_loc tbuf
   }
 
@@ -803,8 +803,8 @@ let proc_header tbuf =
   let (params, _) = param_list tbuf in 
   let eloc = parse_tok RPAREN tbuf in
   let rettype = match (peek tbuf).ttype with
-    | COLON ->
-      let _ = parse_tok COLON tbuf in
+    | ARROW ->
+      let _ = parse_tok ARROW tbuf in
       typeExpr tbuf
     | _ -> voidTypeExpr eloc
   in 
@@ -817,8 +817,8 @@ let proc_header tbuf =
   }
 
 let proc tbuf =
-  print_string "* proc...\n";
   let decl = proc_header tbuf in
+  let _ = parse_tok BEGIN tbuf in
   let stmts = stmt_seq tbuf in
   let eloc = parse_tok ENDPROC tbuf in
   { decl=decl; body=stmts; decor=make_location decl.decor eloc }
@@ -826,7 +826,6 @@ let proc tbuf =
 let module_body mname tbuf =
   (* I can make imports come first, yay. *)
   let imports =
-    print_string "* imports...\n";
     let rec imploop () =
       match (peek tbuf).ttype with
       | IMPORT | OPEN ->
@@ -875,7 +874,7 @@ let dillsource tbuf =
   | MODULE ->
     let _ (* spos *) = parse_tok MODULE tbuf in
     let (mname, _) = uqname "module name" tbuf in
-    (* let _ = parse_tok IS tbuf in *)
+    let _ = parse_tok BEGIN tbuf in 
     let the_module = module_body mname tbuf in
     let _ (* epos *) = parse_tok ENDMODULE tbuf in
     [the_module]

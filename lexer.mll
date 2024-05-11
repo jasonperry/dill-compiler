@@ -91,8 +91,8 @@ rule token = parse  (* funny that it's called parse *)
   | "else"  { ELSE }
   | "/if" { ENDIF }
   | "is"    { IS } 
-  (* | "begin" { BEGIN }
-     | "end"   { END } *)
+  | "begin" { BEGIN }
+  (*  | "end"   { END } *)
   | "while" { WHILE }
   | "loop"  { LOOP }
   | "/while" { ENDWHILE }
