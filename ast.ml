@@ -279,7 +279,6 @@ and typedef_to_string tdef =
 
 
 
-
 (** Doesn't print out the full source yet. Not used in modspecs? *)
 let rec exp_to_string (e: 'a expr) =
   match e.e with

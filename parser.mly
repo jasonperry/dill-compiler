@@ -186,7 +186,7 @@ typedef:
   | op=option(typevis) TYPE tname=UC_IDENT
     tps=option(delimited(LPAREN, separated_nonempty_list(COMMA, LC_IDENT), RPAREN))
     IS
-    rt=option(REC) tdi=typedefInfo (* ENDTYPE *)
+    rt=option(REC) tdi=typedefInfo SEMI(* ENDTYPE *)
     { {typename=tname;
        rectype=(
 	 match rt with
@@ -213,11 +213,11 @@ typevis:
   | PRIVATE { Private }
 
 typedefInfo:
-  | STRUCT fl=fieldList SEMI
+  | STRUCT fl=fieldList
     { Fields fl }
-  | VARIANT vl=variantList SEMI
+  | VARIANT vl=variantList
     { Variants vl }
-  | ty=typeExp SEMI
+  | ty=typeExp
     { Newtype ty }
 
 fieldList:
