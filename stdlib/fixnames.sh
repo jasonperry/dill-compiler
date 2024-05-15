@@ -17,4 +17,8 @@ fi
 
 # cat dill-stdio.ll | sed 's/\(define dso_local .* @\)\([a-zA-z0-9_]\+\)\((.*\)$/\1"stdio::\2"\3/' > stdio-fix.ll
 
-sed "s/\(define dso_local .* @\)\([a-zA-Z0-9_]\+\)\((.*\)\$/\1\"$libname::\2\"\3/" dill-$libname.ll > $libname-fix.ll
+# for some reason this doesn't work anymore, doesn't match.
+# sed "s/\(define dso_local .* @\)\([a-zA-Z0-9_]+\)(\(.*\)\$/\1\"$libname::\2\"\3/" dill-$libname.ll > $libname-fix.ll
+
+# removing the end-of-line expression seemed to fix it.
+sed "s/\(define dso_local .* @\)\([a-zA-Z0-9_]\+\)(/\1\"$libname::\2\"(/" dill-$libname.ll > $libname-fix.ll
