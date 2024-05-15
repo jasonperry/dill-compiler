@@ -1551,11 +1551,12 @@ let gen_proc the_module builder lltypes proc =
 
 
 (** Generate LLVM code for an analyzed module. *)
-let gen_module tenv topsyms layout
+let gen_module tenv topsyms llmod
     (modtree: (typetag, 'a st_node, _) dillmodule) =
-  let the_module = create_module context (modtree.name ^ ".ll") in
+  (* let llmod = create_module context (modtree.name ^ ".ll") in *)
   (* Llvm.set_target_triple ttriple the_module; *)
-  Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) the_module;
+  (* Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) the_module; *)
+  let layout = Llvm_target.DataLayout.of_string (data_layout llmod) in
   let builder = builder context in
   (* 1. Generate dict of llvm types from the tenv (imports are added
      to it by the analyzer.) *)
@@ -1564,7 +1565,7 @@ let gen_module tenv topsyms layout
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)
-        let (lltype, fieldmap) = add_lltype the_module tenv lltenv layout cdata
+        let (lltype, fieldmap) = add_lltype llmod tenv lltenv layout cdata
         in
         debug_print (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
@@ -1576,29 +1577,29 @@ let gen_module tenv topsyms layout
       let gvalue = declare_global
                      (ttag_to_lltype lltypes gsym.symtype)
                      gsym.symname
-                     the_module in
+                     llmod in
       set_externally_initialized true gvalue;
       (* Name maybe not correct? Need the local name of it. *)
       Symtable.set_addr topsyms localname gvalue
     ) topsyms.syms;
   (* 2.5 Generate low-level function declarations (just GC alloc for now) *)
   declare_function "GC_malloc"
-    (function_type (pointer_type byte_type) [|int_type|]) the_module
+    (function_type (pointer_type byte_type) [|int_type|]) llmod
   |> ignore ;
   declare_function "exit"
-    (function_type void_type [|int32_type|]) the_module |> ignore;
+    (function_type void_type [|int32_type|]) llmod |> ignore;
   (* 3. Generate decls for imported functions (already in root node.) *)
-  gen_fdecls the_module lltypes topsyms.fsyms;
+  gen_fdecls llmod lltypes topsyms.fsyms;
   (* if List.length (topsyms.children) <> 1 then
      failwith "BUG: didn't find unique module-level symtable"; *)
   (* 4. Generate decls for this module's global variables. *)
   (* The next symtable node underneath holds this module's proc declarations *)
   let modsyms = List.hd (topsyms.children) in
-  List.iter (gen_global_decl the_module lltypes) modtree.globals;
+  List.iter (gen_global_decl llmod lltypes) modtree.globals;
   (* 5. Generate this module's procedure declarations (all at once, so
      they can mutually refer) *)
-  gen_fdecls the_module lltypes modsyms.fsyms;
+  gen_fdecls llmod lltypes modsyms.fsyms;
   (* 6. Generate each of the procedures. *)
-  List.iter (gen_proc the_module builder lltypes) modtree.procs;
-  Llvm_analysis.assert_valid_module the_module;
-  the_module
+  List.iter (gen_proc llmod builder lltypes) modtree.procs;
+  Llvm_analysis.assert_valid_module llmod;
+  (* llmod *)

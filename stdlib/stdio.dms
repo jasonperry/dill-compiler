@@ -1,4 +1,4 @@
-modspec stdio is
+modspec stdio begin
 
 type File; ** opaque type
 

@@ -867,6 +867,9 @@ let module_body mname tbuf =
     procs = procs;
   }
 
+(* let modspec tbuf = *)
+(*   let stdok = parse_tok MODSPEC tbuf in *)
+  
 
 let dillsource tbuf =
   let stok = peek tbuf in

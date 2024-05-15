@@ -107,10 +107,11 @@ moduleName:
   | mn=LC_IDENT { mn } (* will this ever need to be anything more? *)
 
 modspec:
-  | MODSPEC mn=moduleName IS
+  | MODSPEC mn=moduleName BEGIN
     iss=list(includeStmt)  (* TODO: no "open" in modspec *)
     tyds=list(typedecl)
-    gls=list(declOnlyStmt) pd=list(procDecl)
+    gls=list(declOnlyStmt)
+    pd=list(procDecl)
     ENDMODSPEC (* mn2=moduleName *)
 (* { if mn = mn2 then *)
     { {

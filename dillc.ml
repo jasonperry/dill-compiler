@@ -122,14 +122,14 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo, 'tt) dillmodule) =
      Ok (typed_mod, mod_tenv, topsyms)
 
 (** Do codegen for a single analyzed module and also generate spec. *)
-let codegen (config: dillc_config) tenv syms layout typedmod =
+let codegen (config: dillc_config) tenv syms llmod typedmod =
   (* Unused value here, just to pull in the code. *)
   let _ = if config.qbe_codegen then
       Some (Codegen_qbe.gen_module tenv syms)
     else None in
-  let modcode = Codegen.gen_module tenv syms layout typedmod in
+  (*let modcode =*) Codegen.gen_module tenv syms llmod typedmod;
   let header = Analyzer.create_module_spec typedmod in
-  modcode, header
+  (* modcode,*) header
 
 
 let write_header srcdir header =
@@ -244,6 +244,13 @@ let () =
       let machine = gen_target_machine () in
       let layout = TargetMachine.data_layout machine in
       let target_triple = TargetMachine.triple machine in
+      (* try creating module here to have multiple dill mods in one llmod *)
+      let llmodname = Filename.chop_extension (Filename.basename srcfilename)
+                      ^ ".ll" in
+      let llmod = Llvm.create_module (Llvm.global_context()) llmodname in
+      Llvm.set_data_layout (Llvm_target.DataLayout.as_string layout) llmod;
+      (* should we set this before codegen? *)
+      Llvm.set_target_triple target_triple llmod;
       (* Can compile multiple modules from one source file. *)
       let rec modules_loop ispecs pmods =
         match pmods with
@@ -259,22 +266,23 @@ let () =
             | Ok (typedmod, tenv, syms(*, new_specs? *)) -> (
                 if not cconfig.typecheck_only then (
                   debug_print "* codegen stage reached";
-                  let modcode, spec =
-                    codegen cconfig tenv syms layout typedmod in
+                  let (*modcode, *) spec =
+                    codegen cconfig tenv syms llmod typedmod in
                   (* print_string (st_node_to_string topsyms); *)
                   (* TODO: add spec to ispecs here. *)
                   if parsedmod.name <> "" then 
                     write_header cconfig.source_dir spec;
-                  if not cconfig.typecheck_only then (
-                    if cconfig.emit_llvm then 
-                      write_module_llvm srcfilename modcode
-                    else
-                      (* should we set this before codegen? *)
-                      Llvm.set_target_triple target_triple modcode;
-                    write_module_native srcfilename modcode cconfig machine
-                  ))));
+                  )));
           modules_loop ispecs rest
-      in modules_loop ispecs parsedmods
+      in
+      let specs = modules_loop ispecs parsedmods in
+      if not cconfig.typecheck_only then (
+        if cconfig.emit_llvm then 
+          write_module_llvm srcfilename llmod
+        else
+          write_module_native srcfilename llmod cconfig machine
+      );
+      specs
     )
   in
   (* We will eventually accumulate module headers for efficiency, to

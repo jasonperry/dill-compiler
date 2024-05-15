@@ -275,7 +275,7 @@ and typedef_to_string tdef =
      | Newtype tyex -> " is " ^ typeExpr_to_string tyex
      | Hidden -> ""
     )
-  ^ ";\n/type\n"
+  ^ ";\n"
 
 
 
@@ -430,7 +430,7 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
 
 (** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
-  "modspec " ^ mspec.name ^ " is \n"
+  "modspec " ^ mspec.name ^ " begin \n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
         fun s (gdecl: ('sd, 'l) globaldecl) ->
