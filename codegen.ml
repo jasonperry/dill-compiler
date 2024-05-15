@@ -11,7 +11,7 @@ exception CodegenError of string
 (* Trying not to make a new context per module. OK so far. *)
 let context = global_context() 
 let float_type = double_type context
-let int_type = i64_type context
+let int_type = i32_type (* i64_type *) context
 let int32_type = i32_type context
 let bool_type = i1_type context
 let byte_type = i8_type context

@@ -8,10 +8,10 @@ begin
   while x > 0 loop
     x = x * 2;
     printInt(x);
-  endwhile
+  /while
   printInt(x-1); (* should be largest positive *)
-
+  printString("here comes something too big\n");
   var y = 9223372036854775807; (* max 64-bit *)
   printInt(y);
 
-end main
+/proc

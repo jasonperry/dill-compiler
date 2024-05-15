@@ -4,7 +4,7 @@ import struct03;
 open stdio;
 
 proc main ()
-is
+begin
    var cpx: struct03::Complex = {i=2.0, j=1.111};
    printFloat(cpx.i);
    printFloat(cpx.j);

@@ -10,7 +10,7 @@
 
 struct int_array {
   int64_t length;
-  int64_t* data;
+  int32_t* data;
 };
 
 struct byte_array {
@@ -54,20 +54,18 @@ struct byte_array readFile(FILE** fpp) {
   }
   return result;
 }
-  
-  
 
-struct int_array initIntArray(int64_t length, int64_t value) {
+struct int_array initIntArray(int64_t length, int32_t value) {
   struct int_array a;
   a.length = length;
-  a.data = GC_malloc(length * sizeof(int64_t));
+  a.data = GC_malloc(length * sizeof(int32_t));
   for (int i=0; i < length; i++)
     a.data[i] = value;
   return a;
 }
 
-void printInt(int64_t n) {
-  printf("%ld\n", n);
+void printInt(int32_t n) {
+  printf("%d\n", n); // no more ld
   return;
 }
 
