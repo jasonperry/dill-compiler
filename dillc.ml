@@ -86,12 +86,10 @@ let rec open_from_paths plist filename =
 
 (* import handling might be good to move into its own module 
  * (except the file handling) *)
-(** Recursively scan all modspec files and populate the map of known ones. *)
+(* I'm still recursing on this even though analyzer checks for requires. *)
+(** Scan all modspec files from imports and populate the map of known ones. *)
 let load_imports cconfig (modmap: ('ed,'sd,'tt) module_spec StrMap.t) istmts =
-  let rec load_import mmap istmt =
-    let modname = match istmt.value with
-      | Import (mn, _) -> mn
-      | Open mn -> mn in
+  let rec load_import mmap modname =
     if StrMap.mem modname mmap then mmap (* already there *)
     else
       let specfilename = modname ^ ".dms" in
@@ -100,9 +98,14 @@ let load_imports cconfig (modmap: ('ed,'sd,'tt) module_spec StrMap.t) istmts =
       | Some specfile ->
          let spec = parse_modspec specfile specfilename in
          let newmap = StrMap.add modname spec mmap in
-         List.fold_left load_import newmap spec.imports
+         (* Make a fake import statement from modspec requires *)
+         List.fold_left load_import newmap spec.requires
+  in
+  let mnames = List.map (fun istmt -> match istmt.value with
+      | Import (mn, _) -> mn
+      | Open mn -> mn) istmts
   in 
-  List.fold_left load_import modmap istmts
+  List.fold_left load_import modmap mnames
 
 (** Do analysis and codegen phases, return module code and header object *)
 let analysis cconfig ispecs (parsedmod: (locinfo, locinfo, 'tt) dillmodule) = 
@@ -128,7 +131,7 @@ let codegen (config: dillc_config) tenv syms llmod typedmod =
       Some (Codegen_qbe.gen_module tenv syms)
     else None in
   (*let modcode =*) Codegen.gen_module tenv syms llmod typedmod;
-  let header = Analyzer.create_module_spec typedmod in
+  let header = Analyzer.gen_modspec tenv typedmod in (* give tenv here too *)
   (* modcode,*) header
 
 

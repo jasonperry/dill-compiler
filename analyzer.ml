@@ -140,6 +140,7 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
   | ExpLiteral NullVal ->
     Ok {e=ExpLiteral NullVal; decor=null_ttag}
   | ExpLiteral (IntVal i) ->
+    (* TODO: check literal size and set a type; check if it will fit. *)
     Ok {e=ExpLiteral (IntVal i); decor=int_ttag}
   | ExpLiteral (FloatVal f) ->
     Ok {e=ExpLiteral (FloatVal f); decor=float_ttag}
@@ -1215,6 +1216,8 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl)
             match resacc with
             | Error e -> Error e
             | Ok _ -> (
+                (* but it has to be brand-new table here; there's
+                   no global scope for type variables *)
                 match Symtable.findtvar_opt tv syms with
                 | Some _ -> errout ("Redeclaration of type parameter " ^ tv)
                 | None ->
@@ -1343,8 +1346,8 @@ let check_globdecl syms tenv modname gstmt
            mut=is_mutable_type vartype;
            addr=None
          };
-       Ok {varname=gstmt.varname; typeexp=None; (* removed gstmt.typeexp; *)
-           init=e2opt; decor=syms}
+       Ok {visibility=gstmt.visibility; varname=gstmt.varname;
+           typeexp=gstmt.typeexp; init=e2opt; decor=syms}
   )
 
 
@@ -1406,16 +1409,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                     tparams=[]; kindData=Hidden
                   } in
                   (* gen_ttag insufficient, may be nullable *)
-                  let ttag = gen_ttag dummyClass [] (*
-                    { (* should have a ttag_of_texpr function?
-                          that's what check_texpr should do *)
-                      modulename = modname;
-                      typename = fdecl.fieldtype.classname;
-                      tclass = dummyClass;
-                      array = fdecl.fieldtype.array;
-                      paramtypes = [];
-                      nullable = fdecl.fieldtype.nullable;} *)
-                  in
+                  let ttag = gen_ttag dummyClass [] in
                   let finfo = {
                     fieldname=fdecl.fieldname; priv=fdecl.priv;
                     mut=fdecl.mut;
@@ -1486,14 +1480,6 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                         tparams=[]; kindData=Hidden
                       } in 
                       let ttag = gen_ttag dummyClass []
-                        (* {
-                        modulename = modname;
-                        typename = vtexp.classname;
-                        tclass = dummyClass;
-                        array = vtexp.array;
-                        paramtypes = [];
-                        nullable = vtexp.nullable;
-                           } *)
                       in
                       check_variants rest ((vdecl.variantName, Some ttag)::accres)
                   | Ok ttag ->
@@ -1589,9 +1575,11 @@ let add_imports syms tenv specs istmts =
        match check_typedef syms tenv_acc modname td with
        | Ok cdata ->
           let newtenv =
-            (* need to add unqualified type name for modspecs *)
-            PairMap.add (modalias, cdata.classname) cdata tenv_acc
-            |> PairMap.add (modname, cdata.classname) cdata in
+            (* need to add unqualified type name for modspecs...
+               but not correct! the original name shouldn't be
+               visible... *)
+            PairMap.add (modalias, cdata.classname) cdata tenv_acc in
+            (* |> PairMap.add (modname, cdata.classname) cdata in *)
           check_importtypes modname modalias rest newtenv
        | Error es -> Error (add_import_notice es)
                          
@@ -1620,9 +1608,6 @@ let add_imports syms tenv specs istmts =
                };
              (* Add field initializers too. Not anymuer! *)
              (* List.iter (add_field_sym syms refname true) ttag.tclass.fields; *)
-             (* Don't think we want to add both names in this context. *)
-             (* if refname <> fullname then
-                Symtable.addvar syms fullname entry; *)
              Ok syms (* doesn't get used *)
       )) the_spec.globals
     (* iterate over procedure declarations and add those. *)
@@ -1740,7 +1725,7 @@ let check_module syms (tenv: typeenv) ispecs
             | _ -> ()
         ) newclasses;
         debug_print ("-- module types in tenv: " ^ string_of_tenv tenv);
-        (* spam syms into the decor of the AST typedefs to update the decor type.
+        (* spam syms into the decor of the AST typedefs to update the type.
            Could there be a better way? check_typedef should return a new
            typedef itself. I think that's all there is to it. *)
         let newtypedefs: ('a st_node, 'l) typedef list =
@@ -1779,8 +1764,8 @@ let check_module syms (tenv: typeenv) ispecs
         else
           let newglobals = concat_ok globalsrlist in
           (* Check procedure decls first, to add to symbol table *)
-          let pdeclsrlist = List.map (fun proc ->
-              check_procdecl syms tenv dmod.name proc.decl)
+          let pdeclsrlist = List.map
+              (fun proc -> check_procdecl syms tenv dmod.name proc.decl)
               dmod.procs in
           if List.exists Result.is_error pdeclsrlist then
             Error (concat_errors pdeclsrlist)
@@ -1806,10 +1791,59 @@ let check_module syms (tenv: typeenv) ispecs
                   tenv)
     )
 
+(** See if types from an imported module are exposed, necessitating a
+    transitive import *)
+let find_required_imports tenv the_module =
+  (* build a set and return a list *)
+  (* type: it's not private or opaque and has field types from the module *)
+  (* Should go through syntactic type definitions and look up the fields in the tenv? *)
+  (* let typereqs = List.fold_left (fun rset tdef ->
+      let ttag = Symtable.f (* where are the classdatas? *)
+      match tdef.decor.
+     ) StrSet.empty the_module.typedefs in *)
+  let procreqs = List.fold_left (fun rset proc ->
+      StrSet.union rset (
+        StrSet.of_list (List.fold_left (fun mlist (_, _, argtype) ->
+            match argtype.texpkind with
+            | Generic _ -> mlist
+            | Concrete cte ->
+              let tclass = PairMap.find (cte.modname, cte.classname) tenv in
+              tclass.in_module :: mlist
+          ) [] proc.decl.params))
+      ) StrSet.empty the_module.procs in
+  List.of_seq (StrSet.to_seq procreqs)
+  (* the_module.name = modname *)
+
+(* global var: not private and has type from the module *)
+(* proc: not private and has parameter or return types from the module *)
+
+(* Replace module names in a texp with the originals from classdata *)
+let rec qualify_texp tenv texp =
+    match texp.texpkind with
+    | Generic _ -> (texp, StrSet.empty)
+    | Concrete cte ->
+      let tclass = PairMap.find (cte.modname, cte.classname) tenv in
+      let newmod = tclass.in_module in
+      let (targs, mnames) = 
+        if cte.typeargs = [] then
+          ([], StrSet.singleton newmod)
+        else
+          let (targs, mnlists) =
+            List.split (List.map (qualify_texp tenv) cte.typeargs) in
+          (targs, List.fold_left StrSet.union StrSet.empty mnlists)
+      in 
+      ({ texp with
+         texpkind = Concrete {
+             modname=newmod;
+             classname=cte.classname;
+             typeargs=targs } },
+       mnames)
+              
 (** Generate the interface object for a checked module, to be serialized. *)
-let create_module_spec (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
+let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
   : (typetag, 'a st_node, locinfo) module_spec =
   (* "unparser" to reconstruct syntactic type expressions *)
+  (* oh wait! I have to rewrite all texprs to use the original modname! *)
   let rec texpr_of_ttag ty =
     match ty with
     | Typevar tv -> {
@@ -1817,46 +1851,73 @@ let create_module_spec (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
         nullable = false;
         array = false;
         loc = (Lexing.dummy_pos, Lexing.dummy_pos)
-      }
-    | Namedtype tinfo -> {
-        texpkind = Concrete {
-            modname = tinfo.modulename;
-            classname = tinfo.tclass.classname;
-            typeargs = List.map (fun ta -> texpr_of_ttag ta) tinfo.typeargs
-          };
-        nullable = is_option_type ty;
-        array = is_array_type ty;
-        loc = (Lexing.dummy_pos, Lexing.dummy_pos) }
+      }, StrSet.empty
+    | Namedtype tinfo -> 
+        let modname = (* substitute qualified module name. *)
+          let tclass = PairMap.find
+              (* tinfo.modulename may be redundant now *)
+              (tinfo.modulename, tinfo.tclass.classname) tenv in
+          tclass.in_module
+        in
+        let typeargs, mnames = List.split
+          (List.map (fun ta -> texpr_of_ttag ta) tinfo.typeargs)
+        in
+        { texpkind = Concrete {
+              modname = modname;  
+              classname = tinfo.tclass.classname;
+              typeargs = typeargs;
+            };
+          nullable = is_option_type ty;
+          array = is_array_type ty;
+          loc = (Lexing.dummy_pos, Lexing.dummy_pos)
+        }, StrSet.add modname (List.fold_left StrSet.union StrSet.empty mnames)
   in
-  {
-    name = the_mod.name;
-    imports = 
-      List.map (fun (istmt: importStmt located) -> {
-            value = (match istmt.value with
-                | Import (mn, alias) -> Import (mn, alias)
-                | Open mn -> Import (mn, None)); (* wait, why not Open? *)
-            loc=istmt.loc
-          }) the_mod.imports;
-    (* TODO: Make sure all names fully qualified in the spec file.
-       (Hopefully it will just work since modname is in the classTypeExpr) *)
-    (* change opaque to hidden typedefs. *)
+  let globals = List.filter (fun (gstmt: (_, _, _) globalstmt) ->
+      gstmt.visibility <> Private) the_mod.globals in
+  let gdecls, gmlist = List.split
+      (List.map (fun (gstmt: (_, _, _) globalstmt) ->
+             let (texp, mods_used) = match gstmt.typeexp with
+               | Some texp -> qualify_texp tenv texp
+               | None ->
+                 (* global initializer didn't have a typeExpr, so
+                    reconstruct one from the symbol table. *)
+                 let vtype = 
+                   (fst (Symtable.findvar gstmt.varname gstmt.decor)).symtype
+                 in
+                 texpr_of_ttag vtype (* need that to return modules too *) 
+             in 
+             { visibility = Public;
+               decor = gstmt.decor;
+               varname = gstmt.varname;
+               typeexp = texp
+             }, mods_used
+         ) globals)
+  in
+  let gmods = List.fold_left StrSet.union StrSet.empty gmlist 
+  in
+  let procdecls, pmods =
+      the_mod.procs
+      |> List.filter (fun proc -> proc.visibility <> Private)
+      |> List.map (fun proc -> proc.decl) the_mod.procs (* here too *)
+  in
+    { name = the_mod.name;
+      requires = List.of_seq (StrSet.to_seq gmods); (* later, fold together *)
+      (* find_required_imports tenv the_mod; *)
+      (* (let impnames = List.map (fun istmt ->
+           match istmt.value with
+           | Import (mn, _) -> mn
+           | Open mn -> mn) the_mod.imports
+         in *)
     typedefs =
-       List.map (fun tdef ->
-           if tdef.visibility = Opaque then
-             { tdef with kindinfo = Hidden }
-           else tdef
-         ) the_mod.typedefs;
-    globals =
-      List.map (fun gdecl ->
-          { decor = gdecl.decor;
-            varname = gdecl.varname;
-            typeexp = 
-              (* The original global initializer statement may not have had a
-                 typeExpr, so we reconstruct one from the symbol table. *)
-              let vtype = 
-                (fst (Symtable.findvar gdecl.varname gdecl.decor)).symtype in
-              texpr_of_ttag vtype
-          }
-        ) the_mod.globals;
-    procdecls = List.map (fun proc -> proc.decl) the_mod.procs
+      the_mod.typedefs
+      |> List.filter (fun tdef -> tdef.visibility <> Private)
+      |> List.map (fun tdef ->
+          (* modspecs hold no info about the structure of opaque types
+             so change to hidden. *)
+          if tdef.visibility = Opaque then
+            { tdef with kindinfo = Hidden }
+          else tdef 
+        );
+      globals = gdecls;
+      procdecls = procdecls
 }

@@ -21,7 +21,7 @@
 %token CASE OF ENDCASE
 %token PROC ENDPROC RETURN NOP
 %token MODULE ENDMODULE MODSPEC ENDMODSPEC
-%token IMPORT AS OPEN 
+%token IMPORT AS OPEN REQUIRE
 %token PRIVATE (* EXPORT *)
 %token TYPE ENDTYPE OPAQUE REC STRUCT VARIANT MUT
 %token EOF
@@ -88,16 +88,16 @@ dillmodule:
 
 moduleBody: 
   | iss=list(includeStmt)
-    tys=list(typedef)    (* TODO: let types come anywhere? Or be strict? *)
-    gls=list(declStmt)
+    tys=list(typedef)
+    gls=list(globalStmt)
     pr=list(proc)
-    { {
-        name="";
+    { { name="";
         imports=iss;
         typedefs=tys;
         globals=List.map (
-            fun (v, topt, eopt) ->
-	      {varname=v; typeexp=topt; init=eopt; decor=$loc}
+            fun (priv, (v, topt, eopt)) ->
+	    { visibility=if priv then Private else Public;
+	      varname=v; typeexp=topt; init=eopt; decor=$loc }
           ) gls;
         procs=pr;
       }
@@ -108,20 +108,21 @@ moduleName:
 
 modspec:
   | MODSPEC mn=moduleName BEGIN
-    iss=list(includeStmt)  (* TODO: no "open" in modspec *)
+    (* iss=list(includeStmt) *)  (* no imports, just qualified names *)
     tyds=list(typedecl)
-    gls=list(declOnlyStmt)
+    gls=list(globalDecl)
     pd=list(procDecl)
     ENDMODSPEC (* mn2=moduleName *)
-(* { if mn = mn2 then *)
-    { {
-	  name=mn;
-	  imports=iss;
-	  typedefs=tyds;
-	  globals= List.map (
-		       fun (v, t) -> {varname=v; typeexp=t; decor=$loc}
-		     ) gls;
-	  procdecls=pd;
+    (* { if mn = mn2 then *)
+    { { name=mn;
+	requires=[];
+	typedefs=tyds;
+	globals= List.map
+		   (fun (priv, (v, t)) ->
+		     {visibility=if priv then Private else Public;
+		      varname=v; typeexp=t; decor=$loc }
+		   ) gls;
+	procdecls=pd;
     } }
     (*  else
       	raise (SyntaxError ($loc(mn2), "Modspec name mismatch"))
@@ -243,6 +244,14 @@ variantDecl:
     (* remove the initial pipe character *)
     { {variantName=vname; (* (String.sub vname 1 (String.length vname - 1)); *)
        variantType=vty; decor=$loc} }
+
+globalStmt:
+  | priv=option(PRIVATE) st=declStmt
+    { (Option.is_some priv, st) }
+
+globalDecl:
+  | priv=option(PRIVATE) dec=declOnlyStmt
+    { (Option.is_some priv, dec) }
 
 proc:
   | pd=procHeader BEGIN sb=stmtSeq ENDPROC (*name2=LC_IDENT *)

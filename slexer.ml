@@ -63,9 +63,9 @@ type ttype =
   | WHILE | LOOP | ENDWHILE
   | CASE | OF | ENDCASE
   | IS
-  | PROC | ENDPROC | RETURN
+  | PRIVATE | PROC | ENDPROC | RETURN
   | MODULE | BEGIN | ENDMODULE | MODSPEC | ENDMODSPEC
-  | IMPORT | AS | OPEN (* | EXPORT *) | PRIVATE
+  | IMPORT | AS | OPEN (* | EXPORT *) | REQUIRE
   | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT 
   | EOF
 
@@ -95,12 +95,12 @@ let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (DOT, "."); (SEMI, ";"); (DCOLON, "::"); (COMMA, ","); (COLON, ":");
     (MODULE, "module"); (BEGIN, "begin"); (ENDMODULE, "/module");
     (IMPORT, "import"); (OPEN, "open"); (AS, "as"); (PRIVATE, "private");
-    (MODSPEC, "modspec"); (ENDMODSPEC, "/modspec");
+    (MODSPEC, "modspec"); (ENDMODSPEC, "/modspec"); (REQUIRE, "require");
     (PROC, "proc"); (ENDPROC, "/proc"); (RETURN, "return");
     (VAR, "var"); (REF, "ref"); (NOP, "nop"); (IF, "if"); (THEN, "then");
-    (ELSIF, "elsif"); (ELSE, "else"); (ENDIF, "/if"); (WHILE, "while");
-    (LOOP, "loop"); (ENDWHILE, "/while"); (CASE, "case"); (OF, "of");
-    (ENDCASE, "/case");
+    (ELSIF, "elsif"); (ELSE, "else"); (ENDIF, "/if");
+    (WHILE, "while"); (LOOP, "loop"); (ENDWHILE, "/while");
+    (CASE, "case"); (OF, "of"); (ENDCASE, "/case");
     (OPAQUE, "opaque"); (TYPE, "type"); (MUT, "mut"); (REC, "rec");
     (RECORD, "record"); (VARIANT, "variant");
     (TRUE, "#true"); (FALSE, "#false"); (NULL, "#null")

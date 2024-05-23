@@ -123,30 +123,33 @@ type ('ed, 'sd, 'l) raw_stmt =
 (** Decorated statement type *)
 and ('ed, 'sd, 'l) stmt = { st: ('ed,'sd,'l) raw_stmt; decor: 'sd }
 
+(* ----- Beginning of top level constructs ----- *)
+
+type visibility = Public | Private
+type typevis = Open | Opaque | Private
 
 (** Global variable declaration without initializer; only used in
     modspecs. *)
 type ('sd, 'l) globaldecl = {
-    varname: string;
-    (* in_module: string; *)
-    typeexp: 'l typeExpr;
-    decor: 'sd
-  }
+  visibility: visibility;
+  varname: string;
+  (* in_module: string; *)
+  typeexp: 'l typeExpr;
+  decor: 'sd
+}
 
 (** Global variable declaration with required initializer. *)
 type ('ed, 'sd, 'l) globalstmt = {
-    varname: string;
-    typeexp: 'l typeExpr option;
-    init: 'ed expr option; (* required by semantics, check in analyzer *)
-    decor: 'sd
-  }
+  visibility: visibility;
+  varname: string;
+  typeexp: 'l typeExpr option;
+  init: 'ed expr option; (* required by semantics, check in analyzer *)
+  decor: 'sd
+}
 
 (* I thought about removing the symtable decoration from the decl, but
    it can stand on its own in an interface file, so I guess it needs
    it. *)
-
-type visibility = Public | Private
-type typevis = Open | Opaque | Private
 
 type ('sd, 'l) procdecl = {
   name: string;
@@ -225,7 +228,8 @@ type ('ed, 'sd, 'l) dillmodule = {
 
 type ('ed, 'sd, 'l) module_spec = {
     name: string;
-    imports: (importStmt located) list;
+    (* imports: (importStmt located) list; *)
+    requires: string list;  (* should locate this too for not found errors *)
     typedefs: ('sd, 'l) typedef list;
     globals: ('sd, 'l) globaldecl list;
     procdecls: ('sd, 'l) procdecl list
@@ -233,7 +237,6 @@ type ('ed, 'sd, 'l) module_spec = {
 
 
 (* printing functions start here *)
-
 
 let rec typeExpr_to_string te =
   (match te.texpkind with
@@ -430,6 +433,7 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
 (** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
   "modspec " ^ mspec.name ^ " begin \n"
+  (* oh look, I never printed out includes in the first place. *)
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
         fun s (gdecl: ('sd, 'l) globaldecl) ->

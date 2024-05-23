@@ -105,13 +105,14 @@ rule token = parse  (* funny that it's called parse *)
   | "nop"     { NOP }
   | "module"  { MODULE }
   | "/module" { ENDMODULE }
-  | "modspec" { MODSPEC }
-  | "/modspec" { ENDMODSPEC }
   | "import"  { IMPORT }
   | "as"      { AS }
   | "open"    { OPEN }
-  (* | "export"  { EXPORT } *)
   | "private" { PRIVATE }
+  | "modspec" { MODSPEC }
+  | "/modspec" { ENDMODSPEC }
+  (* | "export"  { EXPORT } *)
+  | "require" { REQUIRE }
   | '.'       { DOT }
   | "type"    { TYPE }
   | "/type"   { ENDTYPE }

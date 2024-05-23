@@ -308,60 +308,19 @@ let typeExpr tbuf =
       }
   | _ -> raise (expect_error "type expression" tbuf)
 
-let type_defn tbuf =
-  (* oh, have to look for "rec" too *)
-  let (vis, sloc) = match (peek tbuf).ttype with
-    | OPAQUE ->
-      let sloc = parse_tok OPAQUE tbuf in
-      let _ = parse_tok TYPE tbuf in
-      (Opaque, sloc)
-    | PRIVATE ->
-      let sloc = parse_tok PRIVATE tbuf in
-      let _ = parse_tok TYPE tbuf in
-      (Private, sloc)
-    | _ ->
-      let sloc = parse_tok TYPE tbuf in
-      (Open, sloc)
-  in
-  (* todo: type variables for generics *)
-  let tname, _ = typename tbuf in
-  let _ = parse_tok IS tbuf in
-  match (peek tbuf).ttype with
-  | RECORD ->
-    let _ = parse_tok RECORD tbuf in
-    let rec fields_loop () =
-      let fpriv = match (peek tbuf).ttype with
-        | PRIVATE -> ignore (parse_tok PRIVATE tbuf); true
-        | _ -> false
-      in
-      let fmut = match (peek tbuf).ttype with
-        | MUT -> ignore (parse_tok MUT tbuf); true
-        | _ -> false
-      in
-      let fname, floc = uqname "field name" tbuf in
-      let _ = parse_tok COLON tbuf in
-      let ftype = typeExpr tbuf in
-      let finfo = { fieldname=fname; priv=fpriv; mut=fmut; fieldtype=ftype;
-                    decor=make_location floc ftype.loc} in
-      match (peek tbuf).ttype with
-      | COMMA -> finfo :: (fields_loop ())
-      | _ -> [finfo]
-    in
-    let fields = fields_loop() in
-    let eloc = parse_tok SEMI tbuf in
-    { typename=tname;
-      rectype=false;
-      typeparams=[];
-      kindinfo = Fields fields;
-      visibility = vis;
-      decor = make_location sloc eloc
-    }
-  | VARIANT -> failwith "in progress"
-  | UC_IDENT _ -> failwith "in progress" (* newtype *)
-  | _ -> raise (parse_error ("expected type or type kind specifier, found " ^
-                string_of_token (peek tbuf)) tbuf)
-             
-  
+(** Void typeExpr for when it's implicit.
+    Still want to think about removing this from AST too. *)
+let voidTypeExpr loc =
+  { texpkind = (Concrete {
+        modname = "";
+        classname = "Void";
+        typeargs = [] });
+    nullable = false;
+    array = false;
+    loc = loc
+  }
+
+
 (** Parse a token for a literal and extract its value for an ExpLiteral. *)
 let literal_val tbuf =
   match (peek tbuf).ttype with
@@ -759,14 +718,89 @@ let import tbuf =
     (make_located (Open mname) sloc eloc)
   | _ -> failwith "BUG: import called with non-import token"
 
-let visibility tbuf =
-  let stok = peek tbuf in
-  let vis: visibility = match stok.ttype with
-    | PRIVATE -> let _ = parse_tok PRIVATE tbuf in Private 
-    | _ -> Public
-  in 
-  (vis, stok.loc)
 
+let typedef_body tbuf = 
+  let _ = parse_tok IS tbuf in
+  (* oh, have to look for "rec" too *)
+  match (peek tbuf).ttype with
+  | RECORD ->
+    let _ = parse_tok RECORD tbuf in
+    let rec fields_loop () =
+      let fpriv = match (peek tbuf).ttype with
+        | PRIVATE -> ignore (parse_tok PRIVATE tbuf); true
+        | _ -> false
+      in
+      let fmut = match (peek tbuf).ttype with
+        | MUT -> ignore (parse_tok MUT tbuf); true
+        | _ -> false
+      in
+      let fname, floc = uqname "field name" tbuf in
+      let _ = parse_tok COLON tbuf in
+      let ftype = typeExpr tbuf in
+      let finfo = { fieldname=fname; priv=fpriv; mut=fmut; fieldtype=ftype;
+                    decor=make_location floc ftype.loc} in
+      match (peek tbuf).ttype with
+      | COMMA -> finfo :: (fields_loop ())
+      | _ -> [finfo]
+    in fields_loop()
+  | VARIANT -> failwith "in progress" (* will return "kindinfo" when done *)
+  | UC_IDENT _ -> failwith "in progress" (* newtype *)
+  | _ -> raise (parse_error ("expected type or type kind specifier, found " ^
+                string_of_token (peek tbuf)) tbuf)
+
+let type_defn tbuf =
+  let (vis, sloc) = match (peek tbuf).ttype with
+    | OPAQUE ->
+      let sloc = parse_tok OPAQUE tbuf in
+      let _ = parse_tok TYPE tbuf in
+      (Opaque, sloc)
+    | PRIVATE ->
+      let sloc = parse_tok PRIVATE tbuf in
+      let _ = parse_tok TYPE tbuf in
+      (Private, sloc)
+    | _ ->
+      let sloc = parse_tok TYPE tbuf in
+      (Open, sloc)
+  in
+  (* todo: type variables for generics *)
+  let tname, _ = typename tbuf in
+  let fields = typedef_body tbuf in
+  let eloc = parse_tok SEMI tbuf in
+  { typename=tname;
+    rectype=false;
+    typeparams=[];
+    kindinfo = Fields fields;
+    visibility = vis;
+    decor = make_location sloc eloc
+  }
+
+(** Type declaration and possible definition for modspec. *)
+let type_decl tbuf = 
+  (* No private types? And Opaque is only shown by having no body *)
+  let sloc = parse_tok TYPE tbuf in
+  let tname, _ = typename tbuf in
+  match (peek tbuf).ttype with
+  | SEMI -> (* opaque type *)
+    let eloc = parse_tok SEMI tbuf in
+    { typename=tname;
+      rectype=false;
+      typeparams=[];
+      kindinfo=Hidden;
+      visibility=Opaque;
+      decor=make_location sloc eloc
+    }
+  | IS ->
+    let fields = typedef_body tbuf in
+    let eloc = parse_tok SEMI tbuf in
+    { typename=tname;
+      rectype=false;
+      typeparams=[];
+      kindinfo=Fields fields;
+      visibility=Open;
+      decor=make_location sloc eloc
+    }
+  | _ -> raise (unexpect_error tbuf)
+           
 let param_info tbuf =
   let sloc = (peek tbuf).loc in
   let mutmark = match (peek tbuf).ttype with
@@ -782,17 +816,13 @@ let param_info tbuf =
 let param_list tbuf =
   separated_list_of param_info COMMA RPAREN tbuf
 
-(** Void typeExpr for when it's implicit.
-    Still want to think about removing this from AST too. *)
-let voidTypeExpr loc =
-  { texpkind = (Concrete {
-        modname = "";
-        classname = "Void";
-        typeargs = [] });
-    nullable = false;
-    array = false;
-    loc = loc
-  }
+let visibility tbuf =
+  let stok = peek tbuf in
+  let vis: visibility = match stok.ttype with
+    | PRIVATE -> let _ = parse_tok PRIVATE tbuf in Private 
+    | _ -> Public
+  in 
+  (vis, stok.loc)
 
 let proc_header tbuf = 
   let vis, sloc = visibility tbuf in 
@@ -845,9 +875,13 @@ let module_body mname tbuf =
   let globals =
     let rec globals_loop () =
       if (peek tbuf).ttype = VAR || (peek2 tbuf).ttype = VAR then
+        let vis: visibility = match (peek tbuf).ttype with
+          | PRIVATE -> Private
+          | _ -> Public in
         let gdecl = match decl_stmt tbuf with
           | { st=StmtDecl (vname, tyexp, init); decor=stloc } ->
-            { varname=vname; typeexp=tyexp; init=init; decor=stloc }
+            { visibility=vis; varname=vname; typeexp=tyexp;
+              init=init; decor=stloc }
           | _ -> failwith "BUG: didn't get StmtDecl for global statement"
         in gdecl :: (globals_loop ())
       else []
@@ -867,10 +901,23 @@ let module_body mname tbuf =
     procs = procs;
   }
 
-(* let modspec tbuf = *)
-(*   let stdok = parse_tok MODSPEC tbuf in *)
+let modspec tbuf = 
+  let _ = parse_tok MODSPEC tbuf in
+  let (mname, _) = uqname "module name" tbuf in
+  let _ = parse_tok BEGIN tbuf in
+  let typedefs =
+    let rec typedecls_loop () = 
+      if (peek tbuf).ttype = TYPE then  (* no qualifier *)
+        (type_decl tbuf)::(typedecls_loop ())
+      else []
+    in typedecls_loop () in
+  { name=mname;
+    requires=[];
+    typedefs=typedefs;
+    globals=[];
+    procdecls=[]
+  }
   
-
 let dillsource tbuf =
   let stok = peek tbuf in
   match stok.ttype with

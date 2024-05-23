@@ -21,7 +21,7 @@ and kindData =  (* will array and option be their own kind now? *)
 (** The specification for a class of types, built from a type declaration *)
 and classData = {
   classname: string;
-  in_module: string; (* for extensions, classes need to "know" the original
+  in_module: string; (* for modspecs, classes need to "know" the original
                       * module where they were defined. *)
   opaque: bool;   (* other visibility options don't affect representation *)
   muttype: bool;  (* true if any field or variant is mutable *)
@@ -36,7 +36,7 @@ and classData = {
 (** Typetag is the in-place specification of a type. It's what's
     checked for a match with other types. *)
 and namedtypeinfo = {
-  modulename: string;
+  modulename: string; (* is this redundant now? *)
   mutable tclass: classData; (* allow updating for recursive types *)
   typeargs: typetag list; (* can be concrete or generic *)
   (* tvarmap: typetag StrMap.t (* map of type parameters to type args *) *)
