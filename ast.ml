@@ -434,6 +434,8 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
   "modspec " ^ mspec.name ^ " begin \n"
   (* oh look, I never printed out includes in the first place. *)
+  ^ String.concat "\n" (List.map (fun rq -> "require " ^ rq ^ ";")
+                          mspec.requires) ^ "\n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (
         fun s (gdecl: ('sd, 'l) globaldecl) ->

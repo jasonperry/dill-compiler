@@ -1791,33 +1791,8 @@ let check_module syms (tenv: typeenv) ispecs
                   tenv)
     )
 
-(** See if types from an imported module are exposed, necessitating a
-    transitive import *)
-let find_required_imports tenv the_module =
-  (* build a set and return a list *)
-  (* type: it's not private or opaque and has field types from the module *)
-  (* Should go through syntactic type definitions and look up the fields in the tenv? *)
-  (* let typereqs = List.fold_left (fun rset tdef ->
-      let ttag = Symtable.f (* where are the classdatas? *)
-      match tdef.decor.
-     ) StrSet.empty the_module.typedefs in *)
-  let procreqs = List.fold_left (fun rset proc ->
-      StrSet.union rset (
-        StrSet.of_list (List.fold_left (fun mlist (_, _, argtype) ->
-            match argtype.texpkind with
-            | Generic _ -> mlist
-            | Concrete cte ->
-              let tclass = PairMap.find (cte.modname, cte.classname) tenv in
-              tclass.in_module :: mlist
-          ) [] proc.decl.params))
-      ) StrSet.empty the_module.procs in
-  List.of_seq (StrSet.to_seq procreqs)
-  (* the_module.name = modname *)
 
-(* global var: not private and has type from the module *)
-(* proc: not private and has parameter or return types from the module *)
-
-(* Replace module names in a texp with the originals from classdata *)
+(* Replace module names in a type expr with the originals from classdata *)
 let rec qualify_texp tenv texp =
     match texp.texpkind with
     | Generic _ -> (texp, StrSet.empty)
@@ -1826,7 +1801,7 @@ let rec qualify_texp tenv texp =
       let newmod = tclass.in_module in
       let (targs, mnames) = 
         if cte.typeargs = [] then
-          ([], StrSet.singleton newmod)
+          ([], if newmod <> "" then StrSet.singleton newmod else StrSet.empty)
         else
           let (targs, mnlists) =
             List.split (List.map (qualify_texp tenv) cte.typeargs) in
@@ -1838,11 +1813,37 @@ let rec qualify_texp tenv texp =
              classname=cte.classname;
              typeargs=targs } },
        mnames)
-              
+
 (** Generate the interface object for a checked module, to be serialized. *)
 let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
   : (typetag, 'a st_node, locinfo) module_spec =
-  (* "unparser" to reconstruct syntactic type expressions *)
+  let tdefs = List.filter (fun tdef -> tdef.visibility <> Private)
+      the_mod.typedefs in
+  let tdefs, tmods = List.split (
+    List.map (fun tdef ->
+        if tdef.visibility = Opaque then
+        (* modspecs hold no info about the structure of opaque types
+           so change to hidden. *)
+          ({ tdef with kindinfo = Hidden }, StrSet.empty)
+        else
+          match tdef.kindinfo with
+          | Newtype texpr ->
+            let texpr, tmods = qualify_texp tenv texpr in
+            ({ tdef with kindinfo=(Newtype texpr)}, tmods)
+          | Hidden -> (tdef, StrSet.empty)
+          | Fields fdlist ->
+            let fdecls, fmlist = List.split (
+                List.map (fun fdecl ->
+                    let ftype, fmods = qualify_texp tenv fdecl.fieldtype in
+                    ({ fdecl with fieldtype=ftype }, fmods)
+                  ) fdlist) in
+            ({ tdef with kindinfo=(Fields fdecls) },
+             List.fold_left StrSet.union StrSet.empty fmlist)
+          | _ -> failwith "Hold on for variant types"
+        ) tdefs) in
+  let tmods = List.fold_left StrSet.union StrSet.empty tmods
+  in
+  (* "unparser" to reconstruct syntactic type expressions, for globals *)
   (* oh wait! I have to rewrite all texprs to use the original modname! *)
   let rec texpr_of_ttag ty =
     match ty with
@@ -1860,8 +1861,7 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
           tclass.in_module
         in
         let typeargs, mnames = List.split
-          (List.map (fun ta -> texpr_of_ttag ta) tinfo.typeargs)
-        in
+          (List.map (fun ta -> texpr_of_ttag ta) tinfo.typeargs) in
         { texpkind = Concrete {
               modname = modname;  
               classname = tinfo.tclass.classname;
@@ -1891,33 +1891,31 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
                varname = gstmt.varname;
                typeexp = texp
              }, mods_used
-         ) globals)
-  in
+         ) globals) in
   let gmods = List.fold_left StrSet.union StrSet.empty gmlist 
   in
-  let procdecls, pmods =
-      the_mod.procs
-      |> List.filter (fun proc -> proc.visibility <> Private)
-      |> List.map (fun proc -> proc.decl) the_mod.procs (* here too *)
+  (* rewrite type exprs in procedure declarations, get module names *)
+  let procs = List.filter (fun proc -> proc.decl.visibility <> Private)
+      the_mod.procs in
+  let pdecls, mlist = List.split (List.map (fun proc ->
+      let pdecl = proc.decl in
+      let rettype, retmods = qualify_texp tenv pdecl.rettype in 
+      let params, parammods = List.split (
+          List.map (fun (mut, name, argtype) ->
+              let qargtype, pmods = qualify_texp tenv argtype
+              in ((mut, name, qargtype), pmods)
+            ) pdecl.params)
+      in ({pdecl with params=params; rettype=rettype},
+          List.fold_left StrSet.union retmods parammods)
+    ) procs) in 
+  let pmods = List.fold_left StrSet.union StrSet.empty mlist
   in
     { name = the_mod.name;
-      requires = List.of_seq (StrSet.to_seq gmods); (* later, fold together *)
-      (* find_required_imports tenv the_mod; *)
-      (* (let impnames = List.map (fun istmt ->
-           match istmt.value with
-           | Import (mn, _) -> mn
-           | Open mn -> mn) the_mod.imports
-         in *)
-    typedefs =
-      the_mod.typedefs
-      |> List.filter (fun tdef -> tdef.visibility <> Private)
-      |> List.map (fun tdef ->
-          (* modspecs hold no info about the structure of opaque types
-             so change to hidden. *)
-          if tdef.visibility = Opaque then
-            { tdef with kindinfo = Hidden }
-          else tdef 
-        );
+      requires = List.of_seq (
+          (StrSet.to_seq
+             (StrSet.filter (fun mn -> mn <> the_mod.name)
+                (StrSet.union tmods (StrSet.union gmods pmods)))));
+      typedefs = tdefs;
       globals = gdecls;
-      procdecls = procdecls
+      procdecls = pdecls
 }
