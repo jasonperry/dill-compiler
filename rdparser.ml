@@ -912,6 +912,7 @@ let modspec tbuf =
       else []
     in typedecls_loop () in
   { name=mname;
+    alias=mname;  (* replaced at higher level *)
     requires=[];
     typedefs=typedefs;
     globals=[];

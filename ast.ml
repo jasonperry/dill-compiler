@@ -228,7 +228,7 @@ type ('ed, 'sd, 'l) dillmodule = {
 
 type ('ed, 'sd, 'l) module_spec = {
     name: string;
-    (* imports: (importStmt located) list; *)
+    alias: string;  (* from outer context *)
     requires: string list;  (* should locate this too for not found errors *)
     typedefs: ('sd, 'l) typedef list;
     globals: ('sd, 'l) globaldecl list;

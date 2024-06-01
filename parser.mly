@@ -108,14 +108,15 @@ moduleName:
 
 modspec:
   | MODSPEC mn=moduleName BEGIN
-    (* iss=list(includeStmt) *)  (* no imports, just qualified names *)
+    reqs=list(requireStmt)
     tyds=list(typedecl)
     gls=list(globalDecl)
     pd=list(procDecl)
     ENDMODSPEC (* mn2=moduleName *)
     (* { if mn = mn2 then *)
     { { name=mn;
-	requires=[];
+	alias=mn;
+	requires=reqs;
 	typedefs=tyds;
 	globals= List.map
 		   (fun (priv, (v, t)) ->
@@ -127,6 +128,9 @@ modspec:
     (*  else
       	raise (SyntaxError ($loc(mn2), "Modspec name mismatch"))
     } *)
+
+requireStmt:
+  | REQUIRE mn=moduleName SEMI { mn }
 
 includeStmt:
   | is=importStmt

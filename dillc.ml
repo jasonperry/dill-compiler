@@ -84,28 +84,27 @@ let rec open_from_paths plist filename =
        open_from_paths rest filename
 
 
-(* import handling might be good to move into its own module 
- * (except the file handling) *)
-(* I'm still recursing on this even though analyzer checks for requires. *)
 (** Scan all modspec files from imports and populate the map of known ones. *)
 let load_imports cconfig (modmap: ('ed,'sd,'tt) module_spec StrMap.t) istmts =
-  let rec load_import mmap modname =
-    if StrMap.mem modname mmap then mmap (* already there *)
+  let load_import mmap modname =
+    if StrMap.mem modname mmap then
+      StrMap.find modname mmap (* already there *)
     else
       let specfilename = modname ^ ".dms" in
       match open_from_paths cconfig.include_paths specfilename with
       | None -> failwith ("Could not find spec file " ^ specfilename)
-      | Some specfile ->
-         let spec = parse_modspec specfile specfilename in
-         let newmap = StrMap.add modname spec mmap in
-         (* Make a fake import statement from modspec requires *)
-         List.fold_left load_import newmap spec.requires
+      | Some specfile -> parse_modspec specfile specfilename
   in
-  let mnames = List.map (fun istmt -> match istmt.value with
-      | Import (mn, _) -> mn
-      | Open mn -> mn) istmts
-  in 
-  List.fold_left load_import modmap mnames
+  (* Store the map by original module name, with alias inside *)
+  List.fold_left (fun mmap istmt ->
+      let modname, modalias = match istmt.value with
+        | Import (mn, None) -> mn, mn  (* alias is itself *)
+        | Import (mn, Some ma) -> mn, ma
+        | Open mn -> mn, ""
+      in
+      let spec = load_import mmap modname in
+      StrMap.add modname { spec with alias=modalias } mmap
+    ) modmap istmts
 
 (** Do analysis and codegen phases, return module code and header object *)
 let analysis cconfig ispecs (parsedmod: (locinfo, locinfo, 'tt) dillmodule) = 
@@ -113,8 +112,8 @@ let analysis cconfig ispecs (parsedmod: (locinfo, locinfo, 'tt) dillmodule) =
   (* populate top-level symbol table. Formerly with pervasive_syms *)
   let topsyms : Llvm.llvalue st_node = Symtable.make_empty () in 
   (* don't need to create import or module syms, analyzer does *)
-  (* We pass in the headers from the AST here,
-     so the analyzer doesn't have to call back out. 
+  (* We parse the headers from the AST here,
+     so the analyzer doesn't have to call back out to the parser. 
      The analyzer creates its own type environment. *)
   let ispecs = load_imports cconfig ispecs parsedmod.imports in
   match Analyzer.check_module topsyms base_tenv ispecs parsedmod with
