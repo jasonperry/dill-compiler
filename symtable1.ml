@@ -12,7 +12,7 @@ type typeenv = classData PairMap.t
 
 (** Initial type environment (primitive types) *)
 let base_tenv =
-  (* Maybe put this in dillc or types. *)
+  (* Maybe put this in the types module. *)
   PairMap.empty
   (* Maybe just add the string name for the scope *)
   |> PairMap.add ("", void_class.classname) void_class
