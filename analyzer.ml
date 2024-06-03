@@ -1582,26 +1582,34 @@ and replace_modname_in_ttag ttag mname malias = match ttag with
     Namedtype { tinfo with tclass=newclass }
 
 (**  check and add a modspec's types and symbols *)
-let rec check_modspec syms tenv specs donespecs the_spec =
+let rec check_modspec syms etenv specs donespecs the_spec =
   (* The modspec itself starts from nothing, the base tenv. *)
   let itenv0 = Symtable1.base_tenv in
   (* 1. Process all other required modspecs recursively. *)
-  let syms, itenv, etenv, donespecs = List.fold_left
-      (fun (syms, itenv, etenv, donespecs) required ->
+  (* Do I not need etenv here? Never changes? *)
+  let syms, itenv, donespecs = List.fold_left
+      (fun (syms, itenv, donespecs) required ->
       (* check if in donespecs, then if in specs *)
          if StrMap.mem required donespecs then
-           (* Fold already-processed spec's tenv into this one. *)
-           let (_, itenv1) = StrMap.find required donespecs in
-           (syms, PairMap.fold PairMap.add itenv itenv1, etenv, donespecs)
+           (* Fold already-processed spec's (e!)tenv into this one. *)
+           let (_, reqetenv) = StrMap.find required donespecs in
+           let itenv1 = PairMap.union (fun _ v1 _ -> Some v1) itenv reqetenv in
+           (syms, itenv1, donespecs)
          else if not (StrMap.mem required specs) then
            (* TODO: fix error handling from this. Exceptions? *)
            failwith ("Missing required import " ^ required)
          (* TODO: also self-require is an error *)
          else
            let reqspec = StrMap.find required specs in
-           check_modspec syms tenv specs donespecs reqspec
-      ) (syms, itenv0, tenv, donespecs) the_spec.requires in
-  (* Make a map for requires that have aliases *)
+           let syms, _, reqetenv, donespecs = 
+             check_modspec syms etenv specs donespecs reqspec in
+           (* We don't add the required modspec's names externally,
+              the user has to include it and may alias it. *)
+           (* put the required spec's etenv entries in this's itenv. *)
+           let itenv1 = PairMap.union (fun _ v1 _ -> Some v1) reqetenv itenv in
+           (syms, itenv1, donespecs)
+      ) (syms, itenv0, donespecs) the_spec.requires in
+  (* Make a map for requires that have aliases - think not needed *)
   (* let reqaliases = List.fold_left (fun reqacc mname ->
       let (rspec, _) = StrMap.find mname donespecs in
       if rspec.alias = mname then reqacc
@@ -1615,7 +1623,9 @@ let rec check_modspec syms tenv specs donespecs the_spec =
          | Ok cdata ->
            let itenv =
              PairMap.add ("", cdata.classname) cdata itenv in
-           (* replace field types in the class with aliases *)
+           (* if requires are aliases, substitute that for the module
+              in all typeexprs in the symbol table AND the typedefs
+              (or just tenv?) *)
            (* I think I don't have to!!!! *)
            (* let ecdata = List.fold_left (fun cdata (mname, malias) ->
                replace_modname_in_classdata cdata mname malias)
@@ -1626,11 +1636,10 @@ let rec check_modspec syms tenv specs donespecs the_spec =
              (* Note that the alias here is /this spec's/ alias *)
              PairMap.add (the_spec.alias, cdata.classname) cdata etenv) in
            (itenv, etenv)
-         | Error _ -> failwith ("Error in modspec typedef")
+         | Error e -> failwith ("Error in modspec typedef: "
+                                ^ (List.hd e).value)  (* hack, fixme *)
       ) (itenv, etenv) the_spec.typedefs
   in
-  (* tricky part: if requires are aliases, substitute that for the module
-     in all typeexprs in the symbol table AND the typedefs (or just tenv?) *)
   (* 3. fold for processing global vars and procs and adding to symtable *)
   let syms = List.fold_left (fun symacc (gdecl: (_, _) globaldecl) ->
       let prefix = if the_spec.alias = "" then "" else the_spec.alias ^ "::" in
@@ -1670,8 +1679,9 @@ let rec check_modspec syms tenv specs donespecs the_spec =
       | Error _ -> failwith "Modspec error in procedure decl"
         (* Error (add_import_notice errs) *)
     ) syms the_spec.procdecls in
-  (* 4. add this spec (with possible changes) to donespecs *)
-  let donespecs = StrMap.add the_spec.name (the_spec, itenv) donespecs in
+  (* 4. add this spec with its exported tenv to donespecs *)
+  (* hmm...could I now just map to the tenvs, since specs don't change? *)
+  let donespecs = StrMap.add the_spec.name (the_spec, etenv) donespecs in
   (* 5. return all updated data structures. *)
   (syms, itenv, etenv, donespecs)
 
@@ -1930,23 +1940,24 @@ let check_module syms (tenv: typeenv) ispecs
 
 (** Replace module names in a type expr with the originals from classdata.
     Used only for generating a modspec. *)
-let rec qualify_texp tenv texp =
+let rec qualify_texp tenv thismod texp =
     match texp.texpkind with
     | Generic _ -> (texp, StrSet.empty)
     | Concrete cte ->
       let tclass = PairMap.find (cte.modname, cte.classname) tenv in
-      let newmod = tclass.in_module in
       let (targs, mnames) = 
         if cte.typeargs = [] then
-          ([], if newmod <> "" then StrSet.singleton newmod else StrSet.empty)
+          ([], if tclass.in_module <> "" then StrSet.singleton tclass.in_module
+               else StrSet.empty)
         else
           let (targs, mnlists) =
-            List.split (List.map (qualify_texp tenv) cte.typeargs) in
+            List.split (List.map (qualify_texp tenv thismod) cte.typeargs) in
           (targs, List.fold_left StrSet.union StrSet.empty mnlists)
       in 
       ({ texp with
          texpkind = Concrete {
-             modname=newmod;
+             modname=(if tclass.in_module = thismod then ""
+                      else tclass.in_module);
              classname=cte.classname;
              typeargs=targs } },
        mnames)
@@ -1965,13 +1976,14 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
         else
           match tdef.kindinfo with
           | Newtype texpr ->
-            let texpr, tmods = qualify_texp tenv texpr in
+            let texpr, tmods = qualify_texp tenv the_mod.name texpr in
             ({ tdef with kindinfo=(Newtype texpr)}, tmods)
           | Hidden -> (tdef, StrSet.empty)
           | Fields fdlist ->
             let fdecls, fmlist = List.split (
                 List.map (fun fdecl ->
-                    let ftype, fmods = qualify_texp tenv fdecl.fieldtype in
+                    let ftype, fmods =
+                      qualify_texp tenv the_mod.name fdecl.fieldtype in
                     ({ fdecl with fieldtype=ftype }, fmods)
                   ) fdlist) in
             ({ tdef with kindinfo=(Fields fdecls) },
@@ -1981,7 +1993,7 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
   let tmods = List.fold_left StrSet.union StrSet.empty tmods
   in
   (* "unparser" to reconstruct syntactic type expressions, for globals *)
-  (* oh wait! I have to rewrite all texprs to use the original modname! *)
+  (* qualify_texp is used for things that already have a texpr. *)
   let rec texpr_of_ttag ty =
     match ty with
     | Typevar tv -> {
@@ -1993,9 +2005,10 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
     | Namedtype tinfo -> 
         let modname = (* substitute qualified module name. *)
           let tclass = PairMap.find
-              (* tinfo.modulename may be redundant now *)
               (tinfo.tclass.in_module, tinfo.tclass.classname) tenv in
-          tclass.in_module
+          (* Don't use module name if it's a type defined in this module. *)
+          if tclass.in_module = the_mod.name then ""
+          else tclass.in_module
         in
         let typeargs, mnames = List.split
           (List.map (fun ta -> texpr_of_ttag ta) tinfo.typeargs) in
@@ -2014,7 +2027,7 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
   let gdecls, gmlist = List.split
       (List.map (fun (gstmt: (_, _, _) globalstmt) ->
              let (texp, mods_used) = match gstmt.typeexp with
-               | Some texp -> qualify_texp tenv texp
+               | Some texp -> qualify_texp tenv the_mod.name texp
                | None ->
                  (* global initializer didn't have a typeExpr, so
                     reconstruct one from the symbol table. *)
@@ -2031,15 +2044,15 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
          ) globals) in
   let gmods = List.fold_left StrSet.union StrSet.empty gmlist 
   in
-  (* rewrite type exprs in procedure declarations, get module names *)
+  (* rewrite type exprs in procedure declarations, get used module names *)
   let procs = List.filter (fun proc -> proc.decl.visibility <> Private)
       the_mod.procs in
   let pdecls, mlist = List.split (List.map (fun proc ->
       let pdecl = proc.decl in
-      let rettype, retmods = qualify_texp tenv pdecl.rettype in 
+      let rettype, retmods = qualify_texp tenv the_mod.name pdecl.rettype in 
       let params, parammods = List.split (
           List.map (fun (mut, name, argtype) ->
-              let qargtype, pmods = qualify_texp tenv argtype
+              let qargtype, pmods = qualify_texp tenv the_mod.name argtype
               in ((mut, name, qargtype), pmods)
             ) pdecl.params)
       in ({pdecl with params=params; rettype=rettype},
@@ -2049,6 +2062,7 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
   in
   { name = the_mod.name;
     alias = the_mod.name;
+    (* Make the list of all required modules (don't include this one) *)
     requires = List.of_seq (
         (StrSet.to_seq
            (StrSet.filter (fun mn -> mn <> the_mod.name)

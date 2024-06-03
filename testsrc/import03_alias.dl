@@ -1,12 +1,11 @@
 (* test module aliasing *)
-module alias01 =
 
 open stdio;
 import collatz as ctz;
 
-export proc main() =
-   printInt(ctz::collatz(99));
+proc main()
+begin
+   printInt(ctz::collatz(99));  (* 25 *)
    return;
 /proc
 
-/module
