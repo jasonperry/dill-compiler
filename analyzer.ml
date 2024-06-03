@@ -68,17 +68,17 @@ let rec check_typeExpr syms tenv texp : (typetag, string) result =
             (* substitute type arguments and produce the tag. *)
             let argtags = concat_ok ress in 
             let innerTtag = 
-              Namedtype {modulename=cdata.in_module; (* redundant? *)
+              Namedtype {(* modulename=cdata.in_module; *) (* redundant? *)
                          tclass=cdata;
                          typeargs=argtags} in
             (* potentially double-wrap with nullable, then array *)
             let innerTtag = if texp.nullable then
-                Namedtype {modulename="";
+                Namedtype {(* modulename=""; *)
                            tclass=option_class;
                            typeargs=[innerTtag]}
               else innerTtag in
             if texp.array then
-              Ok (Namedtype {modulename="";
+              Ok (Namedtype {(* modulename=""; *)
                              tclass=array_class;
                              typeargs=[innerTtag]})
             else (Ok innerTtag)
@@ -1284,22 +1284,22 @@ let check_procdecl syms tenv modname (pdecl: ('loc, 'loc) procdecl)
                  {procname=(if modname = "" then pdecl.name
                             else modname ^ "::" ^ pdecl.name);
                   rettype=rttag; fparams=paramentries} in
-             (* create new inner scope under the procedure, and add args *)
-             (* Woops, it creates a "dangling" scope if proc isn't defined *)
+               (* create new inner scope under the procedure, and add args *)
+               (* Woops, it creates a "dangling" scope if proc isn't defined *)
                let procscope = Symtable.new_proc_scope syms procentry in
                (* Should I add the proc to its own symbol table? Don't see why. *)
                (* Did I do this so codegen for recursive calls "just works"? *)
-             Symtable.addproc procscope pdecl.name procentry;
-             List.iter (fun param ->
+               Symtable.addproc procscope pdecl.name procentry;
+               List.iter (fun param ->
                  (* print_endline ("Adding param symbol " ^ param.symname); *)
-                 Symtable.addvar procscope param.symname param) paramentries;
-             Ok ({pdecl with decor=procscope},
-             (* Yay, simpler! We no longer put the typetag in decls. *)
-             (*Ok ({name=pdecl.name; typeparams=pdecl.typeparams;
-                  params=checkedparams; rettype=pdecl.rettype; export=pdecl.export;
-                  decor=procscope}, *)
-                 procentry)
-           ))
+                   Symtable.addvar procscope param.symname param) paramentries;
+               Ok ({pdecl with decor=procscope},
+                   (* Yay, simpler! We no longer put the typetag in decls. *)
+                   (*Ok ({name=pdecl.name; typeparams=pdecl.typeparams;
+                     params=checkedparams; rettype=pdecl.rettype; export=pdecl.export;
+                     decor=procscope}, *)
+                   procentry)
+             ))
 
 
 (** Check the body of a procedure whose header has already been checked 
@@ -1534,7 +1534,7 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
             (* construct a tag for the underlying type *)
             kindData = Newtype (
                 Namedtype {
-                  modulename = modname;
+                  (* modulename = modname; *)
                   tclass = {cdata with classname = tdef.typename;
                                        in_module = modname};
                   typeargs = [] (* TOFIX *)
@@ -1553,8 +1553,37 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
       }
   ))
 
+let rec replace_modname_in_classdata cdata mname malias =
+  let cdata =
+    (* Wait, do I actually need to do this at all? Is it fine to leave
+       the original module name as long as I have the class data?
+       In types.ml it says in_module is only for modspecs! *)
+    if cdata.in_module = mname then { cdata with in_module = malias }
+    else cdata
+  in
+  match cdata.kindData with
+  | Primitive | Hidden -> cdata
+  | Newtype ttag ->
+    { cdata with kindData =
+                   Newtype (replace_modname_in_ttag ttag mname malias) }
+  | Struct finfos ->
+    { cdata with kindData = 
+                   Struct (List.map (fun (fi: fieldInfo) ->
+                       let newftype = replace_modname_in_ttag
+                           fi.fieldtype mname malias in
+                       { fi with fieldtype = newftype }
+                     ) finfos) }
+  | _ -> cdata (* variants later *)
+                  
+and replace_modname_in_ttag ttag mname malias = match ttag with
+  | Typevar _ -> ttag
+  | Namedtype tinfo ->
+    let newclass = replace_modname_in_classdata tinfo.tclass mname malias in
+    Namedtype { tinfo with tclass=newclass }
+
 (**  check and add a modspec's types and symbols *)
 let rec check_modspec syms tenv specs donespecs the_spec =
+  (* The modspec itself starts from nothing, the base tenv. *)
   let itenv0 = Symtable1.base_tenv in
   (* 1. Process all other required modspecs recursively. *)
   let syms, itenv, etenv, donespecs = List.fold_left
@@ -1572,15 +1601,89 @@ let rec check_modspec syms tenv specs donespecs the_spec =
            let reqspec = StrMap.find required specs in
            check_modspec syms tenv specs donespecs reqspec
       ) (syms, itenv0, tenv, donespecs) the_spec.requires in
+  (* Make a map for requires that have aliases *)
+  (* let reqaliases = List.fold_left (fun reqacc mname ->
+      let (rspec, _) = StrMap.find mname donespecs in
+      if rspec.alias = mname then reqacc
+      else (mname, rspec.alias)::reqacc
+     ) [] the_spec.requires in *)
   (* 2. fold for processing the_spec.tdefs and adding to tenv *)
-  (* tenv, the_spec = ... *)
-  (* tricky part: if requires are aliases, substitute that for the module in all typeexprs in the symbol table AND the typedefs (or just tenv?) *)
-  (* HOWTO: check if a typeExpr's modulename is in the_spec.requires and
-     the required spec has an alias *)
+  (* Wait, I don't need a new spec since I just return tenv, right? *)
+  let itenv, etenv = List.fold_left
+      (fun (itenv, etenv) tdef -> 
+         match check_typedef syms itenv the_spec.name tdef with
+         | Ok cdata ->
+           let itenv =
+             PairMap.add ("", cdata.classname) cdata itenv in
+           (* replace field types in the class with aliases *)
+           (* I think I don't have to!!!! *)
+           (* let ecdata = List.fold_left (fun cdata (mname, malias) ->
+               replace_modname_in_classdata cdata mname malias)
+               cdata reqaliases in *)
+           let etenv = (
+             debug_print ("Adding type from import: " ^ 
+                          the_spec.alias ^ "::" ^ cdata.classname);
+             (* Note that the alias here is /this spec's/ alias *)
+             PairMap.add (the_spec.alias, cdata.classname) cdata etenv) in
+           (itenv, etenv)
+         | Error _ -> failwith ("Error in modspec typedef")
+      ) (itenv, etenv) the_spec.typedefs
+  in
+  (* tricky part: if requires are aliases, substitute that for the module
+     in all typeexprs in the symbol table AND the typedefs (or just tenv?) *)
   (* 3. fold for processing global vars and procs and adding to symtable *)
+  let syms = List.fold_left (fun symacc (gdecl: (_, _) globaldecl) ->
+      let prefix = if the_spec.alias = "" then "" else the_spec.alias ^ "::" in
+      let refname = prefix ^ gdecl.varname in
+      let fullname = the_spec.name ^ "::" ^ gdecl.varname in
+      (* note that we use the modspec's internal tenv! *)
+      match check_typeExpr symacc itenv gdecl.typeexp with
+      | Error _ -> failwith "Modspec error in global variable decl"
+        (* Error [{value=msg ^ " (in imported modspec)"; loc=gdecl.decor}] *)
+      | Ok ttag -> (
+          match Symtable.findvar_opt refname symacc with
+          | Some (_, _) -> failwith "Extern variable name clash";
+            (* Error [{value=("Extern variable name clash:" ^ refname);
+                        loc=gdecl.decor}] *)
+          | None ->
+            (Symtable.addvar symacc refname {
+              (* Keep the original module name internally. Codegen needs it? *)
+              symname = fullname; symtype = ttag; 
+              var = true; mut=is_mutable_type ttag; addr = None
+            };
+             symacc)
+        )) syms the_spec.globals in
+  let syms = List.fold_left (fun symacc (pdecl: (_, _) procdecl) ->
+      let refname =
+        if the_spec.alias = "" then pdecl.name
+        else the_spec.alias ^ "::" ^ pdecl.name in
+      (* let fullname = the_spec.name ^ "::" ^ pdecl.name in *)
+      (* check_procdecl now gets module name prefix from AST. *)
+      match check_procdecl symacc itenv the_spec.name pdecl 
+      (* { pdecl with name=(prefix ^ pdecl.name) } *) with
+      | Ok (_, entry) ->
+        (* wait, will entry have the original name? Yes, modname *)
+        Symtable.addproc symacc refname entry;
+        (* if refname <> fullname then 
+           Symtable.addproc syms fullname entry; *) (* don't want this *)
+        symacc
+      | Error _ -> failwith "Modspec error in procedure decl"
+        (* Error (add_import_notice errs) *)
+    ) syms the_spec.procdecls in
   (* 4. add this spec (with possible changes) to donespecs *)
+  let donespecs = StrMap.add the_spec.name (the_spec, itenv) donespecs in
   (* 5. return all updated data structures. *)
   (syms, itenv, etenv, donespecs)
+
+let process_imports syms tenv specs _ =
+  (* TODO: error-checking istmts for duplicates *)
+  (* TODO: catching errors from check_modspec *)
+  let res = StrMap.fold (fun _ spec (syms, tenv) -> 
+      let (syms, tenv, _, _) =
+        check_modspec syms tenv specs StrMap.empty spec in
+      (syms, tenv)
+    ) specs (syms, tenv) in
+  Ok res
 
 (** From imported module specs, add types, global var, and proc symbols. *)
 let add_imports syms tenv specs istmts = 
@@ -1617,9 +1720,9 @@ let add_imports syms tenv specs istmts =
   let check_importdecls modname prefix tenv the_spec = 
     (* Iterate over global variable declarations and add to symtable *)
     List.map (
-        fun (gdecl: ('et,'st) globaldecl) ->
+      fun (gdecl: ('et,'st) globaldecl) ->
+        (* name for the current context, aliased or open *)
         let refname = prefix ^ gdecl.varname in
-        (* only codegen should make it a dot name? *)
         let fullname = modname ^ "::" ^ gdecl.varname in
         match check_typeExpr syms tenv gdecl.typeexp with
         | Error msg ->
@@ -1697,7 +1800,7 @@ let check_module syms (tenv: typeenv) ispecs
   : ((typetag, 'a st_node, locinfo) dillmodule * 'tenv, 'er) result =
   (* Check import statements and load modspecs into symtable
      (they've been loaded from .dms files by the top level) *)
-  match add_imports syms tenv ispecs dmod.imports with
+  match (* add_imports *) process_imports syms tenv ispecs dmod.imports with
   | Error errs -> Error errs 
   | Ok (syms, tenv) -> (  (* It's the same symtable node that's passed in... *)
       (* print_typekeys tenv; *)
@@ -1824,7 +1927,8 @@ let check_module syms (tenv: typeenv) ispecs
     )
 
 
-(* Replace module names in a type expr with the originals from classdata *)
+(** Replace module names in a type expr with the originals from classdata.
+    Used only for generating a modspec. *)
 let rec qualify_texp tenv texp =
     match texp.texpkind with
     | Generic _ -> (texp, StrSet.empty)
@@ -1889,7 +1993,7 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
         let modname = (* substitute qualified module name. *)
           let tclass = PairMap.find
               (* tinfo.modulename may be redundant now *)
-              (tinfo.modulename, tinfo.tclass.classname) tenv in
+              (tinfo.tclass.in_module, tinfo.tclass.classname) tenv in
           tclass.in_module
         in
         let typeargs, mnames = List.split

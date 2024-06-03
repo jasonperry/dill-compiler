@@ -115,8 +115,9 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
               | None -> (fieldname, void_type, i, void_ttag)
               | Some (Typevar tv) -> (fieldname, voidptr_type, i, Typevar tv)
               | Some (Namedtype tinfo as fty) ->
-                  let mname, tname = tinfo.modulename, tinfo.tclass.classname in
-                  let basetype = match Lltenv.find_lltype_opt
+                let mname, tname =
+                  tinfo.tclass.in_module, tinfo.tclass.classname in
+                let basetype = match Lltenv.find_lltype_opt
                                          (mname, tname) lltypes with
                   | Some basetype ->
                     debug_print ("#CG add_lltype: existing type for field "
@@ -239,10 +240,11 @@ let rec ttag_to_lltype lltypes ty = match ty with
         let basetype = ttag_to_lltype lltypes (option_base_type ty) in
         struct_type context [| nulltag_type; basetype |]
       else 
-        match Lltenv.find_lltype_opt (tinfo.modulename, tinfo.tclass.classname)
-                lltypes with
-        | None -> failwith ("BUG: no lltype found for " ^ tinfo.modulename
-                            ^ "::" ^ tinfo.tclass.classname)
+        match Lltenv.find_lltype_opt
+                (tinfo.tclass.in_module, tinfo.tclass.classname) lltypes with
+        | None -> failwith ("BUG: no lltype found for "
+                            ^ tinfo.tclass.in_module ^ "::"
+                            ^ tinfo.tclass.classname)
         | Some llty -> llty
         (* TODO: other type variable cases, if any (recursive).
            All other option types will use a pointer? Or will I be able

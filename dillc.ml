@@ -104,6 +104,7 @@ let load_imports cconfig (modmap: ('ed,'sd,'tt) module_spec StrMap.t) istmts =
       in
       let spec = load_import mmap modname in
       StrMap.add modname { spec with alias=modalias } mmap
+      (* put error checking for duplicate include here? No. *)
     ) modmap istmts
 
 (** Do analysis and codegen phases, return module code and header object *)

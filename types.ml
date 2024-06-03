@@ -36,7 +36,7 @@ and classData = {
 (** Typetag is the in-place specification of a type. It's what's
     checked for a match with other types. *)
 and namedtypeinfo = {
-  modulename: string; (* is this redundant now? *)
+  (* modulename: string; (\* is this redundant now? *\) *)
   mutable tclass: classData; (* allow updating for recursive types *)
   typeargs: typetag list; (* can be concrete or generic *)
   (* tvarmap: typetag StrMap.t (* map of type parameters to type args *) *)
@@ -55,7 +55,7 @@ let gen_ttag (classdata: classData) (typeargs: typetag list) =
           "BUG: attempt to generate typetag with wrong number of arguments")
   else 
     Namedtype {
-      modulename = classdata.in_module;
+      (* modulename = classdata.in_module; *)
       tclass = classdata;
       (* Build a map from the class's type parameters to type arguments. *)
       (* tvarmap = List.fold_left2 (fun m k v -> StrMap.add k v m) StrMap.empty
@@ -145,8 +145,8 @@ let rec typetag_to_string = function
       typetag_to_string (List.hd tinfo.typeargs) ^ "?"
     else if tinfo.tclass = array_class then
       typetag_to_string (List.hd tinfo.typeargs) ^ "[]"
-    else
-      tinfo.modulename ^ "::" ^ tinfo.tclass.classname
+    else (* used to be tinfo.modulename *)
+      tinfo.tclass.in_module ^ "::" ^ tinfo.tclass.classname
       ^ (if List.length tinfo.tclass.tparams > 0 then 
            "("
            ^ String.concat ","
@@ -175,7 +175,7 @@ let get_type_classname = function
 
 let get_type_modulename = function
   | Typevar _ -> failwith ("Error: get_type_modulename called on generic type")
-  | Namedtype tinfo -> tinfo.modulename
+  | Namedtype tinfo -> tinfo.tclass.in_module (* tinfo.modulename *)
                          
 let get_type_class = function
   | Typevar _ -> failwith ("Error: get_type_class called on generic type")
@@ -301,8 +301,8 @@ let rec types_equal (t1: typetag) (t2: typetag) =
         StrMap.find tp tinfo1.tvarmap) tinfo1.tclass.tparams in
     let typeargs2 = List.map (fun tp ->
         StrMap.find tp tinfo2.tvarmap) tinfo2.tclass.tparams in *)
-    (tinfo1.modulename = tinfo2.modulename
-     && tinfo1.tclass.classname = tinfo2.tclass.classname
+    ((* tinfo1.modulename = tinfo2.modulename
+        && *) tinfo1.tclass.classname = tinfo2.tclass.classname
      (* Recursively compare generic type arguments. *)
      && List.for_all2 types_equal tinfo1.typeargs tinfo2.typeargs)
   | _ -> false
@@ -374,8 +374,8 @@ let rec unify_match argtag paramtag =
   | (Typevar _, Namedtype _) ->
     Error (argtag, paramtag)
   | (Namedtype tinfo1, Namedtype tinfo2) ->
-    if not (tinfo1.modulename = tinfo2.modulename
-            && tinfo1.tclass.classname = tinfo2.tclass.classname)
+    if not ((* tinfo1.modulename = tinfo2.modulename
+               && *) tinfo1.tclass.classname = tinfo2.tclass.classname)
     then Error (argtag, paramtag)
     else
       (* recursively match type arguments *)

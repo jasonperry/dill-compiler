@@ -2,7 +2,7 @@
 
 module transdep begin
 
-open complex;  (* should be required *)
+open complex;  (* should be a require in the modspec *)
 import stdio;  (* shouldn't be required *)
 
 type ComplexWithLength is record
