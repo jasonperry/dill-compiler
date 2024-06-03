@@ -1679,13 +1679,14 @@ let process_imports syms tenv specs _ =
   (* TODO: error-checking istmts for duplicates *)
   (* TODO: catching errors from check_modspec *)
   let res = StrMap.fold (fun _ spec (syms, tenv) -> 
-      let (syms, tenv, _, _) =
+      let (syms, _, etenv, _) =
         check_modspec syms tenv specs StrMap.empty spec in
-      (syms, tenv)
+      (syms, etenv)
     ) specs (syms, tenv) in
   Ok res
 
 (** From imported module specs, add types, global var, and proc symbols. *)
+(* old version, to be removed *)
 let add_imports syms tenv specs istmts = 
   (* Even if you open a module, you should remember which module the 
    * function came from, for error messages *)
@@ -1803,7 +1804,7 @@ let check_module syms (tenv: typeenv) ispecs
   match (* add_imports *) process_imports syms tenv ispecs dmod.imports with
   | Error errs -> Error errs 
   | Ok (syms, tenv) -> (  (* It's the same symtable node that's passed in... *)
-      (* print_typekeys tenv; *)
+      debug_print ("#AN: tenv after imports:\n" ^ string_of_tenv tenv);
       (* Create a new scope to add all locally-defined things below imports. *)
       let syms = Symtable.new_scope syms in
       (* create tenv entries (classdata) for type definitions *)
