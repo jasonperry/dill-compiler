@@ -229,7 +229,7 @@ type ('ed, 'sd, 'l) dillmodule = {
 type ('ed, 'sd, 'l) module_spec = {
     name: string;
     alias: string;  (* from outer context *)
-    requires: string list;  (* should locate this too for not found errors *)
+    requires: (string located) list;  (* should locate this too for not found errors *)
     typedefs: ('sd, 'l) typedef list;
     globals: ('sd, 'l) globaldecl list;
     procdecls: ('sd, 'l) procdecl list
@@ -434,7 +434,7 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
   "modspec " ^ mspec.name ^ " begin \n"
   (* oh look, I never printed out includes in the first place. *)
-  ^ String.concat "\n" (List.map (fun rq -> "require " ^ rq ^ ";")
+  ^ String.concat "\n" (List.map (fun rq -> "require " ^ rq.value ^ ";")
                           mspec.requires) ^ "\n"
   ^ String.concat "\n\n" (List.map typedef_to_string mspec.typedefs)
   ^ List.fold_left (

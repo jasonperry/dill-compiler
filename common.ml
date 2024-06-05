@@ -111,3 +111,11 @@ let unzip_results rlist =
     )
   in
   (concat_map Result.to_list rlist, errs)
+
+(** Fold over a list with a function that returns a result *)
+let rec fold_list_result f blist res =
+  match blist with
+  | [] -> res
+  | b::bs -> (match (f b res) with
+      | Ok rnew -> fold_list_result f bs rnew
+      | Error e -> Error e)             

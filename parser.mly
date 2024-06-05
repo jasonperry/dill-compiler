@@ -130,7 +130,7 @@ modspec:
     } *)
 
 requireStmt:
-  | REQUIRE mn=moduleName SEMI { mn }
+  | REQUIRE mn=moduleName SEMI { { value=mn; loc=$loc } }
 
 includeStmt:
   | is=importStmt

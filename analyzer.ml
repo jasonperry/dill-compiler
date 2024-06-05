@@ -6,7 +6,7 @@ open Types
 open Ast
 open Symtable1
 
-exception SemanticError of string
+exception SemanticError of string * (Lexing.position * Lexing.position)
 
 (* Analysis pass populates symbol table and type environment. 
  * Hopefully all possibilities of error can be caught in this phase. *)
@@ -1553,54 +1553,30 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
       }
   ))
 
-let rec replace_modname_in_classdata cdata mname malias =
-  let cdata =
-    (* Wait, do I actually need to do this at all? Is it fine to leave
-       the original module name as long as I have the class data?
-       In types.ml it says in_module is only for modspecs! *)
-    if cdata.in_module = mname then { cdata with in_module = malias }
-    else cdata
-  in
-  match cdata.kindData with
-  | Primitive | Hidden -> cdata
-  | Newtype ttag ->
-    { cdata with kindData =
-                   Newtype (replace_modname_in_ttag ttag mname malias) }
-  | Struct finfos ->
-    { cdata with kindData = 
-                   Struct (List.map (fun (fi: fieldInfo) ->
-                       let newftype = replace_modname_in_ttag
-                           fi.fieldtype mname malias in
-                       { fi with fieldtype = newftype }
-                     ) finfos) }
-  | _ -> cdata (* variants later *)
-                  
-and replace_modname_in_ttag ttag mname malias = match ttag with
-  | Typevar _ -> ttag
-  | Namedtype tinfo ->
-    let newclass = replace_modname_in_classdata tinfo.tclass mname malias in
-    Namedtype { tinfo with tclass=newclass }
+
+(* ---- Modspec stuff starts here ---- *)
 
 (**  check and add a modspec's types and symbols *)
 let rec check_modspec syms etenv specs donespecs the_spec =
   (* The modspec itself starts from nothing, the base tenv. *)
   let itenv0 = Symtable1.base_tenv in
   (* 1. Process all other required modspecs recursively. *)
-  (* Do I not need etenv here? Never changes? *)
   let syms, itenv, donespecs = List.fold_left
       (fun (syms, itenv, donespecs) required ->
       (* check if in donespecs, then if in specs *)
-         if StrMap.mem required donespecs then
+         if StrMap.mem required.value donespecs then
            (* Fold already-processed spec's (e!)tenv into this one. *)
-           let (_, reqetenv) = StrMap.find required donespecs in
+           let (_, reqetenv) = StrMap.find required.value donespecs in
            let itenv1 = PairMap.union (fun _ v1 _ -> Some v1) itenv reqetenv in
            (syms, itenv1, donespecs)
-         else if not (StrMap.mem required specs) then
-           (* TODO: fix error handling from this. Exceptions? *)
-           failwith ("Missing required import " ^ required)
-         (* TODO: also self-require is an error *)
+         else if not (StrMap.mem required.value specs) then
+           (* TODO: fix error handling from this. Exceptions? 
+              OR use let* to avoid the propagation logic *)
+           raise (SemanticError ("Missing required import: " ^ required.value,
+                                 required.loc))
+           (* TODO: also self-require is an error *)
          else
-           let reqspec = StrMap.find required specs in
+           let reqspec = StrMap.find required.value specs in
            let syms, _, reqetenv, donespecs = 
              check_modspec syms etenv specs donespecs reqspec in
            (* We don't add the required modspec's names externally,
@@ -1636,8 +1612,10 @@ let rec check_modspec syms etenv specs donespecs the_spec =
              (* Note that the alias here is /this spec's/ alias *)
              PairMap.add (the_spec.alias, cdata.classname) cdata etenv) in
            (itenv, etenv)
-         | Error e -> failwith ("Error in modspec typedef: "
-                                ^ (List.hd e).value)  (* hack, fixme *)
+         | Error e ->
+           raise (SemanticError
+                    ("(modspec " ^ the_spec.name ^ "): " ^ (List.hd e).value,
+                     tdef.decor))
       ) (itenv, etenv) the_spec.typedefs
   in
   (* 3. fold for processing global vars and procs and adding to symtable *)
@@ -1647,16 +1625,18 @@ let rec check_modspec syms etenv specs donespecs the_spec =
       let fullname = the_spec.name ^ "::" ^ gdecl.varname in
       (* note that we use the modspec's internal tenv! *)
       match check_typeExpr symacc itenv gdecl.typeexp with
-      | Error _ -> failwith "Modspec error in global variable decl"
-        (* Error [{value=msg ^ " (in imported modspec)"; loc=gdecl.decor}] *)
+      | Error estr ->
+        raise (SemanticError
+                 ("(modspec " ^ the_spec.name ^ "): " ^ estr, gdecl.decor))
       | Ok ttag -> (
           match Symtable.findvar_opt refname symacc with
-          | Some (_, _) -> failwith "Extern variable name clash";
-            (* Error [{value=("Extern variable name clash:" ^ refname);
-                        loc=gdecl.decor}] *)
+          | Some (_, _) ->
+            raise (SemanticError ("Extern variable name clash: " ^ refname
+                                  ^ " from import " ^ the_spec.name,
+                                  gdecl.decor))
           | None ->
             (Symtable.addvar symacc refname {
-              (* Keep the original module name internally. Codegen needs it? *)
+              (* Keep the original module name internally. Codegen needs it *)
               symname = fullname; symtype = ttag; 
               var = true; mut=is_mutable_type ttag; addr = None
             };
@@ -1673,10 +1653,10 @@ let rec check_modspec syms etenv specs donespecs the_spec =
       | Ok (_, entry) ->
         (* wait, will entry have the original name? Yes, modname *)
         Symtable.addproc symacc refname entry;
-        (* if refname <> fullname then 
-           Symtable.addproc syms fullname entry; *) (* don't want this *)
         symacc
-      | Error _ -> failwith "Modspec error in procedure decl"
+      | Error e ->
+        raise (SemanticError ("(modspec " ^ the_spec.name ^ "): "
+                              ^ (List.hd e).value, (List.hd e).loc))
         (* Error (add_import_notice errs) *)
     ) syms the_spec.procdecls in
   (* 4. add this spec with its exported tenv to donespecs *)
@@ -1687,122 +1667,14 @@ let rec check_modspec syms etenv specs donespecs the_spec =
 
 let process_imports syms tenv specs _ =
   (* TODO: error-checking istmts for duplicates *)
-  (* TODO: catching errors from check_modspec *)
-  let res = StrMap.fold (fun _ spec (syms, tenv) -> 
-      let (syms, _, etenv, _) =
-        check_modspec syms tenv specs StrMap.empty spec in
-      (syms, etenv)
-    ) specs (syms, tenv) in
-  Ok res
-
-(** From imported module specs, add types, global var, and proc symbols. *)
-(* old version, to be removed *)
-let add_imports syms tenv specs istmts = 
-  (* Even if you open a module, you should remember which module the 
-   * function came from, for error messages *)
-  (* Maybe var symbols can have a 'parent_struct' that could either be a 
-     proc or a type or a module. Namespace? *)
-  
-  (* helper function to append to errors (list of string located) *)
-  let add_import_notice errlist =
-    List.map (fun sloc ->               
-        {sloc with value=(sloc.value ^ " (in included modspec)")})
-      errlist
-  in 
-  (* Check type names and add to the tenv, with alias if needed. *)
-  let rec check_importtypes modname modalias tdefs tenv_acc =
-    match tdefs with
-    | [] -> Ok tenv_acc
-    | td::rest ->
-      match check_typedef syms tenv_acc modname td with
-      | Ok cdata ->
-        (* TODO: have to replace field types with aliases *)
-        let newtenv =
-          debug_print ("Adding type from import: " ^
-                       modalias ^ "::" ^ cdata.classname);
-          PairMap.add (modalias, cdata.classname) cdata tenv_acc in
-        (* No longer adding qualified name. It's in the classdata
-               when needed for a modspec. *)
-        (* |> PairMap.add (modname, cdata.classname) cdata in *)
-        check_importtypes modname modalias rest newtenv
-      | Error es -> Error (add_import_notice es)
-  in
-  (* process global vars and proc imports together, both create symbols *)
-  let check_importdecls modname prefix tenv the_spec = 
-    (* Iterate over global variable declarations and add to symtable *)
-    List.map (
-      fun (gdecl: ('et,'st) globaldecl) ->
-        (* name for the current context, aliased or open *)
-        let refname = prefix ^ gdecl.varname in
-        let fullname = modname ^ "::" ^ gdecl.varname in
-        match check_typeExpr syms tenv gdecl.typeexp with
-        | Error msg ->
-           Error [{value=msg ^ " (in imported modspec)"; loc=gdecl.decor}] 
-        | Ok ttag -> (
-          match Symtable.findvar_opt refname syms with
-          | Some (_, _) ->
-             Error [{value=("Extern variable name clash:" ^ refname);
-                     loc=gdecl.decor}]
-          | None ->
-             Symtable.addvar syms refname {
-                 (* Keep the original module name internally. *)
-                 symname = fullname; symtype = ttag; 
-                 var = true; mut=is_mutable_type ttag; addr = None
-               };
-             (* Add field initializers too. Not anymuer! *)
-             (* List.iter (add_field_sym syms refname true) ttag.tclass.fields; *)
-             Ok syms (* doesn't get used *)
-      )) the_spec.globals
-    (* iterate over procedure declarations and add those. *)
-    @ (List.map ( (* need to fold-map now to keep new pdecls? *)
-             fun (pdecl: ('ed, 'sd) procdecl) ->
-             let refname = prefix ^ pdecl.name in
-             let fullname = modname ^ "::" ^ pdecl.name in
-             (* check_procdecl now gets module name prefix from AST. *)
-             match check_procdecl syms tenv modname pdecl 
-             (* { pdecl with name=(prefix ^ pdecl.name) } *) with
-             | Ok (_, entry) ->
-                Symtable.addproc syms refname entry;
-                if refname <> fullname then 
-                  Symtable.addproc syms fullname entry;
-                Ok syms
-             | Error errs -> Error (add_import_notice errs)
-           ) the_spec.procdecls
-      ) (* end check_importdecls *)
-    in
-    let rec mainloop stmts tenv_acc seenmods =
-      (* go through import statements and process each, accumulating
-         new type environments. Symtables are updated imperatively. *)
-      match stmts with
-      | [] -> Ok (syms, tenv_acc) (* final return from outer function *)
-      | istmt::rest -> (
-        (* get the module names to be used in the symtable and tenv. *)
-        let (modname, modalias) = match istmt.value with
-          | Import (modname, aliasopt) -> (
-            match aliasopt with
-            | Some alias -> (modname, alias)
-            | None -> (modname, modname) )
-          | Open modname -> (modname, "") in
-        if List.mem modname seenmods then
-          Error [{value="Duplicate module import " ^ modname;
-                  loc=istmt.loc}]
-        else 
-          let prefix = if modalias = "" then "" else modalias ^ "::" in
-          (* Get the modspec from the preloaded list. *)
-          let the_spec = StrMap.find modname specs in
-          (* TODO: check the spec's requires and process first *)
-          (* Call the function to check and add imported types *)
-          match
-            check_importtypes modname modalias the_spec.typedefs tenv_acc with
-          | Error errs -> Error errs
-          | Ok newtenv -> (
-            (* Check and add import declarations (vars and procs) *)
-            match concat_errors
-                    (check_importdecls modname prefix newtenv the_spec) with
-            | [] -> mainloop rest newtenv (modname::seenmods)
-            | errs -> Error errs
-      )) (* end mainloop *)
-    in mainloop istmts tenv []
+  try (
+    let res = StrMap.fold (fun _ spec (syms, tenv) -> 
+        let (syms, _, etenv, _) =
+          check_modspec syms tenv specs StrMap.empty spec in
+        (syms, etenv)
+      ) specs (syms, tenv) in
+    Ok res
+  ) with SemanticError (msg, loc) -> Error ([{value=msg; loc=loc}])
 
 
 (** Check one entire module, rewriting each AST component. *)
@@ -2063,10 +1935,12 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
   { name = the_mod.name;
     alias = the_mod.name;
     (* Make the list of all required modules (don't include this one) *)
-    requires = List.of_seq (
+    requires = List.map (
+        fun req -> { value=req; loc=(Lexing.dummy_pos, Lexing.dummy_pos) }
+      ) (List.of_seq (
         (StrSet.to_seq
            (StrSet.filter (fun mn -> mn <> the_mod.name)
-              (StrSet.union tmods (StrSet.union gmods pmods)))));
+              (StrSet.union tmods (StrSet.union gmods pmods))))));
     typedefs = tdefs;
     globals = gdecls;
     procdecls = pdecls

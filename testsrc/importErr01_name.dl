@@ -1,0 +1,11 @@
+(* import with invalid module name (parse error) *)
+
+open Collatz;
+
+proc main()
+begin
+
+  collatz(6171); 
+
+/main
+
