@@ -178,58 +178,58 @@ let option rule tbuf =
 (* "Token parsers" seem to have special status. They are the only ones
    that call "consume" directly and use the coercion functions. *)
 
-(** Consume token of given type, with error message if not *)
-let get_tok ttype descrip tbuf =
+(** Consume token of given type, emitting error message with given description if not *)
+let tok_val ttype descrip tbuf =
   match (consume tbuf ttype) with
   | None -> raise (expect_error descrip tbuf)
   | Some tok -> tok
 
 (** Parse a given token type without data, returning only location *)
-let parse_tok ttype tbuf =
-  (get_tok ttype (string_of_ttype ttype) tbuf).loc
+let tok_only ttype tbuf =
+  (tok_val ttype (string_of_ttype ttype) tbuf).loc
 
 (** Parse unqualified lowercase name. Takes a description string from context
     so errors can say what the value is for. *)
 let uqname descrip tbuf =
-  let tok = get_tok (LC_IDENT "") descrip tbuf in
+  let tok = tok_val (LC_IDENT "") descrip tbuf in
   (tok_sval tok, tok.loc)
 
 let qname descrip tbuf =
-  let name1 = get_tok (LC_IDENT "") ("module name or " ^ descrip) tbuf in
+  let name1 = tok_val (LC_IDENT "") ("module name or " ^ descrip) tbuf in
   match (peek tbuf).ttype with
   | DCOLON ->
-    let _ = parse_tok DCOLON tbuf in
-    let name2 = get_tok (LC_IDENT "") descrip tbuf in
+    let _ = tok_only DCOLON tbuf in
+    let name2 = tok_val (LC_IDENT "") descrip tbuf in
     (tok_sval name1, tok_sval name2, make_location name1.loc name2.loc)
   | _ ->
     ("", tok_sval name1, name1.loc)
 
 let typename tbuf =
-  let tok = get_tok (UC_IDENT "") "class name" tbuf in
+  let tok = tok_val (UC_IDENT "") "class name" tbuf in
   (tok_sval tok, tok.loc)
 
 (* finish me! or is it already done in typeexps. Anyway need generics *)
 (* let qtypename tbuf = *)
 (*   match (peek tbuf).ttype with *)
 (*   | LC_IDENT _ -> (\* actually could be typevar *\)  *)
-(*     let mname = get_tok (LC_IDENT "") ("module name ") tbuf in *)
-(*     let _ = parse_tok DCOLON tbuf in *)
-(*     let tname = get_tok (UC_IDENT "") ("type name ") tbuf in *)
+(*     let mname = tok_val (LC_IDENT "") ("module name ") tbuf in *)
+(*     let _ = tok_only DCOLON tbuf in *)
+(*     let tname = tok_val (UC_IDENT "") ("type name ") tbuf in *)
 
 let iconst tbuf =
-  let tok = get_tok (I_LIT Int64.zero) "integer constant" tbuf in
+  let tok = tok_val (I_LIT Int64.zero) "integer constant" tbuf in
   (tok_ival tok, tok.loc)
                 
 let fconst tbuf =
-  let tok = get_tok (F_LIT 0.0) "float constant" tbuf
+  let tok = tok_val (F_LIT 0.0) "float constant" tbuf
   in (tok_fval tok, tok.loc)
 
 let bconst tbuf =
-  let tok = get_tok (B_LIT '@') "byte constant" tbuf
+  let tok = tok_val (B_LIT '@') "byte constant" tbuf
   in (tok_cval tok, tok.loc)
 
 let sconst tbuf =
-  let tok = get_tok (S_LIT "") "string constant" tbuf
+  let tok = tok_val (S_LIT "") "string constant" tbuf
   in (tok_sval tok, tok.loc)
 
 (** Convert a token to its operator type *)
@@ -280,7 +280,7 @@ let typeExpr tbuf =
     let (n1, _) = uqname "module name or type variable" tbuf in
     (match (peek tbuf).ttype with
      | DCOLON ->
-       ignore (parse_tok DCOLON tbuf);
+       ignore (tok_only DCOLON tbuf);
        let (cn, el1) = typename tbuf in
        (* TODO: parse type args/nullable/array markers *)
        { texpkind=(
@@ -333,21 +333,21 @@ let literal_val tbuf =
   | S_LIT _ ->
     let (s, tloc) = sconst tbuf in (StringVal s, tloc)
   | TRUE ->
-    let tloc = parse_tok TRUE tbuf in (BoolVal true, tloc)
+    let tloc = tok_only TRUE tbuf in (BoolVal true, tloc)
   | FALSE ->
-    let tloc = parse_tok FALSE tbuf in (BoolVal false, tloc)
+    let tloc = tok_only FALSE tbuf in (BoolVal false, tloc)
   | NULL ->
-    let tloc = parse_tok NULL tbuf in (NullVal, tloc)
+    let tloc = tok_only NULL tbuf in (NullVal, tloc)
   | _ -> failwith "BUG: literal_val called with wrong token type"
 
 let unop_val tbuf =
   match (peek tbuf).ttype with
   | MINUS ->
-    let tloc = parse_tok MINUS tbuf in (OpNeg, tloc)
+    let tloc = tok_only MINUS tbuf in (OpNeg, tloc)
   | NOT ->
-    let tloc = parse_tok NOT tbuf in (OpNot, tloc)
+    let tloc = tok_only NOT tbuf in (OpNot, tloc)
   | TILDE ->
-    let tloc = parse_tok TILDE tbuf in (OpBitNot, tloc)
+    let tloc = tok_only TILDE tbuf in (OpBitNot, tloc)
   | _ -> failwith "BUG: unop_val called with wrong token type"
 
 
@@ -359,9 +359,9 @@ let rec expr tbuf =
   let rec base_expr () = 
     match (peek tbuf).ttype with
     | LPAREN ->
-      let sloc = parse_tok LPAREN tbuf in
+      let sloc = tok_only LPAREN tbuf in
       let e = expr tbuf in (* exprs already have location *)
-      let eloc = parse_tok RPAREN tbuf in
+      let eloc = tok_only RPAREN tbuf in
       { e=e.e; decor=make_location sloc eloc }
     | I_LIT _ | F_LIT _ | B_LIT _ | S_LIT _ | TRUE | FALSE | NULL ->
       let (v, tloc) = literal_val tbuf in
@@ -371,31 +371,31 @@ let rec expr tbuf =
       let e = base_expr () in
       { e=ExpUnop (oper, e); decor=make_location sloc e.decor }
     | LSQRB ->
-      let sloc = parse_tok LSQRB tbuf in
+      let sloc = tok_only LSQRB tbuf in
       let rec seq_loop () =
         (* Revisit: should an empty sequence be allowed? *)
         let e = expr tbuf in
         match (peek tbuf).ttype with
         | COMMA ->
-          let _ = parse_tok COMMA tbuf in e :: (seq_loop ())
+          let _ = tok_only COMMA tbuf in e :: (seq_loop ())
         | _ -> [e]
       in
       let seq = seq_loop () in
-      let eloc = parse_tok RSQRB tbuf in
+      let eloc = tok_only RSQRB tbuf in
       { e=ExpSeq seq; decor=make_location sloc eloc }
     | LBRACE ->
-      let sloc = parse_tok LBRACE tbuf in
+      let sloc = tok_only LBRACE tbuf in
       let rec record_loop () =
         let fname, _ = uqname "field name" tbuf in
-        let _ = parse_tok ASSIGN tbuf in
+        let _ = tok_only ASSIGN tbuf in
         let fexp = expr tbuf in
         match (peek tbuf).ttype with
         | COMMA ->
-          let _ = parse_tok COMMA tbuf in (fname, fexp) :: (record_loop ())
+          let _ = tok_only COMMA tbuf in (fname, fexp) :: (record_loop ())
         | _ -> [(fname, fexp)]
       in
       let fields = record_loop() in
-      let eloc = parse_tok RBRACE tbuf in
+      let eloc = tok_only RBRACE tbuf in
       { e=ExpRecord fields; decor=make_location sloc eloc }
     | VLABEL _ -> variant_exp tbuf
     | _ -> var_or_call_expr tbuf
@@ -418,10 +418,10 @@ let rec expr tbuf =
     expr_tree (e1 :: exprs) opers
 
 and variant_exp tbuf =
-  let lbltok = get_tok (VLABEL "") "variant label" tbuf in
+  let lbltok = tok_val (VLABEL "") "variant label" tbuf in
   match (peek tbuf).ttype with
   | LPAREN ->
-    let _ = parse_tok LPAREN tbuf in
+    let _ = tok_only LPAREN tbuf in
     let rec varvals_loop () =
       let e = expr tbuf in
       match (peek tbuf).ttype with
@@ -429,13 +429,13 @@ and variant_exp tbuf =
       | _ -> [e]
     in
     let varvals = varvals_loop() in
-    let eloc = parse_tok RPAREN tbuf in 
+    let eloc = tok_only RPAREN tbuf in 
     { e=ExpVariant(tok_sval lbltok, varvals);
       decor=make_location lbltok.loc eloc }
   | _ ->
     { e=ExpVariant(tok_sval lbltok, []); decor=lbltok.loc }
 
-(** Generate an expression tree based on precedence *)
+(** Generate an expression tree from lists, based on precedence *)
 and expr_tree elist oplist =
   let rec max_prec maxi max li ri =
     if li = ri then maxi
@@ -468,9 +468,9 @@ and var_or_call_expr tbuf =
   let qident = if mname = "" then id else mname ^ "::" ^ id in
   match (peek tbuf).ttype with
   | LPAREN -> (* CallExpr *)
-    let _ = parse_tok LPAREN tbuf in
+    let _ = tok_only LPAREN tbuf in
     let args = arg_list tbuf in
-    let eloc = parse_tok RPAREN tbuf in
+    let eloc = tok_only RPAREN tbuf in
     { e=ExpCall (qident, args);
       decor=make_location sloc eloc}
   | _ -> (* loop for varexpr tail (starting with possible indexes) *)
@@ -498,13 +498,13 @@ and var_or_call_expr tbuf =
 
 (** Sequence of square-bracketed index expressions *)
 and index_exprs tbuf =
-  let sloc = parse_tok LSQRB tbuf in
+  let sloc = tok_only LSQRB tbuf in
   let rec loop () = 
     let iexpr = expr tbuf in
-    let eloc = parse_tok RSQRB tbuf in
+    let eloc = tok_only RSQRB tbuf in
     match (peek tbuf).ttype with
     | LSQRB ->
-      let _ = parse_tok LSQRB tbuf in
+      let _ = tok_only LSQRB tbuf in
       let tail, eloc = loop () in
       (iexpr::tail, make_location sloc eloc)
     | _ -> ([iexpr], make_location sloc eloc)
@@ -517,7 +517,7 @@ and arg_list tbuf =
     if (peek tbuf).ttype = RPAREN then []
     else
       let mutmark = match (peek tbuf).ttype with
-        | DOLLAR -> (ignore (parse_tok DOLLAR tbuf); true)
+        | DOLLAR -> (ignore (tok_only DOLLAR tbuf); true)
         | _ -> false
       in          
       let e = expr tbuf in
@@ -531,45 +531,45 @@ and arg_list tbuf =
 
 (* ------------------- Statement parsers ------------------- *)
 
-(* if initializer is required, the caller will check, right? *)
-(* Yes, I think that's better than trying to divide syntactically. *)
+(* if initializer is required, the caller will check; this rule is used
+   for both globals and locals that may not require initializers. *)
 let rec decl_stmt tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | VAR -> 
-    let sloc = parse_tok VAR tbuf in
+    let sloc = tok_only VAR tbuf in
     let (vname, _) = uqname "lvalue" tbuf in
     let tyopt = 
       (match (peek tbuf).ttype with
        | COLON ->  (* has type expression *)
-         ignore (parse_tok COLON tbuf);
+         ignore (tok_only COLON tbuf);
          Some (typeExpr tbuf)
        | _ -> None
       ) in
     let initopt =
       match (peek tbuf).ttype with
       | ASSIGN ->
-        let _ = parse_tok ASSIGN tbuf in
+        let _ = tok_only ASSIGN tbuf in
         Some (expr tbuf)
       | _ -> None
     in
-    let eloc = parse_tok SEMI tbuf in
+    let eloc = tok_only SEMI tbuf in
     { st=StmtDecl (vname, tyopt, initopt);
       decor=make_location sloc eloc }
   | _ -> failwith "decl_stmt invalid state"
 
 and if_stmt tbuf =
-  let sloc = parse_tok IF tbuf in
+  let sloc = tok_only IF tbuf in
   let cond = expr tbuf in
-  let _ = parse_tok THEN tbuf in
+  let _ = tok_only THEN tbuf in
   let then_block = stmt_seq tbuf in
   let elsif_blocks = match (peek tbuf).ttype with
     | ELSIF ->
       let rec elsif_loop () =
         (* have to do (optional) else in here too? *)
-        let _ = parse_tok ELSIF tbuf in
+        let _ = tok_only ELSIF tbuf in
         let cond = expr tbuf in
-        let _ = parse_tok THEN tbuf in
+        let _ = tok_only THEN tbuf in
         let block = stmt_seq tbuf in
         match (peek tbuf).ttype with
         | ELSIF -> (cond, block) :: (elsif_loop ())
@@ -579,31 +579,31 @@ and if_stmt tbuf =
   in
   let elseopt = match (peek tbuf).ttype with
     | ELSE ->
-      let _ = parse_tok ELSE tbuf in
+      let _ = tok_only ELSE tbuf in
       let else_block = stmt_seq tbuf in
       Some else_block
     | _ -> None
   in
-  let eloc = parse_tok ENDIF tbuf in
+  let eloc = tok_only ENDIF tbuf in
   { st=StmtIf (cond, then_block, elsif_blocks, elseopt);
     decor=make_location sloc eloc }
 
 and while_stmt tbuf =
-  let sloc = parse_tok WHILE tbuf in
+  let sloc = tok_only WHILE tbuf in
   let cond = expr tbuf in
-  let _ = parse_tok LOOP tbuf in
+  let _ = tok_only LOOP tbuf in
   let body = stmt_seq tbuf in
-  let eloc = parse_tok ENDWHILE tbuf in
+  let eloc = tok_only ENDWHILE tbuf in
   { st=StmtWhile (cond, body); decor=make_location sloc eloc }
 
 and case_stmt tbuf =
-  let sloc = parse_tok CASE tbuf in
+  let sloc = tok_only CASE tbuf in
   let matchexp = expr tbuf in
   let caseblocks =
     let rec case_loop () =
-      let _ = parse_tok OF tbuf in
+      let _ = tok_only OF tbuf in
       let patexp = expr tbuf in
-      let _ = parse_tok THEN tbuf in
+      let _ = tok_only THEN tbuf in
       let body = stmt_seq tbuf in
       match (peek tbuf).ttype with
       | OF -> (patexp, body) :: (case_loop ())
@@ -612,24 +612,24 @@ and case_stmt tbuf =
   in
   let elseopt = match (peek tbuf).ttype with
     | ELSE ->
-      let _ = parse_tok ELSE tbuf in
+      let _ = tok_only ELSE tbuf in
       Some (stmt_seq tbuf)
     | _ -> None
   in 
-  let eloc = parse_tok ENDCASE tbuf in
+  let eloc = tok_only ENDCASE tbuf in
   { st=StmtCase (matchexp, caseblocks, elseopt);
     decor=make_location sloc eloc }
 
 and nop_stmt tbuf =
-  let sloc = parse_tok NOP tbuf in
-  let eloc = parse_tok SEMI tbuf in
+  let sloc = tok_only NOP tbuf in
+  let eloc = tok_only SEMI tbuf in
   { st=StmtNop; decor=make_location sloc eloc }
 
 and call_stmt tbuf =
   let e = expr tbuf in
   match e.e with
   | ExpCall _ ->
-    let eloc = parse_tok SEMI tbuf in
+    let eloc = tok_only SEMI tbuf in
     { st=StmtCall e; decor=(make_location e.decor eloc) }
   | _ ->
     raise (parse_error "Expression cannot serve as a statement" tbuf)
@@ -642,9 +642,9 @@ and call_or_assign_stmt tbuf =
     (match e.e with
      (* Lvalues are somewhat defined syntactically by the AST: only var_expr. *)
      | ExpVar vexp -> 
-       let _ = parse_tok ASSIGN tbuf in
+       let _ = tok_only ASSIGN tbuf in
        let rvalue = expr tbuf in
-       let eloc = parse_tok SEMI tbuf in
+       let eloc = tok_only SEMI tbuf in
        { st=StmtAssign (vexp, rvalue); decor=make_location e.decor eloc }
      | _ -> raise (parse_error "This expression type cannot be assigned to" tbuf)
     )
@@ -652,7 +652,7 @@ and call_or_assign_stmt tbuf =
     (match e.e with
      (* Then I could have had StmtCall be just name and args too, not expr *)
      | ExpCall _ ->
-       let eloc = parse_tok SEMI tbuf in
+       let eloc = tok_only SEMI tbuf in
        { st=StmtCall e; decor=make_location e.decor eloc }
      | _ ->
        raise (parse_error "Expression cannot serve as a statement" tbuf)
@@ -660,14 +660,14 @@ and call_or_assign_stmt tbuf =
   | _ -> raise (unexpect_error tbuf)
        
 and return_stmt tbuf =
-  let sloc = parse_tok RETURN tbuf in
+  let sloc = tok_only RETURN tbuf in
   match (peek tbuf).ttype with
   | SEMI ->
-    let eloc = parse_tok SEMI tbuf in
+    let eloc = tok_only SEMI tbuf in
     { st=StmtReturn None; decor=make_location sloc eloc }
   | _ ->
     let retexp = expr tbuf in
-    let eloc = parse_tok SEMI tbuf in
+    let eloc = tok_only SEMI tbuf in
     { st=StmtReturn (Some retexp); decor=make_location sloc eloc }
 
 (** At least one statement, possibly more *)
@@ -699,43 +699,43 @@ let import tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | IMPORT ->
-    let sloc = parse_tok IMPORT tbuf in
+    let sloc = tok_only IMPORT tbuf in
     let (mname, _) = uqname "module name" tbuf in
     print_string mname;
     let alias = match (peek tbuf).ttype with
       | AS ->
-        let _ = parse_tok AS tbuf in
+        let _ = tok_only AS tbuf in
         let (malias, _) = uqname "module alias" tbuf in
         Some malias
       | _ -> None
     in
-    let eloc = parse_tok SEMI tbuf in
+    let eloc = tok_only SEMI tbuf in
     (make_located (Import (mname, alias)) sloc eloc)
   | OPEN ->
-    let sloc = parse_tok OPEN tbuf in
+    let sloc = tok_only OPEN tbuf in
     let (mname, _) = uqname "module name" tbuf in 
-    let eloc = parse_tok SEMI tbuf in 
+    let eloc = tok_only SEMI tbuf in 
     (make_located (Open mname) sloc eloc)
   | _ -> failwith "BUG: import called with non-import token"
 
 
 let typedef_body tbuf = 
-  let _ = parse_tok IS tbuf in
+  let _ = tok_only IS tbuf in
   (* oh, have to look for "rec" too *)
   match (peek tbuf).ttype with
   | RECORD ->
-    let _ = parse_tok RECORD tbuf in
+    let _ = tok_only RECORD tbuf in
     let rec fields_loop () =
       let fpriv = match (peek tbuf).ttype with
-        | PRIVATE -> ignore (parse_tok PRIVATE tbuf); true
+        | PRIVATE -> ignore (tok_only PRIVATE tbuf); true
         | _ -> false
       in
       let fmut = match (peek tbuf).ttype with
-        | MUT -> ignore (parse_tok MUT tbuf); true
+        | MUT -> ignore (tok_only MUT tbuf); true
         | _ -> false
       in
       let fname, floc = uqname "field name" tbuf in
-      let _ = parse_tok COLON tbuf in
+      let _ = tok_only COLON tbuf in
       let ftype = typeExpr tbuf in
       let finfo = { fieldname=fname; priv=fpriv; mut=fmut; fieldtype=ftype;
                     decor=make_location floc ftype.loc} in
@@ -748,24 +748,24 @@ let typedef_body tbuf =
   | _ -> raise (parse_error ("expected type or type kind specifier, found " ^
                 string_of_token (peek tbuf)) tbuf)
 
-let type_defn tbuf =
+let typedef tbuf =
   let (vis, sloc) = match (peek tbuf).ttype with
     | OPAQUE ->
-      let sloc = parse_tok OPAQUE tbuf in
-      let _ = parse_tok TYPE tbuf in
+      let sloc = tok_only OPAQUE tbuf in
+      let _ = tok_only TYPE tbuf in
       (Opaque, sloc)
     | PRIVATE ->
-      let sloc = parse_tok PRIVATE tbuf in
-      let _ = parse_tok TYPE tbuf in
+      let sloc = tok_only PRIVATE tbuf in
+      let _ = tok_only TYPE tbuf in
       (Private, sloc)
     | _ ->
-      let sloc = parse_tok TYPE tbuf in
+      let sloc = tok_only TYPE tbuf in
       (Open, sloc)
   in
   (* todo: type variables for generics *)
   let tname, _ = typename tbuf in
   let fields = typedef_body tbuf in
-  let eloc = parse_tok SEMI tbuf in
+  let eloc = tok_only SEMI tbuf in
   { typename=tname;
     rectype=false;
     typeparams=[];
@@ -776,12 +776,12 @@ let type_defn tbuf =
 
 (** Type declaration and possible definition for modspec. *)
 let type_decl tbuf = 
-  (* No private types? And Opaque is only shown by having no body *)
-  let sloc = parse_tok TYPE tbuf in
+  (* Private types don't exist in modspecs, and Opaque is shown by having no body *)
+  let sloc = tok_only TYPE tbuf in
   let tname, _ = typename tbuf in
   match (peek tbuf).ttype with
   | SEMI -> (* opaque type *)
-    let eloc = parse_tok SEMI tbuf in
+    let eloc = tok_only SEMI tbuf in
     { typename=tname;
       rectype=false;
       typeparams=[];
@@ -791,7 +791,7 @@ let type_decl tbuf =
     }
   | IS ->
     let fields = typedef_body tbuf in
-    let eloc = parse_tok SEMI tbuf in
+    let eloc = tok_only SEMI tbuf in
     { typename=tname;
       rectype=false;
       typeparams=[];
@@ -805,11 +805,11 @@ let param_info tbuf =
   let sloc = (peek tbuf).loc in
   let mutmark = match (peek tbuf).ttype with
     | DOLLAR ->
-      ignore (parse_tok DOLLAR tbuf); true
+      ignore (tok_only DOLLAR tbuf); true
     | _ -> false
   in
   let (varname, _) = uqname "parameter name" tbuf in
-  let _ = parse_tok COLON tbuf in
+  let _ = tok_only COLON tbuf in
   let texp = typeExpr tbuf in
   ((mutmark, varname, texp), make_location sloc texp.loc)
   
@@ -819,22 +819,22 @@ let param_list tbuf =
 let visibility tbuf =
   let stok = peek tbuf in
   let vis: visibility = match stok.ttype with
-    | PRIVATE -> let _ = parse_tok PRIVATE tbuf in Private 
+    | PRIVATE -> let _ = tok_only PRIVATE tbuf in Private 
     | _ -> Public
   in 
   (vis, stok.loc)
 
 let proc_header tbuf = 
   let vis, sloc = visibility tbuf in 
-  let _ = parse_tok PROC tbuf in
+  let _ = tok_only PROC tbuf in
   let (pname, _) = uqname "procedure name" tbuf in
   (* TODO: generic params *)
-  let _ = parse_tok LPAREN tbuf in
+  let _ = tok_only LPAREN tbuf in
   let (params, _) = param_list tbuf in 
-  let eloc = parse_tok RPAREN tbuf in
+  let eloc = tok_only RPAREN tbuf in
   let rettype = match (peek tbuf).ttype with
     | ARROW ->
-      let _ = parse_tok ARROW tbuf in
+      let _ = tok_only ARROW tbuf in
       typeExpr tbuf
     | _ -> voidTypeExpr eloc
   in 
@@ -848,9 +848,9 @@ let proc_header tbuf =
 
 let proc tbuf =
   let decl = proc_header tbuf in
-  let _ = parse_tok BEGIN tbuf in
+  let _ = tok_only BEGIN tbuf in
   let stmts = stmt_seq tbuf in
-  let eloc = parse_tok ENDPROC tbuf in
+  let eloc = tok_only ENDPROC tbuf in
   { decl=decl; body=stmts; decor=make_location decl.decor eloc }
       
 let module_body mname tbuf =
@@ -867,7 +867,7 @@ let module_body mname tbuf =
   let typedefs =
     let rec typedefs_loop () =
       if (peek tbuf).ttype = TYPE || (peek2 tbuf).ttype = TYPE then
-        let ty = type_defn tbuf in
+        let ty = typedef tbuf in
         ty :: (typedefs_loop ())
       else []
     in typedefs_loop ()
@@ -901,19 +901,44 @@ let module_body mname tbuf =
     procs = procs;
   }
 
+(** Separate parser for global variable decl in a modspec only. *)
+let global_decl tbuf = 
+    let sloc = tok_only VAR tbuf in
+    let (vname, _) = uqname "global variable name" tbuf in
+    let ty = 
+      (match (peek tbuf).ttype with
+       | COLON ->  (* has type expression *)
+         ignore (tok_only COLON tbuf);
+         typeExpr tbuf
+       | _ -> (* give more detailed error message *)
+         raise (parse_error ("(modspec): Global variable declaration must "
+                             ^ "include a type annotation") tbuf)
+      ) in
+    let eloc = tok_only SEMI tbuf in
+    { varname=vname; typeexp=ty; decor=make_location sloc eloc }
+    
 let modspec tbuf = 
-  let _ = parse_tok MODSPEC tbuf in
+  let _ = tok_only MODSPEC tbuf in
   let (mname, _) = uqname "module name" tbuf in
-  let _ = parse_tok BEGIN tbuf in
+  let _ = tok_only BEGIN tbuf in
   let typedefs =
     let rec typedecls_loop () = 
       if (peek tbuf).ttype = TYPE then  (* no qualifier *)
         (type_decl tbuf)::(typedecls_loop ())
       else []
     in typedecls_loop () in
+  let requires =
+    let rec requires_loop () =
+      if (peek tbuf).ttype = REQUIRE then
+        let sloc = tok_only REQUIRE tbuf in
+        let (req, _) = uqname "module name" tbuf in
+        let eloc = tok_only SEMI tbuf in
+        (make_located req sloc eloc)::(requires_loop ())
+      else []
+    in requires_loop() in
   { name=mname;
     alias=mname;  (* replaced at higher level *)
-    requires=[];
+    requires=requires;
     typedefs=typedefs;
     globals=[];
     procdecls=[]
@@ -923,11 +948,11 @@ let dillsource tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | MODULE ->
-    let _ (* spos *) = parse_tok MODULE tbuf in
+    let _ (* spos *) = tok_only MODULE tbuf in
     let (mname, _) = uqname "module name" tbuf in
-    let _ = parse_tok BEGIN tbuf in 
+    let _ = tok_only BEGIN tbuf in 
     let the_module = module_body mname tbuf in
-    let _ (* epos *) = parse_tok ENDMODULE tbuf in
+    let _ (* epos *) = tok_only ENDMODULE tbuf in
     [the_module]
   (* Thought: allowing top-level code makes it unclear if signatures are
      to be placed "outside"? No it doesn't! *)

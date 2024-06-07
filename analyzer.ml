@@ -16,8 +16,8 @@ exception SemanticError of string * (Lexing.position * Lexing.position)
 let reserved_words = (* Skip "open" and "import". Actually I don't use these *)
   StrSet.of_list [
       "as"; "begin"; "case"; "else"; "elsif"; "endcase"; "endif"; "endwhile";
-      "export"; "false"; "if"; "loop"; "modspec"; "module"; "mut"; "nop";
-      "null"; "of"; "private"; "proc"; "return"; "struct"; "then"; "true";
+      "export"; (* "false" ; *) "if"; "loop"; "modspec"; "module"; "mut"; "nop";
+      "null"; "of"; "private"; "proc"; "return"; "struct"; "then"; (* "true"; *)
       "type"; "val"; "var"; "variant"; "while"
     ]
 let reserved_names = StrSet.of_list [ "null"; "true"; "false"; "val" ]
@@ -1565,16 +1565,16 @@ let rec check_modspec syms etenv specs donespecs the_spec =
       (fun (syms, itenv, donespecs) required ->
       (* check if in donespecs, then if in specs *)
          if StrMap.mem required.value donespecs then
-           (* Fold already-processed spec's (e!)tenv into this one. *)
+           (* Fold already-processed spec's (exported!) tenv into this one. *)
            let (_, reqetenv) = StrMap.find required.value donespecs in
            let itenv1 = PairMap.union (fun _ v1 _ -> Some v1) itenv reqetenv in
            (syms, itenv1, donespecs)
          else if not (StrMap.mem required.value specs) then
-           (* TODO: fix error handling from this. Exceptions? 
-              OR use let* to avoid the propagation logic *)
            raise (SemanticError ("Missing required import: " ^ required.value,
                                  required.loc))
-           (* TODO: also self-require is an error *)
+         else if required.value = the_spec.name then
+           raise (SemanticError ("(modspec " ^ the_spec.name ^ "): "
+                                 ^ "Module cannot import itself", required.loc))
          else
            let reqspec = StrMap.find required.value specs in
            let syms, _, reqetenv, donespecs = 
@@ -1747,7 +1747,8 @@ let check_module syms (tenv: typeenv) ispecs
            Could there be a better way? check_typedef should return a new
            typedef itself. I think that's all there is to it. *)
         let newtypedefs: ('a st_node, 'l) typedef list =
-         List.map (fun tdef -> {tdef with decor=syms}) dmod.typedefs in
+          List.map (fun (tdef: (_, _) typedef) ->
+              {tdef with decor=syms}) dmod.typedefs in
       (*match tdef.kindinfo with
             (* using fake null_ttag *)
             | Fields fields ->
@@ -1908,8 +1909,7 @@ let gen_modspec tenv (the_mod: (typetag, 'a st_node, locinfo) dillmodule)
                  in
                  texpr_of_ttag vtype (* need that to return modules too *) 
              in 
-             { visibility = Public;
-               decor = gstmt.decor;
+             { decor = gstmt.decor;
                varname = gstmt.varname;
                typeexp = texp
              }, mods_used

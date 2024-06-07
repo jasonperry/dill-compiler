@@ -128,16 +128,6 @@ and ('ed, 'sd, 'l) stmt = { st: ('ed,'sd,'l) raw_stmt; decor: 'sd }
 type visibility = Public | Private
 type typevis = Open | Opaque | Private
 
-(** Global variable declaration without initializer; only used in
-    modspecs. *)
-type ('sd, 'l) globaldecl = {
-  visibility: visibility;
-  varname: string;
-  (* in_module: string; *)
-  typeexp: 'l typeExpr;
-  decor: 'sd
-}
-
 (** Global variable declaration with required initializer. *)
 type ('ed, 'sd, 'l) globalstmt = {
   visibility: visibility;
@@ -225,6 +215,15 @@ type ('ed, 'sd, 'l) dillmodule = {
     procs: ('ed, 'sd, 'l) proc list;
     (* initblock: ('ed,'sd) stmt list *)
   }
+
+(** Global variable declaration in a modspec, without initializer. *)
+type ('sd, 'l) globaldecl = {
+  (* visibility: visibility; (* if in a modspec it's public *) *)
+  varname: string;
+  (* in_module: string; *)
+  typeexp: 'l typeExpr;
+  decor: 'sd
+}
 
 type ('ed, 'sd, 'l) module_spec = {
     name: string;
@@ -418,7 +417,7 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
   ^ String.concat "" (List.map import_to_string dmod.imports)
   ^ String.concat "\n" (List.map typedef_to_string dmod.typedefs)
   ^ List.fold_left (
-        fun s gstmt ->
+        fun s (gstmt: (_, _, _) globalstmt) ->
         s ^ "var " ^ gstmt.varname
         ^ Option.fold ~none:"" ~some:(fun te -> ": " ^ typeExpr_to_string te)
             gstmt.typeexp

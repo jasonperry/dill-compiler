@@ -119,9 +119,8 @@ modspec:
 	requires=reqs;
 	typedefs=tyds;
 	globals= List.map
-		   (fun (priv, (v, t)) ->
-		     {visibility=if priv then Private else Public;
-		      varname=v; typeexp=t; decor=$loc }
+		   (fun (v, t) ->
+		     {varname=v; typeexp=t; decor=$loc }
 		   ) gls;
 	procdecls=pd;
     } }
@@ -254,8 +253,8 @@ globalStmt:
     { (Option.is_some priv, st) }
 
 globalDecl:
-  | priv=option(PRIVATE) dec=declOnlyStmt
-    { (Option.is_some priv, dec) }
+  | dec=declOnlyStmt
+    { dec }
 
 proc:
   | pd=procHeader BEGIN sb=stmtSeq ENDPROC (*name2=LC_IDENT *)
@@ -342,7 +341,7 @@ declStmt:
       | (v, topt, e) -> (v, topt, Some e)
     }
 
-(* These are split out for global decls in the AST. *)
+(* These are split out for modspecs, which can't have initializers *)
 declOnlyStmt:
   | VAR v=LC_IDENT COLON t=typeExp SEMI
     { (v, t) }
