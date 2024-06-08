@@ -1,14 +1,10 @@
 (** sedlex lexer for dill *)
 
 open Sedlexing  (* new_line, loc stuff that parser will use *)
-exception Error of string (* TODO: unified lex/parse SyntaxError type *)
-(* Lexing.position has the filename too *)
+open Syntax     (* my SyntaxError exception type *)
+
 (* Not in common.ml for now, Other modules might have different error
    types. Or, should I make a unified error type? *)
-exception SyntaxError of {
-    msg: string;
-    loc: Lexing.position * Lexing.position
-  }
 (* Idea: parameterize the module by encoding *)
 module Enc = Sedlexing.Utf8
 

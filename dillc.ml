@@ -33,11 +33,11 @@ let default_config = {
   }
 
 
-let handle_parse_errors filename buf = function
+let handle_parse_errors buf = function
   | Lexer.Error msg ->
      let open Lexing in
      let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
-     print_endline ("Error while lexing file " ^ filename ^ ":");
+     print_endline ("Error while lexing file " ^ spos.pos_fname ^ ":");
      print_string
        ("  At line " ^ format_loc spos epos ^ ": lexical error:\n    "
         ^ msg ^ "\n");
@@ -45,12 +45,12 @@ let handle_parse_errors filename buf = function
   | Parser.Error ->
      let open Lexing in
      let spos, epos = (lexeme_start_p buf, lexeme_end_p buf) in
-     print_endline ("Error while parsing file " ^ filename ^ ":");
+     print_endline ("Error while parsing file " ^ spos.pos_fname ^ ":");
      print_string
        ("  At line " ^ format_loc spos epos ^ ": syntax error.\n");
      failwith "Compilation terminated at parsing."
-  | Syntax.SyntaxError ((spos, epos), msg) ->
-    print_endline ("Error while parsing file " ^ filename ^ ":");
+  | Syntax.SyntaxError { loc=(spos, epos); msg=msg } ->
+    print_endline ("Error while parsing file " ^ spos.pos_fname ^ ":");
     print_string ("  At line " ^ format_loc spos epos ^ ": " ^ msg ^ ".\n");
     failwith "Compilation terminated at parsing."
   | _ -> failwith "Unknown error from parser."
@@ -60,17 +60,19 @@ let handle_parse_errors filename buf = function
  *  with location decoration *)
 let parse_sourcefile channel filename =
   let buf = Lexing.from_channel channel in
+  Lexing.set_filename buf filename;
   try
-    Parser.modsource Lexer.token buf
+    Parser.dill_source Lexer.token buf
   with
-  | exn -> handle_parse_errors filename buf exn
+  | exn -> handle_parse_errors buf exn
 
 let parse_modspec channel filename =
   let buf = Lexing.from_channel channel in
+  Lexing.set_filename buf filename;
   try
     Parser.modspec Lexer.token buf
   with
-  | exn -> handle_parse_errors filename buf exn
+  | exn -> handle_parse_errors buf exn
   
 
 (** Try to open a given filename, searching paths *)
@@ -262,7 +264,7 @@ let () =
             (* parsedmods |> List.iter (fun parsedmod -> *)
             match analysis cconfig ispecs parsedmod with
             | Error errs -> 
-              prerr_string (format_errors srcfilename errs);
+              prerr_string (format_errors errs);
               exit 1
             (* Here is where I may want to generate a new spec from the 
                module that was just analyzed. *)

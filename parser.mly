@@ -61,12 +61,12 @@
 (* Thinking of eventually allowing multiple modules/file. *)
 %type <(locinfo, locinfo, locinfo) dillmodule> dillmodule
 (* Switched to a single module per file until I get object codegen working. *)
-%start <(locinfo, locinfo, locinfo) dillmodule list> modsource
+%start <(locinfo, locinfo, locinfo) dillmodule list> dill_source
 %start <(locinfo, locinfo, locinfo) module_spec> modspec
 %%
 
 (* In the future, may allow multiple modules in a source file/stream *)
-modsource: mods=list(dillmodule) tl=option(moduleBody) EOF
+dill_source: mods=list(dillmodule) tl=option(moduleBody) EOF
     { match tl with
       | Some tl -> mods @ [tl]
       | None -> mods }
@@ -82,7 +82,7 @@ dillmodule:
 	(* raise Parsing.Parse_error (* also deprecated *) *)
     } *)
   | MODULE error
-    { raise (SyntaxError ($loc($2), "Not a valid module name")) } 
+    { raise (SyntaxError { loc=$loc($2), msg="Not a valid module name" }) } 
 (*  | mb=moduleBody (* unnamed top-level module *)
     { mb } *)
 
@@ -143,9 +143,9 @@ importStmt:
 openStmt:
   | OPEN mn=moduleName SEMI { Open mn }
   | OPEN moduleName error
-    { raise (SyntaxError (($endpos($2), $endpos($2)), "expected ';'")) }
+    { raise (SyntaxError { loc=($endpos($2), $endpos($2)), msg="expected ';'" }) }
   | OPEN error
-    { raise (SyntaxError ($loc($2), "Invalid module name in import")) }
+    { raise (SyntaxError { loc=$loc($2), msg="Invalid module name in import" }) }
 
 (* Type declaration in modspec, may or may not have a body *)
 typedecl:
@@ -156,7 +156,7 @@ typedecl:
 			   | Some tps -> tps
 			   | None -> [])} }
   | TYPE error
-    { raise (SyntaxError ($loc, "Invalid type identifier")) }
+    { raise (SyntaxError { loc=$loc, msg="Invalid type identifier" }) }
 
 
 typedeclBody:
@@ -176,8 +176,9 @@ typedeclBody:
 	 | None -> false
 	 | Some _ -> ( match tdi with
 		       | Newtype _ ->
-			  raise (SyntaxError
-				   ($loc(rt), "Newtype can't be marked recursive"))
+			  raise
+			    (SyntaxError { loc=$loc(rt),
+					   msg="Newtype can't be marked recursive" })
 		       | _ -> true)
 	 );
        kindinfo=tdi;
@@ -197,8 +198,9 @@ typedef:
 	 | None -> false
 	 | Some _ -> ( match tdi with
 		       | Newtype _ ->
-			  raise (SyntaxError
-				   ($loc(rt), "Newtype can't be marked recursive"))
+			  raise
+			    (SyntaxError { loc=$loc(rt),
+					   msg="Newtype can't be marked recursive" })
 		       | _ -> true)
        );
        typeparams=(match tps with
@@ -210,7 +212,7 @@ typedef:
 		   | None -> Open) ;
        decor=$loc} }
   | option(typevis) TYPE error
-    { raise (SyntaxError ($loc($3), "Invalid type identifier")) }
+    { raise (SyntaxError { loc=$loc($3), msg="Invalid type identifier" }) }
 
 typevis:
   | OPAQUE { Opaque }

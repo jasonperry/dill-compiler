@@ -1,5 +1,6 @@
 (* Syntax error type and exception for use by the parser and top level *)
 
-type syntax_error = (Lexing.position * Lexing.position) * string
-
-exception SyntaxError of syntax_error
+exception SyntaxError of {
+    msg: string;
+    loc: Lexing.position * Lexing.position
+}

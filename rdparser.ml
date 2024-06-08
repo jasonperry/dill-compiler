@@ -2,6 +2,7 @@
 
 open Common
 open Slexer
+open Syntax
 open Ast
 
 (* Maybe put this stuff in its own module, or even in the lexer *)
@@ -921,12 +922,6 @@ let modspec tbuf =
   let _ = tok_only MODSPEC tbuf in
   let (mname, _) = uqname "module name" tbuf in
   let _ = tok_only BEGIN tbuf in
-  let typedefs =
-    let rec typedecls_loop () = 
-      if (peek tbuf).ttype = TYPE then  (* no qualifier *)
-        (type_decl tbuf)::(typedecls_loop ())
-      else []
-    in typedecls_loop () in
   let requires =
     let rec requires_loop () =
       if (peek tbuf).ttype = REQUIRE then
@@ -936,15 +931,35 @@ let modspec tbuf =
         (make_located req sloc eloc)::(requires_loop ())
       else []
     in requires_loop() in
+  let typedefs =
+    let rec typedecls_loop () = 
+      if (peek tbuf).ttype = TYPE then  (* no qualifier *)
+        (type_decl tbuf)::(typedecls_loop ())
+      else []
+    in typedecls_loop () in
+  let globals =
+    let rec globals_loop () =
+      if (peek tbuf).ttype = VAR then
+        let gd = global_decl tbuf in gd :: (globals_loop ())
+      else []
+    in globals_loop () in
+  let procdecls =
+    let rec procs_loop () =
+      if (peek tbuf).ttype = PROC || (peek2 tbuf).ttype = PROC then
+        let ph = proc_header tbuf in
+        let _ = tok_only SEMI tbuf in
+        ph :: (procs_loop ())
+      else []
+    in procs_loop () in
   { name=mname;
     alias=mname;  (* replaced at higher level *)
     requires=requires;
     typedefs=typedefs;
-    globals=[];
-    procdecls=[]
+    globals=globals;
+    procdecls=procdecls
   }
   
-let dillsource tbuf =
+let dill_source tbuf =
   let stok = peek tbuf in
   match stok.ttype with
   | MODULE ->
@@ -990,7 +1005,7 @@ let _ =
   (* from_string "42 '\\n' 'w' 'เ' (* เมืองจึงวิปริตเป็นนัก *) '\x41' 44 f" in *)
   let tbuf = init_tbuf lexbuf 10 in
   (* any_tokens tbuf *)
-  let modules = dillsource tbuf in
+  let modules = dill_source tbuf in
   print_string ("Parsed " ^ string_of_int (List.length modules)
                 ^ " module(s).\n");
   print_string (String.concat "\n" (List.map module_to_string modules))

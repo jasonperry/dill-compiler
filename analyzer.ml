@@ -1570,11 +1570,11 @@ let rec check_modspec syms etenv specs donespecs the_spec =
            let itenv1 = PairMap.union (fun _ v1 _ -> Some v1) itenv reqetenv in
            (syms, itenv1, donespecs)
          else if not (StrMap.mem required.value specs) then
-           raise (SemanticError ("Missing required import: " ^ required.value,
-                                 required.loc))
+           (* oh, this is giving the error in the modspec file, naturally... *)
+           raise (SemanticError ("Including module is missing required import: "
+                                 ^ required.value, required.loc))
          else if required.value = the_spec.name then
-           raise (SemanticError ("(modspec " ^ the_spec.name ^ "): "
-                                 ^ "Module cannot import itself", required.loc))
+           raise (SemanticError ("Module cannot import itself", required.loc))
          else
            let reqspec = StrMap.find required.value specs in
            let syms, _, reqetenv, donespecs = 
@@ -1613,9 +1613,7 @@ let rec check_modspec syms etenv specs donespecs the_spec =
              PairMap.add (the_spec.alias, cdata.classname) cdata etenv) in
            (itenv, etenv)
          | Error e ->
-           raise (SemanticError
-                    ("(modspec " ^ the_spec.name ^ "): " ^ (List.hd e).value,
-                     tdef.decor))
+           raise (SemanticError ((List.hd e).value, tdef.decor))
       ) (itenv, etenv) the_spec.typedefs
   in
   (* 3. fold for processing global vars and procs and adding to symtable *)
@@ -1626,8 +1624,7 @@ let rec check_modspec syms etenv specs donespecs the_spec =
       (* note that we use the modspec's internal tenv! *)
       match check_typeExpr symacc itenv gdecl.typeexp with
       | Error estr ->
-        raise (SemanticError
-                 ("(modspec " ^ the_spec.name ^ "): " ^ estr, gdecl.decor))
+        raise (SemanticError (estr, gdecl.decor))
       | Ok ttag -> (
           match Symtable.findvar_opt refname symacc with
           | Some (_, _) ->
@@ -1655,8 +1652,7 @@ let rec check_modspec syms etenv specs donespecs the_spec =
         Symtable.addproc symacc refname entry;
         symacc
       | Error e ->
-        raise (SemanticError ("(modspec " ^ the_spec.name ^ "): "
-                              ^ (List.hd e).value, (List.hd e).loc))
+        raise (SemanticError ((List.hd e).value, (List.hd e).loc))
         (* Error (add_import_notice errs) *)
     ) syms the_spec.procdecls in
   (* 4. add this spec with its exported tenv to donespecs *)
@@ -1721,7 +1717,8 @@ let check_module syms (tenv: typeenv) ispecs
                     let finishedClass = PairMap.find
                         ("", get_type_classname finfo.fieldtype) tenv in
                     debug_print ("#AN-check_module: Updating classData for field "
-                                 ^ finfo.fieldname ^ " of " ^ cdata.classname);
+                                 ^ finfo.fieldname ^ " of recursive type "
+                                 ^ cdata.classname);
                     set_type_class finfo.fieldtype finishedClass
                   ))
             | Variant vlist -> 
