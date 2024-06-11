@@ -39,9 +39,9 @@
 
 %{
     open Common (* error and location types here now *)
+    open Syntax
     open Ast
 	 (* let mod_name = ref "" (* ONE inherited attribute, okay? *) *)
-    open Syntax
 %}
 
 %type <locinfo expr> expr
@@ -82,7 +82,7 @@ dillmodule:
 	(* raise Parsing.Parse_error (* also deprecated *) *)
     } *)
   | MODULE error
-    { raise (SyntaxError { loc=$loc($2), msg="Not a valid module name" }) } 
+    { raise (SyntaxError { loc=$loc($2); msg="Not a valid module name" }) } 
 (*  | mb=moduleBody (* unnamed top-level module *)
     { mb } *)
 
@@ -143,9 +143,9 @@ importStmt:
 openStmt:
   | OPEN mn=moduleName SEMI { Open mn }
   | OPEN moduleName error
-    { raise (SyntaxError { loc=($endpos($2), $endpos($2)), msg="expected ';'" }) }
+    { raise (SyntaxError { loc=($endpos($2), $endpos($2)); msg="expected ';'" }) }
   | OPEN error
-    { raise (SyntaxError { loc=$loc($2), msg="Invalid module name in import" }) }
+    { raise (SyntaxError { loc=$loc($2); msg="Invalid module name in import" }) }
 
 (* Type declaration in modspec, may or may not have a body *)
 typedecl:
@@ -156,7 +156,7 @@ typedecl:
 			   | Some tps -> tps
 			   | None -> [])} }
   | TYPE error
-    { raise (SyntaxError { loc=$loc, msg="Invalid type identifier" }) }
+    { raise (SyntaxError { loc=$loc; msg="Invalid type identifier" }) }
 
 
 typedeclBody:
@@ -177,7 +177,7 @@ typedeclBody:
 	 | Some _ -> ( match tdi with
 		       | Newtype _ ->
 			  raise
-			    (SyntaxError { loc=$loc(rt),
+			    (SyntaxError { loc=$loc(rt);
 					   msg="Newtype can't be marked recursive" })
 		       | _ -> true)
 	 );
@@ -199,7 +199,7 @@ typedef:
 	 | Some _ -> ( match tdi with
 		       | Newtype _ ->
 			  raise
-			    (SyntaxError { loc=$loc(rt),
+			    (SyntaxError { loc=$loc(rt);
 					   msg="Newtype can't be marked recursive" })
 		       | _ -> true)
        );
@@ -212,7 +212,7 @@ typedef:
 		   | None -> Open) ;
        decor=$loc} }
   | option(typevis) TYPE error
-    { raise (SyntaxError { loc=$loc($3), msg="Invalid type identifier" }) }
+    { raise (SyntaxError { loc=$loc($3); msg="Invalid type identifier" }) }
 
 typevis:
   | OPAQUE { Opaque }
@@ -245,10 +245,14 @@ variantList:
     { vl }
 
 variantDecl:
-  | vname=VLABEL vty=option(preceded(COLON, typeExp))
+  | vname=VLABEL vty=option(delimited(LPAREN,
+            separated_nonempty_list(COMMA, typeExp), RPAREN))
     (* remove the initial pipe character *)
     { {variantName=vname; (* (String.sub vname 1 (String.length vname - 1)); *)
-       variantType=vty; decor=$loc} }
+       variantType=(match vty with
+		    | Some vlist -> vlist
+		    | None -> []);
+       decor=$loc} }
 
 globalStmt:
   | priv=option(PRIVATE) st=declStmt

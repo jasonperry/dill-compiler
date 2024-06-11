@@ -175,7 +175,7 @@ type 'l fieldDecl = {
 (** A single named option for a variant type. *)
 type 'l variantDecl = {
     variantName: string;
-    variantType: 'l typeExpr option; (* may be a constant symbol *)
+    variantType: 'l typeExpr list;  (* tuple *)
     decor: 'l
   }
 
@@ -268,12 +268,13 @@ and typedef_to_string tdef =
         " is" ^ (if tdef.rectype then " rec" else "") ^ " variant\n   "
         ^ String.concat ",\n   "
             (List.map (fun vdec ->
-                 vdec.variantName
+                 "#" ^ vdec.variantName
                  ^ (match vdec.variantType with 
-                    | Some vt -> ": " ^ typeExpr_to_string vt
-                    | None -> "")                          
-               )         
-                 variants)
+                     | [] -> ""
+                     | vlist -> "(" ^ String.concat ","
+                                  (List.map typeExpr_to_string vlist) ^ ")"
+                   ))
+              variants)
      | Newtype tyex -> " is " ^ typeExpr_to_string tyex
      | Hidden -> ""
     )

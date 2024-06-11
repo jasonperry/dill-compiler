@@ -14,7 +14,7 @@ type fieldInfo = {
 and kindData =  (* will array and option be their own kind now? *)
   | Primitive
   | Struct of fieldInfo list
-  | Variant of (string * typetag option) list
+  | Variant of (string * typetag list) list
   | Newtype of typetag
   | Hidden
 
@@ -121,8 +121,8 @@ let string_ttag = gen_ttag string_class []
    and Option. *)
 (* Option is a variant of any other type and NullType *)
 let option_class = { classname="Option"; in_module="";
-                     kindData=Variant [("val", Some (Typevar "t"));
-                                        ("null", None)];
+                     kindData=Variant [("val", [Typevar "t"]);
+                                        ("null", [])];
                      opaque=true; muttype=false; rectype=false;
                      tparams=["t"]; }
 

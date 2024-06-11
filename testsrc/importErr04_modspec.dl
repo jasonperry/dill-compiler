@@ -1,0 +1,20 @@
+(* Including modspec that has an error. Error should report the right filename now. *)
+
+module transdep begin
+
+open complexErr;  (* has bug in type *)
+
+var one : Complex = { i=1.0, j=1.0 };
+   
+
+/module
+
+(* toplevel code just to build an executable *)
+
+open stdio;
+import transdep;
+
+proc main()
+begin
+   printString("sup");
+/proc

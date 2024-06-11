@@ -540,13 +540,13 @@ and check_variant syms tenv ex ~declvar thint =
             Error {loc=ex.decor;
                    value=("Unknown variant " ^ vname ^ " of type "
                           ^ mname ^ "::" ^ tname)}
-          | Some (_, tyopt) -> (
-              match tyopt with
-              | None -> 
+          | Some (_, tlist) -> (
+              match tlist with
+              | [] -> 
                 (* 3. check if the variant takes a value or not *)
                 if etup <> [] then
                   Error {loc=(List.hd etup).decor;
-                         value="Variant " ^ vname ^ " does not hold values"}
+                         value="Variant #" ^ vname ^ " does not hold values"}
                 else
                   (* NOTE: replacing with the type's actual module name here. *)
                   (* Wait, I shouldn't really need to, since all the type info
@@ -555,36 +555,43 @@ and check_variant syms tenv ex ~declvar thint =
                   Ok {e=ExpVariant (vname, []);
                       (* TODO: generate typevars when we have them in the AST *)
                       decor=gen_ttag cdata []} 
-              | Some vtype -> (
-                  if etup = [] then 
+              | vtlist -> (
+                  if List.length etup <> List.length vtlist then 
                     Error {loc=ex.decor;
-                           value="Variant " ^ vname ^ " requires a value"}
+                           value="Incorrect number of values for variant #"
+                                 ^ vname ^ "; requires "
+                                 ^ string_of_int (List.length vtlist)
+                                 ^ ", found "
+                                 ^ string_of_int (List.length etup)}
                   else (
                       (* 4. typecheck value (if it's not a declaration in a case) *)
                     if not declvar then
-                      (* FIXME: map over all of them *)
-                      let e2 = List.hd etup in 
-                      match check_expr syms tenv e2 with 
-                      | Error err -> Error err
-                      (* 5. Check that the value type and variant type match *)
-                      | Ok echecked ->
-                        if subtype_match echecked.decor vtype then
-                          Ok {
-                            e=ExpVariant (vname, [echecked]);
-                            decor=gen_ttag cdata []
-                          }
-                        else
-                          Error {
-                            loc=e2.decor;
-                            value="Value type "
-                                  ^ typetag_to_string echecked.decor
-                                  ^ " Does not match variant type "
-                                    ^ typetag_to_string vtype
-                          }
+                      List.fold_left2 (fun resacc ex vtype -> match resacc with
+                          | Error e -> Error e
+                          | Ok { e=ExpVariant (_, checked); decor=_ } ->
+                            (match check_expr syms tenv ex with 
+                            | Error err -> Error err
+                            (* 5. Check that the value and variant type match *)
+                            | Ok echecked ->
+                              if subtype_match echecked.decor vtype then
+                                let checked = checked @ [echecked] in
+                                Ok {
+                                  e=ExpVariant (vname, checked);
+                                  decor=gen_ttag cdata [] (* TODO: typeargs *)
+                                }
+                              else
+                                Error {
+                                  loc=ex.decor;
+                                  value="Value type "
+                                        ^ typetag_to_string echecked.decor
+                                        ^ " Does not match variant type "
+                                        ^ typetag_to_string vtype
+                                })
+                            | _ -> failwith "BUG: wrong shaped variant result"
+                        ) (Ok {e=ExpVariant (vname, []); decor=gen_ttag cdata []})
+                        etup vtlist
                     else
-                      Ok {e=ExpVariant (vname, []);
-                          decor=gen_ttag cdata []}
-                        
+                      Ok {e=ExpVariant (vname, []); decor=gen_ttag cdata []}
                   )))))
   | _ -> failwith "check_variant called without variant expr"
 
@@ -978,7 +985,7 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                             let blocksyms = Symtable.new_scope syms in
                             check_casebody newcexp vlabel cbody blocksyms
                           else
-                            (* FIXME: stopgap *)
+                            (* FIXME: may be multiple vars or constants *)
                             let cvalexp = List.hd etup in
                             match cvalexp.e with
                             | ExpVar ((cvar, []), []) -> (
@@ -1722,21 +1729,19 @@ let check_module syms (tenv: typeenv) ispecs
                     set_type_class finfo.fieldtype finishedClass
                   ))
             | Variant vlist -> 
-              vlist |> List.iter (fun (vname, vtopt) -> (
-                    match vtopt with
-                    | Some vttag ->
-                      if is_recursive_type vttag then (
-                        debug_print ("-searching for completed classname "
-                                     ^ get_type_classname vttag);
-                        let finishedClass = PairMap.find
-                            ("", get_type_classname vttag) tenv in
-                        debug_print ("#AN-check_module: Updating classData "
-                                     ^ "for variant "
-                                     ^ vname ^ " of " ^ cdata.classname);
-                        set_type_class vttag finishedClass 
-                      )
-                    | None -> ()
-                  ))
+              List.iter (fun (vname, ttaglist) -> (
+                    List.iter (fun vttag ->
+                        if is_recursive_type vttag then (
+                          debug_print ("-searching for completed classname "
+                                       ^ get_type_classname vttag);
+                          let finishedClass = PairMap.find
+                          ("", get_type_classname vttag) tenv in
+                          debug_print ("#AN-check_module: Updating classData "
+                                       ^ "for variant "
+                                       ^ vname ^ " of " ^ cdata.classname);
+                          set_type_class vttag finishedClass 
+                        )) ttaglist
+                  )) vlist
             | _ -> ()
         ) newclasses;
         debug_print ("-- module types in tenv: " ^ string_of_tenv tenv);
