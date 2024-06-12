@@ -961,7 +961,8 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
               match cexp.e with 
               (* expression-type-specific stuff starts here. *)
               | ExpVariant (vlabel, etup) -> (
-                  (* typecheck as an expression but skip the variable if any *)
+                  (* typecheck entire case expression just to get the type,
+                     skipping variable declarations if any *)
                   match check_variant syms tenv cexp ~declvar:true (Some mtype) with
                   | Error err -> Error [err]
                   | Ok checkedcexp -> (
@@ -971,8 +972,8 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                                 ^ " does not match match expression type "
                                 ^ typetag_to_string mtype)
                       else (
-                        (* get type of this specific case's value, if it has one *)
-                        let (_, vnttyopt) =
+                        (* get tuple type of this variant's value, if it has one *)
+                        let (_, vnttys) =
                           List.find (fun (vn, _) -> vlabel = vn)
                             (get_type_variants casetype) in
                         if List.exists ((=) vlabel) caseacc then 
@@ -985,30 +986,41 @@ let rec check_stmt syms tenv stm : 'a stmt_result =
                             let blocksyms = Symtable.new_scope syms in
                             check_casebody newcexp vlabel cbody blocksyms
                           else
-                            (* FIXME: may be multiple vars or constants *)
-                            let cvalexp = List.hd etup in
-                            match cvalexp.e with
-                            | ExpVar ((cvar, []), []) -> (
-                                let vntty = Option.get vnttyopt in
-                                let (newcexp: typetag expr) =
-                                  {e=ExpVariant(vlabel,
-                                                [{e=ExpVar((cvar, []), []);
-                                                  decor=vntty}]);
-                                   decor=matchexp.decor} in
-                                let blocksyms = Symtable.new_scope syms in
-                                Symtable.addvar blocksyms cvar {
-                                  symname=cvar;
-                                  symtype=vntty;
-                                  var=false;
-                                  mut=is_mutable_type vntty; (*correct?*)
-                                  addr=None 
-                                };
-                                debug_print (st_node_to_string blocksyms);
-                                check_casebody newcexp vlabel cbody blocksyms
-                              )
-                            | _ -> errout ("Variant case value expression must "
-                                           ^ "be a single variable name")
-                      )))
+                            (* map instead of fold for multiple errors. *)
+                            let blocksyms = Symtable.new_scope syms in
+                            let etupres = List.mapi (fun i tupi -> 
+                                match tupi.e with
+                                | ExpVar ((cvar, []), []) -> (
+                                    let vntty = List.nth vnttys i in
+                                    let (newtupi: typetag expr) = 
+                                      {e=ExpVar((cvar, []), []); decor=vntty} in
+                                    if cvar <> "_" then
+                                      Symtable.addvar blocksyms cvar {
+                                        symname=cvar;
+                                        symtype=vntty;
+                                        var=false;
+                                        (* this would be part of making all variant
+                                           types immutable. *)
+                                        mut=is_mutable_type vntty; (*correct?*)
+                                        addr=None 
+                                      };
+                                    Ok newtupi)
+                                (* TODO: add case for a constant expression, and
+                                   make that not eliminate this variant from the
+                                   case coverage. *)
+                                | _ -> errout ("Variant case value expression must "
+                                               ^ "be a single variable name")
+                              ) etup in
+                            let errs = concat_errors etupres in
+                            if errs <> [] then Error errs
+                            else (
+                              let newctup = {
+                                e=ExpVariant(vlabel,concat_ok etupres);
+                                decor=matchexp.decor
+                              } in
+                              debug_print (st_node_to_string blocksyms);
+                              check_casebody newctup vlabel cbody blocksyms
+                            ))))
               (* val() expression type, to match any non-null nullable *)
               | ExpVal varexpr -> (
                   if not (is_option_type mtype) then
@@ -1471,29 +1483,31 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
                        value="Name " ^ vdecl.variantName
                              ^ " reused in variant" }]
             else
-              match vdecl.variantType with
-              | Some vtexp -> (
-                  match check_typeExpr syms tenv vtexp with
+              let vtupres = List.map (fun vtyexp ->
+                  match check_typeExpr syms tenv vtyexp with
                   | Error e ->
+                    (* could there be other actual errors even if a rectype? *)
+                    (* should check_typeExpr return an error kind? *)
                     if not tdef.rectype then
                       Error [{loc=tdef.decor;
                               value="Variant subtype error: " ^ e}]
                     else
                       (* construct placeholder for forward-defined class. *)
                       let dummyClass = {
-                        classname = get_texp_classname vtexp;
+                        classname = get_texp_classname vtyexp;
                         in_module = modname;
                         opaque=false; muttype=false; rectype=true;
                         tparams=[]; kindData=Hidden
                       } in 
-                      let ttag = gen_ttag dummyClass []
-                      in
-                      check_variants rest ((vdecl.variantName, Some ttag)::accres)
-                  | Ok ttag ->
-                    check_variants rest ((vdecl.variantName, Some ttag)::accres)
-                )
-              | None -> (* bare-name variant *)
-                check_variants rest ((vdecl.variantName, None)::accres)
+                      let ttag = gen_ttag dummyClass [] in
+                      Ok ttag
+                  | Ok ttag -> Ok ttag
+                ) vdecl.variantType in
+              let errs = concat_errors vtupres in
+              if errs <> [] then Error errs
+              else
+                let vtys = concat_ok vtupres in
+                check_variants rest ((vdecl.variantName, vtys)::accres)
        in
        match check_variants variants [] with
        | Error elist -> Error elist
@@ -1506,11 +1520,11 @@ let check_typedef syms tenv modname (tdef: (locinfo, _) typedef)
               classname = tdef.typename;
               in_module = modname;
               opaque = tdef.visibility = Opaque;
-              (* Should variant types be immutable always? Need to think. *)
+              (* Should variant types be immutable always? Perhaps not, see 
+                 design document *)
               muttype = List.exists
-                  (fun st -> Option.is_some (snd st)
-                             && is_mutable_type (Option.get (snd st))
-                  ) variants;
+                  (fun (_, vtys) -> List.exists is_mutable_type vtys)
+                  variants;
               rectype = tdef.rectype;
               tparams = [];
               kindData = Variant variants

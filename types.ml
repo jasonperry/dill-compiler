@@ -28,7 +28,7 @@ and classData = {
   rectype: bool;
   (* We save the explicit params because they're linked to the field
      type variables. *)
-  tparams: typevar list;
+  tparams: string list;  (* maybe later: typevar *)
   (* nparams: int; *)
   kindData: kindData
 }

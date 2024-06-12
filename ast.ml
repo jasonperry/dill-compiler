@@ -3,7 +3,7 @@
 (* open Types *) (* shouldn't need this *)
 open Common
 
-type literaltype =
+type literalval =
   | FloatVal of float
   | IntVal of Int64.t
   | ByteVal of char
@@ -62,7 +62,7 @@ let get_texp_classname te = match te.texpkind with
 
 
 type 'ed raw_expr = (* should really probably change to inline records *)
-  | ExpLiteral of literaltype
+  | ExpLiteral of literalval
   | ExpVal of 'ed expr (* builtin val(v) to match non-null nullable *)
   | ExpVar of 'ed var_expr
   | ExpRecord of (string * 'ed expr) list (* assignment to each field *)
@@ -91,9 +91,9 @@ and 'ed ve_segment = {
 }
         
 (* The parser stitches together the module name, for the symtable.
-   Perhaps I should not change it yet. But is that inconsistent with the tenv? *)
-(* The lists are indexing expressions, there can be multiple [] *)
-(* and 'ed var_expr = (string * 'ed expr option) * (string * 'ed expr option) list *)
+   Perhaps I should not change it yet. It is different from the tenv. *)
+(* The strings are each segment of a record field access, the lists are
+   indexing expressions, there can be multiple of them. *)
 (* I'm still keeping the first segment separate to avoid empty lists *)
 and 'ed var_expr = (string * 'ed expr list) * (string * 'ed expr list) list
                      
@@ -143,7 +143,7 @@ type ('ed, 'sd, 'l) globalstmt = {
 
 type ('sd, 'l) procdecl = {
   name: string;
-  typeparams: typevar list; (* need to change? *)
+  typeparams: string list; (* maybe "typevar" later *)
   (* One could imagine removing the typeExprs after analysis. *)
   (* The bool is the mutable indicator *)
   params: (bool * string * 'l typeExpr) list; 

@@ -19,10 +19,11 @@ let listIndex_opt es e =
 
 (** in-place type variables for generics, with signature impl requirements *)
 (* wait, should this go in types.ml? *)
-type typevar = string (* {
-    varname: string;
-    impls: string list (* probably should be a set later. *)
-  } *)
+(* This screws up all my types when it's an alias for string *)
+(* type typevar = string (\* { *)
+(*     varname: string; *)
+(*     impls: string list (\* probably should be a set later. *\) *)
+(*   } *\) *)
 
 module StrMap = Map.Make(String)
 module StrSet = Set.Make(String)
