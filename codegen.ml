@@ -103,29 +103,27 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
           | Struct fields ->
             (* mutability info about struct fields not needed for codegen, so we
                filter it out. *)
-            List.map (fun fi -> (fi.fieldname, Some fi.fieldtype)) fields
-          | Variant vts -> vts
+            List.map (fun fi -> (fi.fieldname, [fi.fieldtype])) fields
+          | Variant vts -> vts (* variants aren't the same kind of fields now! *)
           | _ -> []
         in 
         (* 2. generate list of (name, lltype, offset, type) for fields *)
-        let ftypeinfo = fielddata |>
-          List.mapi (fun i (fieldname, ftyopt) ->
-              match ftyopt with
-                (* Field has no typetag only for variant types *)
-              | None -> (fieldname, void_type, i, void_ttag)
-              | Some (Typevar tv) -> (fieldname, voidptr_type, i, Typevar tv)
-              | Some (Namedtype tinfo as fty) ->
-                let mname, tname =
-                  tinfo.tclass.in_module, tinfo.tclass.classname in
-                let basetype = match Lltenv.find_lltype_opt
-                                         (mname, tname) lltypes with
+        let ftypeinfo = List.mapi (fun i (fieldname, ftys) ->
+            let flltys = List.map (fun fttag ->
+                match fttag with
+                | Typevar tv -> (voidptr_type, Typevar tv)
+                | Namedtype tinfo ->
+                  let mname, tname =
+                    tinfo.tclass.in_module, tinfo.tclass.classname in
+                  let fllty = match Lltenv.find_lltype_opt
+                                      (mname, tname) lltypes with
                   | Some basetype ->
                     debug_print ("#CG add_lltype: existing type for field "
-                                  ^ string_of_lltype basetype);
+                                 ^ string_of_lltype basetype);
                     basetype
                   (* In case the field's lltype isn't generated yet, either
-                     recurse or just fetch the named lltype if it's a
-                     recursive type *)
+                       recurse or just fetch the named lltype if it's a
+                       recursive type *)
                   | None ->
                     if tinfo.tclass.rectype then
                       let ftypename = mname ^ "::" ^ tname in
@@ -134,13 +132,13 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
                       | None ->
                         (* if it's an external rectype, add it as normal *)
                         if mname = cdata.in_module then (
-                          debug_print ("recursive field type " ^ ftypename
+                          debug_print ("#CG: recursive field type " ^ ftypename
                                        ^ " not found, adding named struct lltype.");
                           pointer_type (named_struct_type context ftypename)
                         )
                         else 
                           (* NOTE! mname not included because local types have no
-                             module prefix in the tenv. Might want to change that... *)
+                               module prefix in the tenv. Might want to change that... *)
                           fst (add_lltype the_module types lltypes layout
                                  (PairMap.find ("", tname) types))
                     else
@@ -149,19 +147,33 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
                   in
                   (* check for non-base types and add them if needed. *)
                   (* currently allows array of nullable but no nullable array *)
-                  let ty1 =
-                    if is_option_type fty then
-                      struct_type context [| nulltag_type; basetype |]
-                    else basetype in
-                  let fieldlltype =
-                    (* Create array type for the field if needed. *)
-                    (* FIXME: not reached because Array is now a class.
+                  let fllty =
+                      if is_option_type fttag then
+                        struct_type context [| nulltag_type; fllty |]
+                      else fllty in
+                  (fllty, fttag)
+              ) ftys
+            in
+            match flltys with 
+            (* Field has no typetag only for variant types *)
+            | [] -> (fieldname, void_type, i, void_ttag)
+            | [(llty, ttag)] -> (fieldname, llty, i, ttag)
+            | flltypes -> (* make struct type for variant tuple *)
+              let llvtup = struct_type context
+                  (Array.of_list (List.map fst flltypes)) in
+              (* wishful thinking: that I don't need the ttags for
+                     each type in the variant tuple. *)
+              (fieldname, llvtup, i, void_ttag)  (* FIXME: it's just wishful thinking *)
+              (* Create array type for the field if needed. *)
+              (* FIXME: not reached because Array is now a class.
                        Other array types created in ttag_to_lltype *)
+              (*let fieldlltype =
                     if is_array_type fty then
                       struct_type context
                         [| int_type; pointer_type (array_type ty1 0) |]
                     else ty1 in
-                  (fieldname, fieldlltype, i, fty))
+                    (fieldname, fieldlltype, i, fty)) *)
+          ) fielddata
         in
         (* 3. Create the mapping from field names to offset and type. *)
         (* do we still need the high-level type? maybe for lookup info. *)
