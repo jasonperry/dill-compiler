@@ -17,6 +17,18 @@ let listIndex_opt es e =
   in
   loop es 0
 
+(** array find. There is something like this in 5.1 but this will do. *)
+let array_find_index_ex a indf =
+  let rec loop i =
+    if i = Array.length a then raise Not_found
+    else (
+      let ai = Array.get a i in
+      if indf ai then (i, ai)
+      else loop (i+1)
+    )
+  in (loop 0)
+  
+
 (** in-place type variables for generics, with signature impl requirements *)
 (* wait, should this go in types.ml? *)
 (* This screws up all my types when it's an alias for string *)

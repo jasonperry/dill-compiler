@@ -38,9 +38,16 @@ module TtagMap = Map.Make(TypeTag)
     classes. Entries built by add_lltype. Used a lot by ttag_to_lltype *)
 module Lltenv = struct
   (* fieldmap is used for both struct offsets and union tags. *)
+  (* ...could it skip the typetags and get lltype directly??? Maybe only if
+     the lltype is fully specified. *)
   type fieldmap = (int * typetag) StrMap.t
   (* Maps modulename, typename pair to the LLVM type and field map. *)
-  type t = (lltype * fieldmap) PairMap.t  
+  type lltentry = {
+    lltype: lltype;
+    fieldmap: fieldmap;
+    tvslots: int list list array
+  }
+  type t = (* (lltype * fieldmap) *) lltentry PairMap.t  
   let empty: t = PairMap.empty
   let add strpair (llvarty, fmap) map = PairMap.add strpair (llvarty, fmap) map
   (* Can I have a function to take a typetag and pull in_module and
@@ -51,41 +58,43 @@ module Lltenv = struct
   (* Return just the LLVM type for a given type name. *)
   let find = PairMap.find
   let find_opt = PairMap.find_opt
-  let find_lltype tkey tmap = fst (PairMap.find tkey tmap)
+  let find_lltype tkey tmap = (PairMap.find tkey tmap).lltype
   (* Look up the base typename for a class. *)
   let find_lltype_opt tkey tmap =
-    Option.map fst (PairMap.find_opt tkey tmap)
+    Option.map (fun ent -> ent.lltype) (PairMap.find_opt tkey tmap)
   let find_class_lltype tclass tmap =
-    fst (PairMap.find (tclass.in_module, tclass.classname) tmap)
+    (PairMap.find (tclass.in_module, tclass.classname) tmap).lltype
   (* Get the mapping of fields to types for a struct type. *)
   let find_class_fieldmap tclass tmap =
-    snd (PairMap.find (tclass.in_module, tclass.classname) tmap)
+    (PairMap.find (tclass.in_module, tclass.classname) tmap).fieldmap
   (* Get the offset of a record field from a type's field map. *)
   let find_field tkey fieldname tmap =
-    let (_, fmap) = PairMap.find tkey tmap in
-    StrMap.find fieldname fmap
+    let ent = PairMap.find tkey tmap in
+    StrMap.find fieldname ent.fieldmap
 end
 
-(** Process a classData to generate a new llvm base type for lltenv *)
+(** Process a classData to generate a new llvm type entry for lltenv *)
 let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
     (types: classData PairMap.t) (lltypes: Lltenv.t) layout (cdata: classData)
     =
     match Lltenv.find_opt (cdata.in_module, cdata.classname) lltypes with
-    (* Should this case be an error? *)
-  | Some (lltype, fieldmap) -> (lltype, fieldmap)
+    (* TESTME: don't think this can happen; make it trigger an error and test. *)
+  | Some ent -> ent
   | None -> (
       debug_print ("generating lltype for " ^ cdata.classname);
+      let primtype_entry lltype : Lltenv.lltentry =
+        { lltype=lltype; fieldmap=StrMap.empty; tvslots=[||] } in
       match (cdata.in_module, cdata.classname) with
       (* need special case for primitive types. Should handle this with some
        * data structure, so it's consistent among modules *)
       (* These are only hit when we recurse, so maybe we shouldn't? *)
-      | ("", "Void") -> void_type, StrMap.empty
-      | ("", "Int") -> int_type, StrMap.empty
-      | ("", "Float") -> float_type, StrMap.empty
-      | ("", "Byte") -> byte_type, StrMap.empty
-      | ("", "Bool") -> bool_type, StrMap.empty
-      | ("", "String") -> pointer_type (i8_type context), StrMap.empty
-      | ("", "NullType") -> nulltag_type, StrMap.empty (* causes crash? *) 
+      | ("", "Void") -> primtype_entry void_type
+      | ("", "Int") -> primtype_entry int_type
+      | ("", "Float") -> primtype_entry float_type
+      | ("", "Byte") -> primtype_entry byte_type
+      | ("", "Bool") -> primtype_entry bool_type
+      | ("", "String") -> primtype_entry (pointer_type (i8_type context))
+      | ("", "NullType") -> primtype_entry nulltag_type (* causes crash? *) 
       | _ ->
         (* Process non-primitive type.
            1. create named struct lltype to fill in later *)
@@ -95,8 +104,14 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
         let llstructtype =
           match type_by_name the_module typename with
           | None -> named_struct_type context typename
-          | Some llty -> llty
+          | Some llty -> llty  (* how could it already exist? See above also *)
         in
+        (* Create map from type variables to the "slots" they appear in
+           (will be converted to an array when done) *)
+        (* TODO: with tuples, each may be a pair. Arrays different too *)
+        let slotmap: (string * int list list) array = Array.init
+            (List.length cdata.tparams)
+            (fun i -> (List.nth cdata.tparams i, [])) in
         (* Pull out fields; same for both struct and variant types *)
         let fielddata =
           match cdata.kindData with
@@ -104,26 +119,47 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
             (* mutability info about struct fields not needed for codegen, so we
                filter it out. *)
             List.map (fun fi -> (fi.fieldname, [fi.fieldtype])) fields
-          | Variant vts -> vts (* variants aren't the same kind of fields now! *)
+          | Variant vts -> vts (* variants are already a list for each variant *)
           | _ -> []
         in 
         (* 2. generate list of (name, lltype, offset, type) for fields *)
         let ftypeinfo = List.mapi (fun i (fieldname, ftys) ->
+            (* Inner loop because variants can have a tuple of types *)
             let flltys = List.map (fun fttag ->
                 match fttag with
-                | Typevar tv -> (voidptr_type, Typevar tv)
+                | Typevar tv ->
+                  (* Append a new entry to the slots list for this tv *)
+                  let tvix, (_, prevmap) = array_find_index_ex slotmap
+                      (fun (v, _) -> v = tv) in
+                  Array.set slotmap tvix (tv, prevmap @ [[i]]); (* needs j too for tuples *)
+                  (voidptr_type, Typevar tv)
                 | Namedtype tinfo ->
                   let mname, tname =
                     tinfo.tclass.in_module, tinfo.tclass.classname in
-                  let fllty = match Lltenv.find_lltype_opt
-                                      (mname, tname) lltypes with
-                  | Some basetype ->
-                    debug_print ("#CG add_lltype: existing type for field "
-                                 ^ string_of_lltype basetype);
-                    basetype
-                  (* In case the field's lltype isn't generated yet, either
-                       recurse or just fetch the named lltype if it's a
-                       recursive type *)
+                  let fllty = match Lltenv.find_opt (mname, tname) lltypes with
+                    | Some fent ->
+                      debug_print ("#CG add_lltype: existing type for field "
+                                   ^ string_of_lltype fent.lltype);
+                      (* If this field takes type args, for each one take its slots
+                         list and add the entries to the parent slot list. *)
+                      List.iteri (fun fi fttag -> match fttag with
+                          (* Look up field typearg (which should be a variable)
+                             in this's slotmap *) 
+                          | Namedtype _ ->
+                            failwith "type arg in class supposed to be a typevar"
+                          | Typevar ftv ->
+                            (* get index and slots of typevar in parent type. *)
+                            let tvix, (_, prevmap) = array_find_index_ex slotmap
+                                (fun (v, _) -> v = ftv) in
+                            (* get the field's slotmap for that type param's position *)
+                            let fslots = Array.get fent.tvslots fi in
+                            (* append slot address to parent field number for each *)
+                            let pfslots = List.map (fun faddr -> i::faddr) fslots in
+                            Array.set slotmap tvix (ftv, prevmap @ pfslots)
+                        ) tinfo.typeargs;
+                      fent.lltype
+                  (* If the field's lltype isn't generated yet, either recurse
+                     or, if it's a recursive type, fetch the named type *)
                   | None ->
                     if tinfo.tclass.rectype then
                       let ftypename = mname ^ "::" ^ tname in
@@ -137,13 +173,13 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
                           pointer_type (named_struct_type context ftypename)
                         )
                         else 
-                          (* NOTE! mname not included because local types have no
-                               module prefix in the tenv. Might want to change that... *)
-                          fst (add_lltype the_module types lltypes layout
-                                 (PairMap.find ("", tname) types))
+                          (* mname not included because local types have no
+                             module prefix in the tenv. Think is is the right way *)
+                          (add_lltype the_module types lltypes layout
+                             (PairMap.find ("", tname) types)).lltype
                     else
-                      fst (add_lltype the_module types lltypes layout
-                             (PairMap.find ("", tname) types))
+                      (add_lltype the_module types lltypes layout
+                         (PairMap.find ("", tname) types)).lltype
                   in
                   (* check for non-base types and add them if needed. *)
                   (* currently allows array of nullable but no nullable array *)
@@ -158,15 +194,16 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
             (* Field has no typetag only for variant types *)
             | [] -> (fieldname, void_type, i, void_ttag)
             | [(llty, ttag)] -> (fieldname, llty, i, ttag)
-            | flltypes -> (* make struct type for variant tuple *)
+            | flltypes ->  (* make struct type for variant tuple *)
               let llvtup = struct_type context
                   (Array.of_list (List.map fst flltypes)) in
               (* wishful thinking: that I don't need the ttags for
                      each type in the variant tuple. *)
-              (fieldname, llvtup, i, void_ttag)  (* FIXME: it's just wishful thinking *)
+              (fieldname, llvtup, i, void_ttag)  (* TESTME: doing without tag. *)
               (* Create array type for the field if needed. *)
-              (* FIXME: not reached because Array is now a class.
-                       Other array types created in ttag_to_lltype *)
+              (* TESTME: not reached because Array is now a class.
+                       Other array types created in ttag_to_lltype.
+                 test if we need this. *)
               (*let fieldlltype =
                     if is_array_type fty then
                       struct_type context
@@ -193,9 +230,11 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
                        ^ string_of_lltype llstructtype);
           if cdata.rectype then
             (* recursive types are reference types *)
-            (pointer_type llstructtype, fieldmap)
+            { lltype=(pointer_type llstructtype); fieldmap=fieldmap;
+              tvslots=Array.map snd slotmap }
           else 
-            (llstructtype, fieldmap)
+            { lltype=llstructtype; fieldmap=fieldmap;
+              tvslots=Array.map snd slotmap }
         (* Variant case: struct of tag + optional byte array for the union *)
         | Variant _ ->
           (* Compute max size of any of the variant subtypes. *)
@@ -223,13 +262,15 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
                   array_type (i8_type context) (Int64.to_int maxsize + 4) |])
             false;
           if cdata.rectype then
-            (pointer_type llstructtype, fieldmap)
+            { lltype=(pointer_type llstructtype); fieldmap=fieldmap;
+              tvslots=Array.map snd slotmap }
           else
-            (llstructtype, fieldmap)
+            { lltype=llstructtype; fieldmap=fieldmap;
+              tvslots=Array.map snd slotmap }
         (* FIXME: these cases should go above, I think. *)
         | Hidden ->
           (* Unknown implementation, must be treated as void pointer *)
-          (voidptr_type, StrMap.empty)
+          primtype_entry voidptr_type
         | _ -> (* TODO: opaque type and newtype *)
           (* Now it's an opaque type, but I really don't want to assume.
              need to put an opaque marker in classData?
@@ -237,30 +278,60 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
           failwith ("BUG: missing codegen for class type " ^ cdata.classname)
     )
 
-(** Use a type tag to generate the LLVM type, adding to the base type. *)
+(** change all locations of a type variable in an llvm struct type to a
+    specified (pointer) type. *)
+let rec specify_gtype (llentry: Lltenv.lltentry) tvindex conctype =
+  (* TODO: arrays will work differently. *)
+  let tvslots = Array.get llentry.tvslots tvindex in
+  let newtype = List.fold_left (fun llty tvslot ->
+      let rec digloop stty slot =
+        match slot with
+        | [] -> stty (* only hit if no replacement *)
+        | ix::[] ->
+          let starr = struct_element_types llty in
+          (Array.set starr ix conctype;
+           struct_set_body stty starr false;
+           stty)
+        | ix::next::rest -> 
+          let starr = struct_element_types stty in
+          (Array.set starr ix (digloop (Array.get starr ix) (next::rest));
+           struct_set_body stty starr false;
+           stty)
+      in digloop llty tvslot
+    ) llentry.lltype tvslots
+  in newtype (* Don't need an entry for on-the-fly types. Symtable? *)
+    
+(** Use a type tag to generate the LLVM type, adding to the base type
+    AND updating generic pointer types with specific ones if there. *)
 let rec ttag_to_lltype lltypes ty = match ty with
   | Typevar _ ->
     voidptr_type
   | Namedtype tinfo -> (
+      (* Arrays and Options are just classes now, but codegen is specific for them. *)
       (* For arrays, create struct of size and storage pointer *)
       if is_array_type ty then
         let elttype = ttag_to_lltype lltypes (array_element_type ty) in
         struct_type context
           (* get inner type from class params now! *)
           [| int_type; pointer_type (array_type elttype 0) |]
+      (* for option, use a (possibly smaller) tag with a struct *)
       else if is_option_type ty then
         let basetype = ttag_to_lltype lltypes (option_base_type ty) in
         struct_type context [| nulltag_type; basetype |]
       else 
-        match Lltenv.find_lltype_opt
+        match Lltenv.find_opt
                 (tinfo.tclass.in_module, tinfo.tclass.classname) lltypes with
         | None -> failwith ("BUG: no lltype found for "
                             ^ tinfo.tclass.in_module ^ "::"
                             ^ tinfo.tclass.classname)
-        | Some llty -> llty
-        (* TODO: other type variable cases, if any (recursive).
-           All other option types will use a pointer? Or will I be able
-           to make the size-passing trick work? *)
+        (* Get the lltype for each typearg and replace the voidptr with it. *)
+        | Some ent -> List.fold_left (fun llty (i, targ) ->
+            match targ with
+            | Typevar _ -> llty
+            (* entry is the same for every loop? Yeah, it's just a different
+               type variable that's being replaced in the lltype. *)
+            | Namedtype _ -> specify_gtype ent i (ttag_to_lltype lltypes targ)
+          ) ent.lltype (List.mapi (fun i a -> (i, a)) tinfo.typeargs)
     )
 
 
@@ -347,8 +418,8 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
     checkloop 0 (const_int bool_type 1)
   else if is_variant_type valty then (
     let variants = get_type_variants valty in
-    (* check tag, then load and cast the variable type if it exists and 
-       compare that. *)
+    (* check tag, then load and cast the value tuple if it exists and 
+       generate comparison for that. *)
     let var1tag =
       if is_pointer_value val1 then
         let tagPtr = build_struct_gep val1 0 "tag1ptr" builder in
@@ -387,6 +458,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
        position_at_end start_bb builder;
        let tag_eq = build_icmp Icmp.Eq var1tag var2tag "tag_eq" builder in
        ignore (build_cond_br tag_eq (List.hd caseblocks) cont_block builder);
+       (* check which variant it is and branch to comparison for that type. *)
        let rec gen_caseblocks caseval blocks =
          match blocks with
          | [] -> []
@@ -404,8 +476,11 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
            let variant = List.nth variants caseval in
            let compval, then_end_bb = 
              match variant with 
-             | (_, Some varty) ->
-                debug_print "Variant has attached value, generating val compare...";
+             | (_, []) ->
+                debug_print ("#CG-eqcomp: no value attached to this case");
+                (const_int bool_type 1, then_bb)
+             | (_, vttags) ->
+                debug_print "#CG-eqcomp: Variant has attached value(s), generating compare.";
                 let llvarty = ttag_to_lltype lltypes varty in
                 (* generate the pointer to the variant's value *)
                 let gen_varval_ptr theval =
@@ -428,9 +503,6 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
                 let compval = gen_eqcomp varval1 varval2 varty lltypes builder in
                 let then_end_bb = insertion_block builder in
                 (compval, then_end_bb)
-             | (_, None) ->
-                debug_print ("no value attached to this case");
-                (const_int bool_type 1, then_bb)
            in
            position_at_end then_end_bb builder;
            ignore (build_br cont_block builder);
@@ -449,7 +521,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
          :: gen_caseblocks 0 caseblocks in
        (* Yay, I get to make a phi! The phi is of all the compare results. *)
        position_at_end cont_block builder;
-       debug_print "building phi value";
+       debug_print "#CG: building phi value";
        (* I wonder if the error is a bug in if-then? *)
        let phi = build_phi phiList "finalcmp" builder in
        phi
@@ -759,17 +831,17 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
     let tymod = get_type_modulename ex.decor in
     debug_print ("** Generating variant expression code of type " ^ tyname);
     (* 1. Look up lltype and allocate struct *)
-    let (llvarty, varmap) = Lltenv.find (tymod, tyname) lltypes in
+    let tyent = Lltenv.find (tymod, tyname) lltypes in
     (* 2. Look up variant type, allocate struct, store tag value *)
-    debug_print ("variant lltype:" ^ string_of_lltype llvarty);
+    debug_print ("#CG: variant lltype: " ^ string_of_lltype tyent.lltype);
     let typesize =  (* TODO: have one sizeof function for the whole codegen *)
-      if is_pointer_type llvarty then 
-        Array.length (struct_element_types (element_type llvarty))
+      if is_pointer_type tyent.lltype then 
+        Array.length (struct_element_types (element_type tyent.lltype))
       else 
-        Array.length (struct_element_types llvarty)
+        Array.length (struct_element_types tyent.lltype)
     in
-    debug_print ("Got variant typesize of " ^ string_of_int typesize);
-    let (tagval, subty) = StrMap.find variant varmap in
+    debug_print ("#CG: Got variant typesize of " ^ string_of_int typesize);
+    let (tagval, subty) = StrMap.find variant tyent.fieldmap in
     let structsubty =
       struct_type context
         (if typesize = 1 || subty = void_ttag
@@ -807,9 +879,9 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
     (* It still wants the cast even if no value (because named struct?) *)
     let castedaddr =
       if is_recursive_type ex.decor then
-        build_bitcast structaddr llvarty "varstruct" builder
+        build_bitcast structaddr tyent.lltype "varstruct" builder
       else
-        build_bitcast structaddr (pointer_type llvarty) "varstruct" builder in
+        build_bitcast structaddr (pointer_type tyent.lltype) "varstruct" builder in
     debug_print ("Casted variant struct addr " ^ string_of_llvalue structaddr
                  ^ " ter " ^ string_of_llvalue castedaddr);
     if is_recursive_type ex.decor then
@@ -986,8 +1058,11 @@ and gen_call the_module builder syms lltypes (fname, args) =
             let argty = argexpr.decor in
             let paramty = fparam.symtype in
             let argval = gen_expr the_module builder syms lltypes argexpr in
-            (* 2.b.1: exact equal types or matching typeclass *)
+            (* 2.b.1: exact equal types or matching typeclass (no!) *)
             if types_equal argty paramty
+            (* but now, is_generic_type detects deeper-buried type variables.
+               This will happen only if an exact match. Should we "cast all
+               the way down"? *)
             || not (is_generic_type argty)
                && not (is_generic_type paramty)
                && get_type_class argty = get_type_class paramty
@@ -1001,6 +1076,8 @@ and gen_call the_module builder syms lltypes (fname, args) =
               && not (is_pointer_type (ttag_to_lltype lltypes paramty))
                  (* else if is_generic_type argty then ( *)
               then (
+                (* this can only happen when passing an /instantiated/ generic
+                   to a concrete argument of matching type, right? *)
                 debug_print "#CG gen_call: generic-to-concrete arg pass";
                 let argptr = build_bitcast argval
                     (pointer_type (ttag_to_lltype lltypes paramty))

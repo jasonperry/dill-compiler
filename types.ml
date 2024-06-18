@@ -11,7 +11,7 @@ type fieldInfo = {
 }
 
 (** Data needed by the different kinds of types (fields, variants, etc.) *)
-and kindData =  (* will array and option be their own kind now? *)
+and kindData =  (* array is struct, option is variant now? *)
   | Primitive
   | Struct of fieldInfo list
   | Variant of (string * typetag list) list
@@ -158,9 +158,12 @@ let rec typetag_to_string = function
 
                            (* helper functions *)
 
-let is_generic_type = function
+(** Determines if a type has any unspecified type variables. *)
+let rec is_generic_type = function
   | Typevar _ -> true
-  | _ -> false
+  | Namedtype nti ->
+    (* Note that "exists" is false for an empty list *)
+    List.exists is_generic_type nti.typeargs
 
 let is_recursive_type = function
   | Typevar _ -> failwith ("Error: generic type not known if recursive")

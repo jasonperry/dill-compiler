@@ -300,8 +300,9 @@ let rec check_expr syms (tenv: typeenv) ?thint:(thint=None)
               (* Oh. the type comparison itself recurses *)
               if not (types_equal ty1 ty2) then 
                 Error {loc=ex.decor;
-                       value = ("Operator type mismatch: " ^ typetag_to_string ty1
-                                ^ ", " ^ typetag_to_string ty2)}
+                       value = ("Operator type mismatch: "
+                                ^ typetag_to_string ty1 ^ ", "
+                                ^ typetag_to_string ty2)}
               else (
                 match oper with
                 | OpEq | OpNe | OpLt | OpGt | OpLe | OpGe ->
