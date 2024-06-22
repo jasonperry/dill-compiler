@@ -3,7 +3,7 @@
 open stdio;
 open complex;
 
-proc main() => Int
+proc main() -> Int
 begin
   var c1: Complex = {i=1.0, j=3.0};
   var c2: Complex = {i=1.0, j=3.0};
@@ -13,14 +13,13 @@ begin
     printString("c1 and c2 are equal.");
   else
     printString("c1 and c2 are not equal.");
-  endif
+  /if
 
   if c1 == c3 then
     printString("c1 and c3 are equal.");
   else
     printString("c1 and c3 are not equal.");
-  endif
-
+  /if
 
   return 0;
-end main
+/proc

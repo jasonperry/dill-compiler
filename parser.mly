@@ -578,10 +578,11 @@ callExp:
 
 argList:
 (* Turn the mutability marker into a boolean *)
-  | al=separated_list(COMMA, pair(option(HASH), expr))
-    { List.map (fun (eopt, ex) -> match eopt with
-				  | Some _ -> (true, ex)
-				  | None -> (false, ex)
+
+  | al=separated_list(COMMA, pair(option(DOLLAR), expr))
+    { List.map (fun (mutopt, ex) -> match mutopt with
+				    | Some _ -> (true, ex)
+				    | None -> (false, ex)
 	       ) al }
 
 nullAssnExp:  (* switching to option reduced S/R conflicts *)

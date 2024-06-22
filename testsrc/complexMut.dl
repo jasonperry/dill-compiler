@@ -1,8 +1,8 @@
 (* mutable version of complex struct. *)
 module complexMut begin
 
-type Complex is struct
+type Complex is record
   mut i: Float,
   mut j: Float;
 
-end complexMut
+/module

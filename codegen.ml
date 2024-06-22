@@ -12,7 +12,7 @@ exception CodegenError of string
 let context = global_context() 
 let float_type = double_type context
 let int_type = i32_type (* i64_type *) context
-let int32_type = i32_type context
+let int64_type = i64_type context
 let bool_type = i1_type context
 let byte_type = i8_type context
 let void_type = void_type context
@@ -49,7 +49,7 @@ module Lltenv = struct
   }
   type t = (* (lltype * fieldmap) *) lltentry PairMap.t  
   let empty: t = PairMap.empty
-  let add strpair (llvarty, fmap) map = PairMap.add strpair (llvarty, fmap) map
+  let add = PairMap.add
   (* Can I have a function to take a typetag and pull in_module and
      classname out of that, so I don't have to awkwardly pass pairs?
      Yes, could, but REMEMBER: the LLtenv is only used for looking up
@@ -280,7 +280,7 @@ let rec add_lltype the_module  (* returns (classdata, Lltenv.fieldmap) *)
 
 (** change all locations of a type variable in an llvm struct type to a
     specified (pointer) type. *)
-let rec specify_gtype (llentry: Lltenv.lltentry) tvindex conctype =
+let specify_gtype (llentry: Lltenv.lltentry) tvindex conctype =
   (* TODO: arrays will work differently. *)
   let tvslots = Array.get llentry.tvslots tvindex in
   let newtype = List.fold_left (fun llty tvslot ->
@@ -370,6 +370,7 @@ let build_gc_array_malloc eltType llsize name the_module builder =
     let dataptr = build_call llmalloc [|datasize|] "mallocbytes" builder in
     build_bitcast dataptr (pointer_type eltType) name builder
 
+
 let build_gc_malloc eltType name the_module builder =
   match lookup_function "GC_malloc" the_module with
   | None -> failwith "BUG: GC_malloc llvm function not found"
@@ -377,8 +378,95 @@ let build_gc_malloc eltType name the_module builder =
     let dataptr = build_call llmalloc [|size_of eltType|] "mallocbytes" builder
     in
     build_bitcast dataptr (pointer_type eltType) name builder
-  
 
+
+(** Rewritten equality comparison function for any fixed-size concrete type. *)
+let gen_eqcompare val1 val2 valty (* lltypes *) _ builder =
+  (* make true and false result blocks at the beginning, for short-circuiting. *)
+  let the_function = block_parent (insertion_block builder) in
+  (* let true_bb = append_block context "eqcomp_true" the_function in *)
+  let false_bb = append_block context "eqcomp_false" the_function in
+  let true_bb = insert_block context "eqcomp_true" false_bb in
+  (* TESTME: builder's insertion point is still before the new blocks? *)
+  let rec cmp_walk val1 val2 valty done_bb =
+    (* First, check indirection and possible pointer equality. *)
+    (* A fixed-size type will never be pointed more than once, right? *)
+    let val1, val2 = match classify_type (type_of val1),
+                           classify_type (type_of val2) with
+    | TypeKind.Pointer, TypeKind.Pointer -> 
+      (* if both pointers and the same, we can stop. *)
+      let pointereq = build_icmp Icmp.Eq val1 val2 "pointereq" builder in
+      (* builder won't move to the inserted block, will it? *)
+      let next_bb = insert_block context "eqcomp_next" done_bb in
+      (* branch to true or next *) 
+      ignore (build_cond_br pointereq done_bb next_bb builder);
+      (* move builder to start of next block *)
+      position_at_end next_bb builder;
+      (* loads for new val1 and val2 *)
+      (build_load val1 "val1load" builder,
+       build_load val2 "val2load" builder)
+    | TypeKind.Pointer, _ ->
+      (build_load val1 "val1load" builder, val2)
+    | _, TypeKind.Pointer ->
+      (val1, build_load val2 "val2load" builder)
+    | _, _ -> (val1, val2)
+    in
+    (* let cmp_res = *) match classify_type (type_of val1) with
+    | TypeKind.Integer ->
+      let res = build_icmp Icmp.Eq val1 val2 "int_eq" builder in
+      ignore (build_cond_br res done_bb false_bb builder);
+    | TypeKind.Double ->
+      let res = build_fcmp Fcmp.Oeq val1 val2 "float_eq" builder in
+      ignore (build_cond_br res done_bb false_bb builder);
+    | _ ->
+      if is_struct_type valty then
+        let fields = get_struct_fields valty in
+        let rec fields_loop i =
+          (* No extractvalue needed if I just load from the gep pointer? *)
+          (* let field1ref = build_struct_gep val1 i "f1ptr" builder in
+               let field2ref = build_struct_gep val2 i "f2ptr" builder in *)
+          (* but will it be double-pointed if a pointer?
+               Trying just extracting always *)
+          let fval1 = build_extractvalue val1 i "fval1" builder in
+          let fval2 = build_extractvalue val2 i "fval2" builder in
+          let fieldtype = (List.nth fields i).fieldtype in 
+          let next_bb = if i < List.length fields - 1
+            then insert_block context "fieldcmp" done_bb
+            else done_bb in
+          cmp_walk fval1 fval2 fieldtype next_bb;
+          if i < List.length fields - 1 then (
+            position_at_end next_bb builder;  (* no-op if at end *)
+            fields_loop (i+1)
+          )
+        in fields_loop 0
+      else if is_variant_type valty then
+        (* Could check the first field regardless, then if it's a variant type
+           insert the cast, then compare as usual! *)
+        (* For tuples in variants, may be two different struct types.
+           Is it enough just to compare the tag and know other code will
+           never be reached? Oh, may have to cast it! Not a generics issue! *)
+        (* The issue is, will we ever be loading tuple types that we don't know
+           the type of? Wait, even if the tags match, how do I load? *)
+        failwith "lemme get back to ya"
+      else failwith ("Unexpected type in comparison:  "
+                     ^ typetag_to_string valty ^ ", "
+                     ^ string_of_lltype (type_of val1) ^ ", "
+                     ^ string_of_lltype (type_of val2))
+  in
+  cmp_walk val1 val2 valty true_bb;
+  let phi_block = append_block context "eqcomp_phi" the_function in
+  position_at_end true_bb builder;
+  ignore (build_br phi_block builder);
+  position_at_end false_bb builder;
+  ignore (build_br phi_block builder);
+  position_at_end phi_block builder;
+  let phi = build_phi [(const_int bool_type 1, true_bb);
+                       (const_int bool_type 0, false_bb)] "eq_phi" builder in
+  debug_print (string_of_llvalue the_function);
+  phi
+
+    
+(*
 (** Generate an equality comparison. This could get complex. *)
 let rec gen_eqcomp val1 val2 valty lltypes builder =
   match valty with
@@ -415,7 +503,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
         let andval = build_and prevcmp cmpval "cmpand" builder in
         checkloop (i+1) andval
     in
-    checkloop 0 (const_int bool_type 1)
+    checkloop 0 (const_int bool_type 1) (* starter true value *)
   else if is_variant_type valty then (
     let variants = get_type_variants valty in
     (* check tag, then load and cast the value tuple if it exists and 
@@ -463,7 +551,8 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
          match blocks with
          | [] -> []
          | cond_bb :: then_bb :: rest -> (
-           position_at_end cond_bb builder;
+             position_at_end cond_bb builder;
+             (* Oh, it tests in each block whether to go on or match the next *)
            let condval =
              build_icmp Icmp.Eq (const_int varianttag_type caseval) var1tag
                ("tagcmp_" ^ Int.to_string caseval) builder in
@@ -480,9 +569,10 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
                 debug_print ("#CG-eqcomp: no value attached to this case");
                 (const_int bool_type 1, then_bb)
              | (_, vttags) ->
-                debug_print "#CG-eqcomp: Variant has attached value(s), generating compare.";
+               debug_print "#CG-eqcomp: Variant has value(s), generating compare";
+               List.iter (fun varty -> ) vttags;
                 let llvarty = ttag_to_lltype lltypes varty in
-                (* generate the pointer to the variant's value *)
+                (* generate the pointer to the variant's value with cast *)
                 let gen_varval_ptr theval =
                   let varptr =
                     if is_pointer_value theval then
@@ -533,7 +623,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
     let val2 = if is_pointer_value val2 then
                  build_load val2 "val2" builder
                else val2 in 
-    if (type_of val1) = int_type then
+    if (type_of val1) = int_type || (type_of val1) = byte_type then
       build_icmp Icmp.Eq val1 val2 "eqcomp" builder
     else if (type_of val2) = float_type then
       build_fcmp Fcmp.Oeq val1 val2 "eqcomp" builder
@@ -542,7 +632,7 @@ let rec gen_eqcomp val1 val2 valty lltypes builder =
        * array directly? Don't think so in LLVM, that's a vector op. *)
       failwith ("Equality for type " ^ typetag_to_string valty
                 ^ ": " ^ string_of_lltype (type_of val1) ^ " not supported yet")
-
+      *)
 
 (** Generate value of a constant expression. Currenly used for global var 
     initializer and case branches *)
@@ -618,7 +708,8 @@ let gen_bounds_check ixval arraysize the_module builder =
   match lookup_function "exit" the_module with
   | None -> failwith "BUG: could not find exit function"
   | Some exitfunc -> (
-      build_call exitfunc [|const_int int32_type 111|] "" builder
+      (* Made up failure exit code for array OOB *)
+      build_call exitfunc [|const_int int_type 111|] "" builder
       |> ignore;
       build_br contblock builder |> ignore;
       (* build the OK block with just a jump to the continuation *)
@@ -988,7 +1079,7 @@ and gen_expr the_module builder syms lltypes (ex: typetag expr) =
         | _ -> failwith "BUG: type error in boolean binop"
         (* Try to support equality comparison for everything. *)
       else if op = OpEq then
-        gen_eqcomp e1val e2val e1.decor lltypes builder
+        gen_eqcompare e1val e2val e1.decor lltypes builder
       else
         failwith "unknown type for binary operation"
     )
@@ -1300,7 +1391,7 @@ let rec gen_stmt the_module builder lltypes
       match PairMap.find_opt (get_type_modulename matchexp.decor,
                               get_type_classname matchexp.decor) lltypes with
       | None -> None
-      | Some (_, fieldmap) -> Some fieldmap in
+      | Some tyent -> Some tyent.fieldmap in
     (* Get the conditional value for matching against the case. *)
     let gen_caseexp caseexp =
       match caseexp.e with
@@ -1334,7 +1425,7 @@ let rec gen_stmt the_module builder lltypes
          let caseval = gen_constexpr_value lltypes caseexp in
            (* gen_expr the_module builder syms lltypes caseexp in *)
          (* maybe a gen_compare? *)
-         gen_eqcomp matchval caseval matchexp.decor lltypes builder
+         gen_eqcompare matchval caseval matchexp.decor lltypes builder
          (* what if it's an ExpCall? Have to see if return value is nullable *)
          (* expCall's decor is the return type, right? *)
          (* don't need to worry about this as long as they're constexprs? *)
@@ -1656,12 +1747,12 @@ let gen_module tenv topsyms llmod
         (* fully-qualified typename now *)
         let newkey = (cdata.in_module, cdata.classname) in
         (* note that lltydata is a pair type. *)
-        let (lltype, fieldmap) = add_lltype llmod tenv lltenv layout cdata
+        let tyent = add_lltype llmod tenv lltenv layout cdata
         in
         debug_print (
             "adding type " ^ (fst newkey) ^ "::" ^ (snd newkey)
-            ^ " to lltenv, lltype: " ^ string_of_lltype lltype);
-        Lltenv.add newkey (lltype, fieldmap) lltenv
+            ^ " to lltenv, lltype: " ^ string_of_lltype tyent.lltype);
+        Lltenv.add newkey tyent lltenv
       ) tenv Lltenv.empty in
   (* 2. Generate decls from the symtable for imported global variables. *)
   StrMap.iter (fun localname gsym ->
@@ -1673,12 +1764,12 @@ let gen_module tenv topsyms llmod
       (* Name maybe not correct? Need the local name of it. *)
       Symtable.set_addr topsyms localname gvalue
     ) topsyms.syms;
-  (* 2.5 Generate low-level function declarations (just GC alloc for now) *)
+  (* 2.5 Generate low-level function declarations (GC alloc and exit) *)
   declare_function "GC_malloc"
     (function_type (pointer_type byte_type) [|int_type|]) llmod
   |> ignore ;
   declare_function "exit"
-    (function_type void_type [|int32_type|]) llmod |> ignore;
+    (function_type void_type [|int_type|]) llmod |> ignore;
   (* 3. Generate decls for imported functions (already in root node.) *)
   gen_fdecls llmod lltypes topsyms.fsyms;
   (* if List.length (topsyms.children) <> 1 then
