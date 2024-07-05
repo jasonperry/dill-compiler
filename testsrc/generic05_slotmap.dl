@@ -1,0 +1,23 @@
+(* types that will produce an interesting slotmap, to test type variable
+   handling and llvm type specification *)
+
+open stdio;
+
+type (u, v) Inner is record
+   izero: Int,
+   ione: u,
+   itwo: v,
+   ithree: v;
+
+type (x,y,z) Outer is record
+   zero: y,
+   one: x,
+   two: Inner(z, y);
+
+proc testit()
+begin
+   var thing: Outer(Int, Float, Int) =
+       { zero=15.2, one=14, two={ izero=4, ione=5, itwo=6.6, ithree=6.7 } };
+   printInt(thing.one);
+   printFloat(thing.two.ithree);
+/proc

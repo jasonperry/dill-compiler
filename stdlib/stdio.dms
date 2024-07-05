@@ -1,6 +1,6 @@
-modspec stdio begin
+modspec stdio is
 
-type File; ** opaque type
+type File; (* opaque type *)
 
 proc initIntArray(length: Int, value: Int) -> Int[];
 proc printInt(n: Int) -> Void;

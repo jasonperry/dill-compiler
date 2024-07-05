@@ -90,11 +90,12 @@ rule token = parse  (* funny that it's called parse *)
   | "elsif" { ELSIF }
   | "else"  { ELSE }
   | "/if" { ENDIF }
-  | "is"    { IS } 
-  | "begin" { BEGIN }
+  | "is"    { IS }
+  | "do"    { DO }
+  (* | "begin" { BEGIN } *)
   (*  | "end"   { END } *)
   | "while" { WHILE }
-  | "loop"  { LOOP }
+  (* | "loop"  { LOOP } *)
   | "/while" { ENDWHILE }
   | "case"    { CASE }
   | "of"      { OF }

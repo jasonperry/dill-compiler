@@ -238,15 +238,15 @@ type ('ed, 'sd, 'l) module_spec = {
 (* printing functions start here *)
 
 let rec typeExpr_to_string te =
-  (match te.texpkind with
+  match te.texpkind with
    | Generic tv -> tv
    | Concrete cte ->
-     (if cte.modname <> "" then cte.modname ^ "::" else "")
+     cte.classname
+     ^ (if cte.modname <> "" then cte.modname ^ "::" else "")
      ^ (if cte.typeargs = [] then ""
         else "(" ^
              String.concat ", " (List.map typeExpr_to_string cte.typeargs)
              ^ ")")
-     ^ cte.classname)
   ^ (if te.nullable then "?" else "")
   ^ (if te.array then "[]" else "") 
 
@@ -258,8 +258,8 @@ and fieldDecl_to_string fd =
 
 and typedef_to_string tdef = 
   "type " ^ tdef.typename
-  ^ if List.length tdef.typeparams > 0 then
-      "(" ^ String.concat "," tdef.typeparams ^ ")" else ""
+  ^ (if List.length tdef.typeparams > 0 then
+       "(" ^ String.concat "," tdef.typeparams ^ ")" else "")
   ^ (match tdef.kindinfo with
       | Fields fields ->
         " is" ^ (if tdef.rectype then " rec" else "") ^ " record\n   "
@@ -278,7 +278,7 @@ and typedef_to_string tdef =
      | Newtype tyex -> " is " ^ typeExpr_to_string tyex
      | Hidden -> ""
     )
-  ^ ";\n"
+  ^ ";\n/type\n\n"
 
 
 
@@ -375,7 +375,7 @@ and case_to_string (matchexp, caseblocks, elseopt) =
   "case " ^ exp_to_string matchexp ^ "\n"
   ^ String.concat "\n"
       (List.map (fun (caseexp, block) ->
-           "  of " ^ exp_to_string caseexp ^ " then \n"
+           "  of " ^ exp_to_string caseexp ^ " do \n"
            ^ block_to_string block) caseblocks)
   ^ (match elseopt with
      | Some eblock -> "  else \n" ^ block_to_string eblock
@@ -399,7 +399,7 @@ let procdecl_to_string (pdecl: ('sd, 'tt) procdecl) =
 
 let proc_to_string (proc: ('ed, 'sd, 'tt) proc) =
   (* a little ugly, but maybe I will use the pdecl later. *)
-  procdecl_to_string proc.decl ^ " is \n"
+  procdecl_to_string proc.decl ^ " do \n"
   ^ block_to_string proc.body
   ^ "/proc\n" (* "\nend " ^ proc.decl.name ^ "\n" *)
 
@@ -432,7 +432,7 @@ let module_to_string (dmod: ('ed, 'sd, 'tt) dillmodule) =
 
 (** This is creating the actual interfaces...so it's important! *)
 let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
-  "modspec " ^ mspec.name ^ " begin \n"
+  "modspec " ^ mspec.name ^ " is \n"
   (* oh look, I never printed out includes in the first place. *)
   ^ String.concat "\n" (List.map (fun rq -> "require " ^ rq.value ^ ";")
                           mspec.requires) ^ "\n"
@@ -444,5 +444,5 @@ let modspec_to_string (mspec: ('ed, 'sd, 'l) module_spec) =
       "" mspec.globals
   ^ List.fold_left
       (fun s pd -> s ^ procdecl_to_string pd ^ ";\n") "" mspec.procdecls
-  ^ "/modspec\n" (*"end " ^ mspec.name ^ "\n"*) 
+  ^ "\n/modspec\n" (*"end " ^ mspec.name ^ "\n"*) 
   

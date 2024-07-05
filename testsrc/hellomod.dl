@@ -1,10 +1,10 @@
 (* hello world as module *)
-module hello begin
+module hello is
 
 import stdio;
 
 proc main()
-begin
+do
    stdio::printInt(43);
    stdio::printString("Hello World.\n");
 /proc
@@ -15,7 +15,7 @@ begin
 import hello;
 
 proc main() -> Int
-begin
+do
    hello::main();
    return 42;
 /proc

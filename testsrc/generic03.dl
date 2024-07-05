@@ -6,14 +6,21 @@ open stdio;
 type NumThing(t) is record
    count: Int,
    thing: t;
+/type
 
 ** Do I want to allow implicit type variables? Not yet, I guess
 ** TODO: it thought t was redeclared.
-proc (u) showCount(th: NumThing(u)) is 
+proc (u) showCount(th: NumThing(u)) do
    printInt(th.count);
 /proc
 
-export proc main() is
+/module
+
+(* toplevel code *)
+open stdio;
+open generic03;
+
+proc main() do
    var nt1: NumThing(String) = {count=42, thing="Hello"};
    var nt2: NumThing(Float) = {count=43, thing=33.3333};
 
@@ -29,4 +36,4 @@ export proc main() is
    showCount(nt2);
 /proc
 
-/module
+

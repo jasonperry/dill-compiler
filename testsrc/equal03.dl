@@ -3,19 +3,19 @@
 open stdio;
 
 type Status is variant
-  | okey
-  | fubber
+  #okey,
+  #fubber
 ;
 
 type Result is variant
-  | ok
-  | error: Int;
+  #ok,
+  #error(Int);
 
 
-proc main() => Int begin
-  var s1 = Status|okey;
-  var s2 = Status|okey;
-  var s3 = Status|fubber;
+proc main() -> Int begin
+  var s1 = #okey;
+  var s2 = #okey;
+  var s3 = #fubber;
 
   if s1 == s2 then
     printString("s1 and s2 are equal.");
@@ -29,10 +29,10 @@ proc main() => Int begin
     printString("s1 and s3 are not equal.");
   endif
 
-  var r1 = Result|ok;
-  var r2 = Result|ok;
-  var r3 = Result|error(42);
-  var r4 = Result|error(43);
+  var r1 = #ok;
+  var r2 = #ok;
+  var r3 = #error(42);
+  var r4 = #error(43);
   var res: Bool = r4 == r3;
   if res then
     printString("r4 and r3 equal.");

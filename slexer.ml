@@ -56,11 +56,11 @@ type ttype =
   | VAR | REF | IMMREF
   | NOP
   | IF | THEN | ELSIF | ELSE | ENDIF 
-  | WHILE | LOOP | ENDWHILE
+  | WHILE (* | LOOP *) | ENDWHILE
   | CASE | OF | ENDCASE
-  | IS
+  | IS | DO
   | PRIVATE | PROC | ENDPROC | RETURN
-  | MODULE | BEGIN | ENDMODULE | MODSPEC | ENDMODSPEC
+  | MODULE (* | BEGIN *) | ENDMODULE | MODSPEC | ENDMODSPEC
   | IMPORT | AS | OPEN (* | EXPORT *) | REQUIRE
   | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT 
   | EOF
@@ -89,13 +89,14 @@ let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (AND, "&&"); (OR, "||"); (HASH, "#"); (QMARK, "?"); (DOLLAR, "$");
     (ASSIGN, "="); (NULLASSIGN, "?="); (ARROW, "->"); (DARROW, "=>");
     (DOT, "."); (SEMI, ";"); (DCOLON, "::"); (COMMA, ","); (COLON, ":");
-    (MODULE, "module"); (BEGIN, "begin"); (ENDMODULE, "/module");
+    (MODULE, "module"); (* (BEGIN, "begin"); *) (ENDMODULE, "/module");
     (IMPORT, "import"); (OPEN, "open"); (AS, "as"); (PRIVATE, "private");
     (MODSPEC, "modspec"); (ENDMODSPEC, "/modspec"); (REQUIRE, "require");
+    (IS, "is"); (DO, "do");
     (PROC, "proc"); (ENDPROC, "/proc"); (RETURN, "return");
     (VAR, "var"); (REF, "ref"); (NOP, "nop"); (IF, "if"); (THEN, "then");
     (ELSIF, "elsif"); (ELSE, "else"); (ENDIF, "/if");
-    (WHILE, "while"); (LOOP, "loop"); (ENDWHILE, "/while");
+    (WHILE, "while"); (* (LOOP, "loop"); *) (ENDWHILE, "/while");
     (CASE, "case"); (OF, "of"); (ENDCASE, "/case");
     (OPAQUE, "opaque"); (TYPE, "type"); (MUT, "mut"); (REC, "rec");
     (RECORD, "record"); (VARIANT, "variant");
@@ -191,7 +192,7 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "else" -> ELSE
     | "/if" -> ENDIF
     | "while" -> WHILE
-    | "loop" -> LOOP
+    (* | "loop" -> LOOP *)
     | "/while" -> ENDWHILE
     | "case" -> CASE
     | "of" -> OF
@@ -200,8 +201,9 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "/proc" -> ENDPROC
     | "return" -> RETURN
     | "is" -> IS
+    | "do" -> DO
     | "module" -> MODULE
-    | "begin" -> BEGIN
+    (* | "begin" -> BEGIN *)
     | "/module" -> ENDMODULE
     | "modspec" -> MODSPEC
     | "/modspec" -> ENDMODSPEC (* Should put these in separate parser? *)

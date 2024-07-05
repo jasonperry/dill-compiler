@@ -592,7 +592,7 @@ and if_stmt tbuf =
 and while_stmt tbuf =
   let sloc = tok_only WHILE tbuf in
   let cond = expr tbuf in
-  let _ = tok_only LOOP tbuf in
+  let _ = tok_only DO tbuf in
   let body = stmt_seq tbuf in
   let eloc = tok_only ENDWHILE tbuf in
   { st=StmtWhile (cond, body); decor=make_location sloc eloc }
@@ -766,7 +766,8 @@ let typedef tbuf =
   (* todo: type variables for generics *)
   let tname, _ = typename tbuf in
   let fields = typedef_body tbuf in
-  let eloc = tok_only SEMI tbuf in
+  let _ = tok_only SEMI tbuf in
+  let eloc = tok_only ENDTYPE tbuf in
   { typename=tname;
     rectype=false;
     typeparams=[];
@@ -792,7 +793,8 @@ let type_decl tbuf =
     }
   | IS ->
     let fields = typedef_body tbuf in
-    let eloc = tok_only SEMI tbuf in
+    let _ = tok_only SEMI tbuf in
+    let eloc = tok_only ENDTYPE tbuf in
     { typename=tname;
       rectype=false;
       typeparams=[];
@@ -849,7 +851,7 @@ let proc_header tbuf =
 
 let proc tbuf =
   let decl = proc_header tbuf in
-  let _ = tok_only BEGIN tbuf in
+  let _ = tok_only DO tbuf in
   let stmts = stmt_seq tbuf in
   let eloc = tok_only ENDPROC tbuf in
   { decl=decl; body=stmts; decor=make_location decl.decor eloc }
@@ -921,7 +923,7 @@ let global_decl tbuf =
 let modspec tbuf = 
   let _ = tok_only MODSPEC tbuf in
   let (mname, _) = uqname "module name" tbuf in
-  let _ = tok_only BEGIN tbuf in
+  let _ = tok_only IS tbuf in
   let requires =
     let rec requires_loop () =
       if (peek tbuf).ttype = REQUIRE then
@@ -965,7 +967,7 @@ let dill_source tbuf =
   | MODULE ->
     let _ (* spos *) = tok_only MODULE tbuf in
     let (mname, _) = uqname "module name" tbuf in
-    let _ = tok_only BEGIN tbuf in 
+    let _ = tok_only IS tbuf in 
     let the_module = module_body mname tbuf in
     let _ (* epos *) = tok_only ENDMODULE tbuf in
     [the_module]

@@ -2,7 +2,7 @@
 import stdio;
 
 proc main() -> Int
-begin
+do
    stdio::printString("Hello World.\n");
    return 0;
 /proc

@@ -1,0 +1,30 @@
+(* Equality comparison of primitive types *)
+
+open stdio;
+
+proc main() -> Int
+begin
+  var c1 = 42;
+  var c2 = 42.3;
+  var c3 = 44.4;
+
+  if c1 == 42 then
+    printString("c1 is 42.");
+  else
+    printString("c1 and c2 are not equal.");
+  /if
+
+  if c1 == c1 then
+     printString("Yes, equal to itself.");
+  else
+     printString("Taht's a problem.");
+  /if
+  
+  (* if c2 == 42.3 then
+    printString("c1 is 42.3.");
+  else
+    printString("c1 and c3 are not equal.");
+  /if *)
+
+  return 0;
+/proc
