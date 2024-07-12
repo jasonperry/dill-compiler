@@ -6,8 +6,8 @@ var i = 14;  (* try some global vars *)
 var j: Int = 0;
 
 proc main() -> Int
-begin
-  while (i >= 0) loop
+do
+  while (i >= 0) do
     j = 2*i+1;  (* declaring j each time through eats memory. Not good. 
                  * could the LLVM optimizer fix it? *)
     stdio::printInt(i);

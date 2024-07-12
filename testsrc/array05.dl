@@ -2,10 +2,10 @@
 
 open stdio;
 
-proc main() => Int 
-begin
+proc main() -> Int 
+do
   var a: Int[] = initIntArray(10, 367);
   printInt(a.length);
   printInt(a[4]);
   return 0;
-end main
+/proc

@@ -1766,7 +1766,7 @@ let gen_module tenv topsyms llmod
     ) topsyms.syms;
   (* 2.5 Generate low-level function declarations (GC alloc and exit) *)
   declare_function "GC_malloc"
-    (function_type (pointer_type byte_type) [|int_type|]) llmod
+    (function_type (pointer_type byte_type) [|int64_type|]) llmod
   |> ignore ;
   declare_function "exit"
     (function_type void_type [|int_type|]) llmod |> ignore;

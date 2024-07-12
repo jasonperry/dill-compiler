@@ -2,13 +2,13 @@
 
 open stdio;
 
-proc main() : Int
-
+proc main() -> Int
+do
    var a: Int[] = [8,7,6,5,4]; (* [ for i -> 8-i ] *)
    a = [145,33,44,15,43, 44];  (* Can assign different-length array. *)
    a[2] = 14;
    var i: Int = 0;
-   while i < a.length loop
+   while i < a.length do
       a[i] = a[i] + 1;
       printInt(a[i]);
       i = i + 1;

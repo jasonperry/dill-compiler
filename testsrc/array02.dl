@@ -2,12 +2,12 @@
 
 open stdio;
 
-proc main() => Int
-is
+proc main() -> Int
+do
   var a: Float[] = [8.8,7.7,6.6,5.5,4.4,3.3]; (* { func(i) => 8-i } *)
   a[5] = 14.9;                                (* [ func(i) begin return 8-i; end] *)
   var i: Int = 0;                             (* [ i => 8-i ]; *)
-  while i < a.length loop
+  while i < a.length do
     printFloat(a[i]);
     i = i + 1;
   /while
