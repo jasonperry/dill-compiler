@@ -100,12 +100,12 @@ let concat_map f l = List.concat (List.map f l)
 let concat_errors rlist =
   (* the list of errors are each themselves lists. *)
   List.concat (
-      concat_map (
-          fun r -> match r with
-                   | Ok _ -> []
-                   | Error erec -> [erec]
-        ) rlist
-    )
+    concat_map (
+      fun r -> match r with
+        | Ok _ -> []
+        | Error erec -> [erec]
+    ) rlist
+  )
 
 (** Combine all OKs into a single list *)
 let concat_ok rlist = concat_map Result.to_list rlist
