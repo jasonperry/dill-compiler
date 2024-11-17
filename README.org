@@ -2,8 +2,9 @@
 I want to write and read imperative code. It's meant to be
 type- and memory-safe, with an orthogonal set of type-based
 abstractions, and as low runtime overhead as possible. The
-most interesting feature is how it makes mutability visible and simplifies management of the value/reference distinction. 
-Goals and features include:
+most interesting feature is how it makes mutability visible and simplifies management of the value/reference distinction.
+
+* Value vs. reference and immutability
 - "Imperative locally, immutable-first globally"; local variables are reassignable, but datatypes are immutable by default, and procedure arguments are passed immutably by default and are not reassignable.
 - Non-local mutation is made explicit; passing an object mutably is
   indicated at both the function definition and call site. Otherwise
@@ -14,17 +15,23 @@ Goals and features include:
   variable, but for function arguments the mutability distinction is
   enough.  Assignment of a mutable object to a ~var~ is always a copy,
   but you have to write an explicit ~copy()~ for dynamically-sized types.
+  
+* Type system
 - Algebraic datatypes, called ~record~ and ~variant~. Built-in ~Bool~ and ~Option~ types have the same syntax as user-defined variant types. Recursive types.
 - All types are datatypes; there are no classes (containers for
   a type and methods). As an alternative to method call syntax for call chaining, a pipe operator is in the works, with a parameter marker which also distinguishes mutable and non-mutable arguments.
 - Null-safety with explicit nullable (option) types, with syntactic sugar ~?~ and value promotion convenience features.
+  
+* Syntax
 - Syntax: keyword-based, no curly braces or significant whitespace, semicolons as statement (not block) terminators. LL(2) parseable (mostly LL(1)), no significant whitespace. Blocks are closed by a slashed keyword (~/if~, ~/while~) to be more informative than just ~end~ but still short to type. Making code easy to type and even read aloud are also goals.
-- Modules as the primary construct for code grouping and data
-  hiding. ~private~ means private to a module; functions in a
-  module can access private fields of datatypes in that module. All
-  imports must be explicitly specified.
-- Separate compilation by means of auto-generated module
-  specifications. This is strictly a compiler feature---module specs are not part of the language definition proper. What a module exposes is completely specified by its source.
+
+* Packages and modules
+- Packages are the largest unit of organization, similar to a namespace but aimed at being a library. Multiple source units can be part of the same package. Importing a package with ~use~ brings in everything in the package, so explicit fine-grained imports aren't necessary.
+- Modules are smaller than packages and are meant to group a closely-knit set of types and functions. Importing a module explicitly allows method-call syntax to be used on the procedures in the module, by their first argument.
+- Separate compilation by means of auto-generated package
+  specifications. This is strictly a compiler feature---package specs are not part of the language definition proper. What a package exposes is completely specified by its source.
+
+* Generics
 - In progress: generics, with constraints by means of module signatures (the
   modular equivalent of interfaces). Module imports explicitly specify
   which signature implementations you're using.
