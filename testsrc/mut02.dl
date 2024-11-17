@@ -1,27 +1,26 @@
 (* nested mutable record types *)
-module mut02 begin
 
 open stdio;
 
-type Complex is struct
+type Complex is record
    mut i: Float,
    mut j: Float;
 
 
 (* This is a mutable type because it has fields of mutable type.
  * The fields could change but can't be reassigned. *)
-type TwoComplexes is struct
+type TwoComplexes is record
    foist: Complex,
    secint: Complex;
 
-proc bumpem(#tcc: TwoComplexes)
-begin
+proc bumpem($tcc: TwoComplexes)
+do
    tcc.foist.i = tcc.foist.i + 1.5;
    tcc.secint.i = tcc.secint.i + 1.5;
-end bumpem
+/proc
 
-export proc main()
-begin
+proc main() -> Int
+do
    var cpx: Complex = {i=2.0, j=1.111};
    var cpx2: Complex = {i=3.0, j=2.1};
 
@@ -34,6 +33,6 @@ begin
 
    printFloat(tc.foist.i);   (* 3.5 *)
    printFloat(tc.secint.i);  (* 4.5 *)
-end main
+   return 0;
+/proc
 
-end mut02

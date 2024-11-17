@@ -1,15 +1,15 @@
 (* first nullable types test *)
-module null01 is
+(* module null01 is *)
 
 open stdio;
 
-export proc main() => Int
-is
+proc main() -> Int
+do
   var maybeInt: Int?;
-  maybeInt = null;
+  maybeInt = #null;
   maybeInt = 5;     (* test both kinds of store *)
 
-  var maybe2 : Int? = null;
+  var maybe2 : Int? = #null;
   (* maybe2 = maybeInt; *)  (* value types, it's a copy (whew) *)
 
   (* Is it too implicit to assign an int to a nullable variable? 
@@ -24,7 +24,7 @@ is
      printInt(0);
   /if
 
-  var maybe3: Int? = null;
+  var maybe3: Int? = #null;
   if maybe2 then
      printString("not null");
   else
@@ -34,4 +34,4 @@ is
   return 0;
 
 /proc
-/module
+(* /module *)

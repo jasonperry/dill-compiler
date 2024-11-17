@@ -1,20 +1,27 @@
 ** Nested generic datatype
 
 module generic04 is
+
 open stdio;
 
-type NumThing(t) is record
+type NumThing('t) is record
    count: Int,
-   thing: t;
+   thing: 't;
+/type
 
 ** Do I want to allow implicit type variables? Not yet, I guess
 ** FIXME: it thinks t is redeclared. putting tvar in wrong nesting?
-proc (t) showCount(th: NumThing(t)) is
+proc showCount(th: NumThing('_))
+do
    printInt(th.count);
 /proc
 
-export proc main()
-is
+/module
+
+(* top level *)
+open generic04;
+proc main()
+do
    var nt1: NumThing(NumThing(Int)) = {count=42, thing={count=44, thing=678}};
    ** var nt2: NumThing(Float) = {count=43, thing=33.3333};
    showCount(nt1);
@@ -27,4 +34,3 @@ is
    printInt(innerThing.thing);
 /proc
 
-/module

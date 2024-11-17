@@ -1,9 +1,9 @@
 (* Immutable type to import into other modules *)
-module complex begin
+module complex is
 
 
 type Complex is record
   i: Float,
   j: Float;
-
+/type
 /module

@@ -6,14 +6,15 @@ open stdio;
 type ArrField is record
     x: Int,
     mut y: Float[];
-
+/type
+    
 proc arrayMut($af: ArrField)
-is
+do
   af.y[1] = 4.4; ** store fails
 /proc
 
 proc main()
-is
+do
    var myaf: ArrField = { x=42, y=[2.3, 3.1] };
    arrayMut($myaf);
    printInt(myaf.x);

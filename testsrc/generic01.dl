@@ -1,20 +1,20 @@
 (* simplest generic test *)
 
-module generic01 is
+(* module generic01 is *)
 
 open stdio;
 
-proc (t) id(x: t) => t
-is
+proc id(x: 't) -> 't
+do
    return x;
 /proc
 
-export proc main()
-is
+proc main()
+do
    var n = 42;
    var s = "hello";
    printString(id(s));
    printInt(id(n));
 /proc
 
-/module
+(* /module *)

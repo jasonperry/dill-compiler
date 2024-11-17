@@ -1,13 +1,13 @@
-module collatz begin
+module collatz is
 
 open stdio;
 
 proc collatz(n: Int) -> Int
-begin
+do
    var i = n;
    var count = 0;
    (* printInt(i); *)
-   while i != 1 loop
+   while i != 1 do
       if i % 2 == 0 then
          i = i/2;
       else

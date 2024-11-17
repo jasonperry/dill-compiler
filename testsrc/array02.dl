@@ -8,8 +8,8 @@ do
   a[5] = 14.9;                                (* [ func(i) begin return 8-i; end] *)
   var i: Int = 0;                             (* [ i => 8-i ]; *)
   while i < a.length do
-    printFloat(a[i]);
-    i = i + 1;
+     printFloat(a[i]);
+     i = i + 1;
   /while
   return 0;
 /proc

@@ -1,14 +1,16 @@
 ** simplest generic with two type variables.
 
-module generic02 is
+(* module generic02 is *)
 
 open stdio;
 
-proc (t, u) second(i: t, j: u) => u is
-   return j;
+proc second(fst: 't, snd: 'u) -> 'u
+do
+   return snd;
 /proc
 
-export proc main() is
+proc main() 
+do
    var x: Int = 42;
    var y: Float = 43.0;
    var z = second(x, y);
@@ -20,4 +22,4 @@ export proc main() is
    return;
 /proc
 
-/module
+(* /module *)
