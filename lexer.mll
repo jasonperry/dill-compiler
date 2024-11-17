@@ -9,10 +9,12 @@ let digit = ['0'-'9']
 let iconst = digit+
 let exp = ['e' 'E'] ['-' '+']? digit+
 let fconst = digit+ '.' digit* exp?
-let ident_lc = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
-let ident_uc = ['A'-'Z'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
-let ident_variant = ['|'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
-
+let ident_body = ['a'-'z' 'A'-'Z' '0'-'9' '_']*
+let ident_lc = ['a'-'z' '_'] ident_body
+let ident_uc = ['A'-'Z'] ident_body
+let ident_variant = '#' ident_body
+let typevar = '\'' ident_body [^ '\'']
+                    
 (* Unused, from the calc example *)
 (* rule line = parse
 | ([^'\n']* '\n') as line

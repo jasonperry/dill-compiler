@@ -28,7 +28,7 @@
    llvm.linker
    llvm.all_backends
    qbe
-    ;menhirLib
+   menhirLib  ; to convert parser to incremental for use with sedlex
  )
  (modules :standard) ;\ codegen)
  (preprocess (pps sedlex.ppx))

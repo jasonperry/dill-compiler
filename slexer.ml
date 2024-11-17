@@ -2,7 +2,7 @@
 
 open Sedlexing  (* new_line, loc stuff that parser will use *)
 open Syntax     (* my SyntaxError exception type *)
-
+open Parser     (* token types from there *)
 (* Not in common.ml for now, Other modules might have different error
    types. Or, should I make a unified error type? *)
 (* Idea: parameterize the module by encoding *)
@@ -26,14 +26,13 @@ let ident_uc =
 (* Currently parsing :: as a separate token. *)
 (* let qident_uc = [%sedlex.regexp? Opt (ident_lc, "::"), ident_uc] *)
 let vlabel = [%sedlex.regexp? '#', ident_lc]
-let symbol = [%sedlex.regexp? '#', ident_lc]
 let hexbyte = [%sedlex.regexp? "\\x", Rep (hexdigit, 2)]
 (* ASCII printable except ' and \ (for char literals) *)
 (* leaving out double quote (34), '"' works in ocaml. *)
 let char_noesc = [%sedlex.regexp? (20 .. 38 | 40 .. 91 | 93 .. 126)]
 (* Any unicode except ' and \ for string literals. May not be needed. *)
 let str_noesc = [%sedlex.regexp? Sub (any, Chars "\"\\")]
-
+(*
 type ttype =
   | I_LIT of Int64.t
   | F_LIT of float
@@ -69,11 +68,11 @@ type token = {
   ttype: ttype;
   loc: Lexing.position * Lexing.position
 }
-
+*)
 (* Map and function for unparsing and error messages. *)
 module Ttype =
   struct
-    type t = ttype
+    type t = token
     let compare = Stdlib.compare
   end
 
@@ -84,7 +83,7 @@ let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (LPAREN, "("); (RPAREN, ")"); (LBRACE, "{"); (RBRACE, "}");
     (LSQRB, "["); (RSQRB, "]"); (PLUS, "+"); (MINUS, "-");
     (TIMES, "*"); (DIV, "/"); (MOD, "%"); (CARAT, "^"); (TILDE, "~");
-    (NOT, "!"); (AMP, "&"); (SHL, "<<"); (SHR, ">>"); (EQ, "==");
+    (BANG, "!"); (AMP, "&"); (SHL, "<<"); (SHR, ">>"); (EQ, "==");
     (NE, "!="); (LT, "<"); (LE, "<="); (GT, ">"); (GE, ">=");
     (AND, "&&"); (OR, "||"); (HASH, "#"); (QMARK, "?"); (DOLLAR, "$");
     (ASSIGN, "="); (NULLASSIGN, "?="); (ARROW, "->"); (DARROW, "=>");
@@ -99,7 +98,7 @@ let ttype_strings = List.fold_left  (* of_list in ocaml 5.1 *)
     (WHILE, "while"); (* (LOOP, "loop"); *) (ENDWHILE, "/while");
     (CASE, "case"); (OF, "of"); (ENDCASE, "/case");
     (OPAQUE, "opaque"); (TYPE, "type"); (MUT, "mut"); (REC, "rec");
-    (RECORD, "record"); (VARIANT, "variant");
+    (STRUCT, "struct"); (VARIANT, "variant");
     (TRUE, "#true"); (FALSE, "#false"); (NULL, "#null")
   ]
 
@@ -114,8 +113,8 @@ let string_of_ttype = function
   | VLABEL s -> s
   | t -> TokenMap.find t ttype_strings
 
-(* Useful in parser for error messages *)
-let string_of_token token = string_of_ttype token.ttype
+(* Useful in parser for error messages. But does the lexer also store this? *)
+let string_of_token token = string_of_ttype token
 
 (* do I have to write my own to_string for the buf? *)
 let string_of_ucarray arr =
@@ -170,7 +169,7 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | ">=" -> GE
     | "&&" -> AND
     | "||" -> OR
-    | '!' -> NOT
+    | '!' -> BANG
     | '?' -> QMARK  (* Maybe later: attached to something else. *)
     | '$' -> DOLLAR
     | '=' -> ASSIGN
@@ -217,7 +216,7 @@ let rec tparse (buf: Sedlexing.lexbuf) =
     | "rec" -> REC
     | "opaque" -> OPAQUE
     | "mut" -> MUT
-    | "record" -> RECORD
+    | "record" -> STRUCT
     | "variant" -> VARIANT
     | ident_lc -> LC_IDENT (Enc.lexeme buf)
     | ident_uc -> UC_IDENT (Enc.lexeme buf)
@@ -297,5 +296,5 @@ and byte (acc: char list) buf =
   | _ -> failwith "Unreachable: slexer.byte"
     
 (* Wait...will buf be different after? what if I get pos first? *)
-let token buf = 
-  { ttype=tparse buf; loc=lexing_positions buf }
+let token buf = tparse buf
+  (* { ttype=tparse buf; loc=lexing_positions buf } *)

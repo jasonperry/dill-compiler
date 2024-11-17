@@ -5,10 +5,49 @@ open Slexer
 open Syntax
 open Ast
 
+(* for now we get these from the Menhir parser, so it's compatible with the
+   lexer. *)
+(* type token =
+  | I_LIT of Int64.t
+  | F_LIT of float
+  | S_LIT of string
+  | B_LIT of char
+  | LC_IDENT of string
+  | UC_IDENT of string
+  | VLABEL of string
+  | LPAREN | RPAREN | LBRACE | RBRACE | LSQRB | RSQRB
+  | PLUS | MINUS | TIMES | DIV | MOD
+  (* | UMINUS (* not lexed *) *)
+  | AMP | PIPE | CARAT | TILDE (* bitwise operators *)
+  | SHL | SHR  (* logical shift *)
+  | EQ | NE | LT | GT | LE | GE
+  | AND | OR | NOT (* Which ones overloadable? Maybe not these. *)
+  | TRUE | FALSE | NULL (* | VAL *)
+  | COLON | DCOLON | SEMI | DOT | COMMA
+  | HASH | DOLLAR | QMARK | ARROW | DARROW
+  | ASSIGN | NULLASSIGN
+  | VAR | REF | IMMREF
+  | NOP
+  | IF | THEN | ELSIF | ELSE | ENDIF 
+  | WHILE (* | LOOP *) | ENDWHILE
+  | CASE | OF | ENDCASE
+  | IS | DO
+  | PRIVATE | PROC | ENDPROC | RETURN
+  | MODULE (* | BEGIN *) | ENDMODULE | MODSPEC | ENDMODSPEC
+  | IMPORT | AS | OPEN (* | EXPORT *) | REQUIRE
+  | TYPE | ENDTYPE | OPAQUE | REC | RECORD | VARIANT | MUT 
+  | EOF
+*)
+    
+type tlocated = {
+  ttype: Parser.token;
+  loc: Lexing.position * Lexing.position
+}
+
 (* Maybe put this stuff in its own module, or even in the lexer *)
 (** Type for simple token buffering/lookahead implementation. *)
 type tbuf = {
-  buf: token array;
+  buf: tlocated array;
   sbuf: string array; (* Store lexemes of tokens in parallel array *)
   lexbuf: Sedlexing.lexbuf;
   mutable bpos: int;
@@ -31,9 +70,9 @@ let _refill_tbuf tbuf =
     else
       (* Otherwise pull from the lexer. *)
       let nexttok = Slexer.token tbuf.lexbuf in
-      Array.set tbuf.buf i nexttok;
+      Array.set tbuf.buf i {ttype=nexttok; loc=Sedlexing.lexing_positions tbuf.lexbuf};
       Array.set tbuf.sbuf i (Enc.lexeme tbuf.lexbuf);
-      if nexttok.ttype = EOF then () (* leave old tokens *)
+      if nexttok = EOF then () (* leave old tokens *)
       else tloop (i+1)
   in
   if tbuf.bpos = 0 then ()  (* no-op case *)
@@ -73,7 +112,7 @@ let peek2 tbuf =
   tbuf.buf.(i)
 
 (** Attempt to eat one token of given type from token buffer. *)
-let consume tbuf ttype =
+let consume tbuf (ttype: Parser.token) =
   let tok = peek tbuf in
   let samettype = match (ttype, tok.ttype) with
     (* Could save typing with Obj.tag but I'd feel dirty :) *)
@@ -180,7 +219,7 @@ let option rule tbuf =
    that call "consume" directly and use the coercion functions. *)
 
 (** Consume token of given type, emitting error message with given description if not *)
-let tok_val ttype descrip tbuf =
+let tok_val (ttype: Parser.token) descrip tbuf =
   match (consume tbuf ttype) with
   | None -> raise (expect_error descrip tbuf)
   | Some tok -> tok
@@ -234,7 +273,7 @@ let sconst tbuf =
   in (tok_sval tok, tok.loc)
 
 (** Convert a token to its operator type *)
-let binop_tok = function
+let binop_tok: (Parser.token -> binary_op) = function
   | PLUS -> OpPlus
   | MINUS -> OpMinus
   | TIMES -> OpTimes
@@ -289,7 +328,7 @@ let typeExpr tbuf =
               modname=n1; classname=cn;
               typeargs=[];
             });
-           (* nullable should be 'option' *)
+           (* nullable becomes 'option' class in analysis? *)
            nullable=false; array=false;
            loc=make_location stok.loc el1
        }
@@ -345,8 +384,8 @@ let unop_val tbuf =
   match (peek tbuf).ttype with
   | MINUS ->
     let tloc = tok_only MINUS tbuf in (OpNeg, tloc)
-  | NOT ->
-    let tloc = tok_only NOT tbuf in (OpNot, tloc)
+  | BANG ->
+    let tloc = tok_only BANG tbuf in (OpNot, tloc)
   | TILDE ->
     let tloc = tok_only TILDE tbuf in (OpBitNot, tloc)
   | _ -> failwith "BUG: unop_val called with wrong token type"
@@ -367,7 +406,7 @@ let rec expr tbuf =
     | I_LIT _ | F_LIT _ | B_LIT _ | S_LIT _ | TRUE | FALSE | NULL ->
       let (v, tloc) = literal_val tbuf in
       { e=ExpLiteral v; decor=make_location tloc tloc }
-    | MINUS | NOT | TILDE ->
+    | MINUS | BANG | TILDE ->
       let oper, sloc = unop_val tbuf in 
       let e = base_expr () in
       { e=ExpUnop (oper, e); decor=make_location sloc e.decor }
@@ -724,8 +763,8 @@ let typedef_body tbuf =
   let _ = tok_only IS tbuf in
   (* oh, have to look for "rec" too *)
   match (peek tbuf).ttype with
-  | RECORD ->
-    let _ = tok_only RECORD tbuf in
+  | STRUCT ->
+    let _ = tok_only STRUCT tbuf in
     let rec fields_loop () =
       let fpriv = match (peek tbuf).ttype with
         | PRIVATE -> ignore (tok_only PRIVATE tbuf); true
@@ -747,7 +786,7 @@ let typedef_body tbuf =
   | VARIANT -> failwith "in progress" (* will return "kindinfo" when done *)
   | UC_IDENT _ -> failwith "in progress" (* newtype *)
   | _ -> raise (parse_error ("expected type or type kind specifier, found " ^
-                string_of_token (peek tbuf)) tbuf)
+                string_of_token (peek tbuf).ttype) tbuf)
 
 let typedef tbuf =
   let (vis, sloc) = match (peek tbuf).ttype with
